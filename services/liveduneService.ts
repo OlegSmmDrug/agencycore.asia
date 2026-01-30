@@ -146,7 +146,6 @@ export const getLiveduneAudience = async (config: LiveduneApiConfig): Promise<Li
 
 export const getLivedunePosts = async (config: LiveduneApiConfig, dateRange: string = '30d'): Promise<LivedunePost[]> => {
   if (!config.accessToken || !config.accountId) {
-    console.log('[Livedune Posts] No token or account ID');
     return [];
   }
 
@@ -155,25 +154,17 @@ export const getLivedunePosts = async (config: LiveduneApiConfig, dateRange: str
 
   try {
     const url = `${LIVEDUNE_PROXY_URL}?endpoint=/accounts/${config.accountId}/posts&access_token=${encodeURIComponent(config.accessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
-    console.log('[Livedune Posts] Fetching from API:', url);
-
     const response = await fetch(url, { headers: getProxyHeaders() });
-    console.log('[Livedune Posts] Response status:', response.status, 'OK:', response.ok);
 
     if (!response.ok) {
-      console.log('[Livedune Posts] Response not OK, using mock data');
       return generateMockPosts(config.accountId);
     }
 
     const data = await response.json();
-    console.log('[Livedune Posts] API Response:', data);
 
     if (data.error || !data.response) {
-      console.log('[Livedune Posts] API error or no response, using mock data');
       return generateMockPosts(config.accountId);
     }
-
-    console.log('[Livedune Posts] Raw posts count from API:', data.response?.length || 0);
 
     const allPosts = (data.response || []).map((post: any) => {
       return {
@@ -198,21 +189,12 @@ export const getLivedunePosts = async (config: LiveduneApiConfig, dateRange: str
     const fromDate = new Date(dateFrom);
     const toDate = new Date(dateTo);
 
-    const filtered = allPosts.filter((post: any) => {
+    return allPosts.filter((post: any) => {
       const postDate = new Date(post.created);
       return postDate >= fromDate && postDate <= toDate;
-    });
-
-    console.log('[Livedune Posts] After date filter:', filtered.length);
-    console.log('[Livedune Posts] Date range:', dateFrom, 'to', dateTo);
-
-    filtered.forEach((post: LivedunePost) => {
-      console.log('[Livedune Posts] Post:', post.post_id, 'Type:', post.type, 'Date:', post.created);
-    });
-
-    return filtered.slice(0, 50);
+    }).slice(0, 50);
   } catch (error) {
-    console.error('[Livedune Posts] Error fetching posts:', error);
+    console.error('Error fetching Livedune posts:', error);
     return generateMockPosts(config.accountId);
   }
 };
