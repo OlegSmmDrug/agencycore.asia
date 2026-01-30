@@ -27,6 +27,7 @@ import { syncAllProjectKpis, shouldSyncKpis } from '../services/kpiSyncService';
 import { autoCalculateContentForProject, shouldCalculateContent } from '../services/contentCalculationService';
 import { projectLegalDocumentsService, ProjectLegalDocument } from '../services/projectLegalDocumentsService';
 import { generatedDocumentService, GeneratedDocument } from '../services/generatedDocumentService';
+import ProjectDatesModal from './ProjectDatesModal';
 
 interface ProjectDetailsProps {
   project: Project;
@@ -1058,17 +1059,18 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
     onUpdateProject({ ...project, focuses: updatedFocuses });
   };
 
-  const handleSaveDates = () => {
-    const startDate = new Date(tempStartDate);
+  const handleSaveDates = (newStartDate: string, newDuration: number) => {
+    const startDate = new Date(newStartDate);
     const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + tempDuration);
+    endDate.setDate(endDate.getDate() + newDuration);
     onUpdateProject({
       ...project,
-      startDate: tempStartDate,
-      duration: tempDuration,
+      startDate: newStartDate,
+      duration: newDuration,
       endDate: endDate.toISOString().split('T')[0]
     });
-      };
+    setIsEditingDates(false);
+  };
 
   const calculateEndDate = () => {
     if (!tempStartDate) return '-';
@@ -2899,6 +2901,15 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
         projectName={project.name}
         onClose={() => setIsRoadmapSetupModalOpen(false)}
         onComplete={handleRoadmapSetupComplete}
+      />
+
+      <ProjectDatesModal
+        isOpen={isEditingDates}
+        onClose={() => setIsEditingDates(false)}
+        startDate={project.startDate || ''}
+        duration={project.duration || 30}
+        onSave={handleSaveDates}
+        onRenew={handleRenewProject}
       />
 
       <ContentModal
