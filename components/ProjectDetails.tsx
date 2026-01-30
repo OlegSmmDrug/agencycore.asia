@@ -82,11 +82,11 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
   const [tempBasicInfo, setTempBasicInfo] = useState({
     name: project.name,
     description: project.description || '',
-    status: project.status
-  });
-  const [tempBudgetInfo, setTempBudgetInfo] = useState({
+    status: project.status,
     budget: project.budget,
-    mediaBudget: project.mediaBudget || 0
+    mediaBudget: project.mediaBudget || 0,
+    startDate: project.startDate,
+    duration: project.duration || 30
   });
   const [isEditingContent, setIsEditingContent] = useState(false);
   const [isEditingFacebookSettings, setIsEditingFacebookSettings] = useState(false);
@@ -120,12 +120,9 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
     storiesPlan: project.storiesPlan || 0,
     storiesFact: project.storiesFact || 0
   });
-  const [tempStartDate, setTempStartDate] = useState(project.startDate);
-  const [tempDuration, setTempDuration] = useState(project.duration || 30);
   const [newKpi, setNewKpi] = useState({ name: '', plan: 0, fact: 0 });
   const [tempFocus, setTempFocus] = useState(project.focusWeek || '');
   const [tempWorkScope, setTempWorkScope] = useState(project.workScope || '');
-  const [isEditingDates, setIsEditingDates] = useState(false);
   const [isEditingWorkScope, setIsEditingWorkScope] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [newRisk, setNewRisk] = useState('');
@@ -648,7 +645,53 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                     placeholder="Описание проекта..."
                   />
                 </div>
-                <div className="flex gap-2">
+
+                <div className="grid grid-cols-2 gap-4 pt-2">
+                  <div>
+                    <label className="text-xs text-slate-600 uppercase font-semibold block mb-2">Стоимость проекта</label>
+                    <input
+                      type="number"
+                      value={tempBasicInfo.budget || ''}
+                      onChange={(e) => setTempBasicInfo({ ...tempBasicInfo, budget: Number(e.target.value) })}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full px-4 py-2 border border-slate-200 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-600 uppercase font-semibold block mb-2">Медиа бюджет</label>
+                    <input
+                      type="number"
+                      value={tempBasicInfo.mediaBudget || ''}
+                      onChange={(e) => setTempBasicInfo({ ...tempBasicInfo, mediaBudget: Number(e.target.value) })}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full px-4 py-2 border border-slate-200 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-slate-600 uppercase font-semibold block mb-2">Дата начала</label>
+                    <input
+                      type="date"
+                      value={tempBasicInfo.startDate || ''}
+                      onChange={(e) => setTempBasicInfo({ ...tempBasicInfo, startDate: e.target.value })}
+                      className="w-full px-4 py-2 border border-slate-200 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-600 uppercase font-semibold block mb-2">Срок (дней)</label>
+                    <input
+                      type="number"
+                      value={tempBasicInfo.duration || ''}
+                      onChange={(e) => setTempBasicInfo({ ...tempBasicInfo, duration: Number(e.target.value) })}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full px-4 py-2 border border-slate-200 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2">
                   <button
                     onClick={() => {
                       handleSaveBasicInfo();
@@ -656,14 +699,18 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                     }}
                     className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
                   >
-                    Сохранить
+                    Сохранить все изменения
                   </button>
                   <button
                     onClick={() => {
                       setTempBasicInfo({
                         name: project.name,
                         description: project.description || '',
-                        status: project.status
+                        status: project.status,
+                        budget: project.budget,
+                        mediaBudget: project.mediaBudget || 0,
+                        startDate: project.startDate,
+                        duration: project.duration || 30
                       });
                       setIsEditMode(false);
                     }}
@@ -735,7 +782,18 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
 
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
-                      onClick={() => setIsEditMode(true)}
+                      onClick={() => {
+                        setTempBasicInfo({
+                          name: project.name,
+                          description: project.description || '',
+                          status: project.status,
+                          budget: project.budget,
+                          mediaBudget: project.mediaBudget || 0,
+                          startDate: project.startDate,
+                          duration: project.duration || 30
+                        });
+                        setIsEditMode(true);
+                      }}
                       className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -838,43 +896,17 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
 
             {/* Секция сроков проекта */}
             <div>
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="text-xs text-slate-400 uppercase font-semibold">Сроки проекта</h4>
-                <button
-                  onClick={() => {
-                    setIsEditingDates(!isEditingDates);
-                    if (!isEditingDates) {
-                      setTempStartDate(project.startDate);
-                      setTempDuration(project.duration || 30);
-                    }
-                  }}
-                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                  </svg>
-                  Редактировать
-                </button>
-              </div>
+              <h4 className="text-xs text-slate-400 uppercase font-semibold mb-3">Сроки проекта</h4>
 
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs text-slate-500 uppercase font-semibold mb-1.5">Начало</label>
-                    {isEditingDates ? (
-                      <input
-                        type="date"
-                        value={tempStartDate || ''}
-                        onChange={(e) => setTempStartDate(e.target.value)}
-                        className="w-full px-3 py-2 border-2 border-slate-300 rounded-lg text-sm font-medium bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                      />
-                    ) : (
-                      <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
-                        <p className="text-sm font-bold text-slate-800">
-                          {project.startDate ? new Date(project.startDate).toLocaleDateString('ru-RU') : '-'}
-                        </p>
-                      </div>
-                    )}
+                    <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+                      <p className="text-sm font-bold text-slate-800">
+                        {project.startDate ? new Date(project.startDate).toLocaleDateString('ru-RU') : '-'}
+                      </p>
+                    </div>
                   </div>
 
                   <div>
@@ -886,63 +918,6 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                     </div>
                   </div>
                 </div>
-
-                {isEditingDates && (
-                  <>
-                    <div>
-                      <label className="block text-xs text-slate-500 uppercase font-semibold mb-1.5">Срок (дней)</label>
-                      <input
-                        type="number"
-                        value={tempDuration || ''}
-                        onChange={(e) => setTempDuration(Number(e.target.value))}
-                        onFocus={(e) => e.target.select()}
-                        className="w-full px-3 py-2 border-2 border-slate-300 rounded-lg text-sm font-medium bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                      />
-                    </div>
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setTempDuration(7)}
-                        className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                          tempDuration === 7
-                            ? 'bg-slate-800 text-white'
-                            : 'bg-white border border-slate-300 text-slate-700 hover:border-slate-400'
-                        }`}
-                      >
-                        7 дней
-                      </button>
-                      <button
-                        onClick={() => setTempDuration(14)}
-                        className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                          tempDuration === 14
-                            ? 'bg-slate-800 text-white'
-                            : 'bg-white border border-slate-300 text-slate-700 hover:border-slate-400'
-                        }`}
-                      >
-                        14 дней
-                      </button>
-                      <button
-                        onClick={() => setTempDuration(30)}
-                        className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                          tempDuration === 30
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-white border border-slate-300 text-slate-700 hover:border-slate-400'
-                        }`}
-                      >
-                        30 дней
-                      </button>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        handleSaveDates(tempStartDate, tempDuration);
-                      }}
-                      className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
-                    >
-                      Сохранить изменения
-                    </button>
-                  </>
-                )}
 
                 <button
                   onClick={handleRenewProject}
@@ -994,32 +969,29 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
   };
 
   const handleSaveBasicInfo = () => {
+    const startDate = new Date(tempBasicInfo.startDate);
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + (tempBasicInfo.duration || 30));
+
     onUpdateProject({
       ...project,
       name: tempBasicInfo.name,
       description: tempBasicInfo.description,
-      status: tempBasicInfo.status
-    });
-      };
-
-  const handleSaveBudgetInfo = () => {
-    onUpdateProject({
-      ...project,
-      budget: tempBudgetInfo.budget,
-      mediaBudget: tempBudgetInfo.mediaBudget
+      status: tempBasicInfo.status,
+      budget: tempBasicInfo.budget,
+      mediaBudget: tempBasicInfo.mediaBudget,
+      startDate: tempBasicInfo.startDate,
+      duration: tempBasicInfo.duration,
+      endDate: endDate.toISOString().split('T')[0]
     });
   };
 
   const handleSaveFocus = () => {
     onUpdateProject({ ...project, focusWeek: tempFocus });
-      };
+  };
 
   const handleSaveWorkScope = () => {
     onUpdateProject({ ...project, workScope: tempWorkScope });
-      };
-
-  const handleSaveMediaBudget = () => {
-    onUpdateProject({ ...project, mediaBudget: tempBudgetInfo.mediaBudget });
   };
 
   const handleSaveClientLegal = async () => {
@@ -1091,27 +1063,6 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
   const handleDeleteFocus = (focusId: string) => {
     const updatedFocuses = (project.focuses || []).filter(f => f.id !== focusId);
     onUpdateProject({ ...project, focuses: updatedFocuses });
-  };
-
-  const handleSaveDates = (newStartDate: string, newDuration: number) => {
-    const startDate = new Date(newStartDate);
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + newDuration);
-    onUpdateProject({
-      ...project,
-      startDate: newStartDate,
-      duration: newDuration,
-      endDate: endDate.toISOString().split('T')[0]
-    });
-    setIsEditingDates(false);
-  };
-
-  const calculateEndDate = () => {
-    if (!tempStartDate) return '-';
-    const startDate = new Date(tempStartDate);
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + tempDuration);
-    return endDate.toLocaleDateString('ru-RU');
   };
 
   const getHealthConfig = (status: ProjectHealthStatus) => {
