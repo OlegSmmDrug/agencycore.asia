@@ -54,27 +54,42 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
 
         setIsLoading(true);
         try {
+            console.log('Загрузка аватара (UserProfileModal):', {
+                fileName: file.name,
+                fileSize: file.size,
+                fileType: file.type
+            });
+
             const fileExt = file.name.split('.').pop();
             const fileName = `${user.id}_${Date.now()}.${fileExt}`;
             const filePath = `avatars/${fileName}`;
+
+            console.log('Путь загрузки:', filePath);
 
             const { error: uploadError } = await supabase.storage
                 .from('user-avatars')
                 .upload(filePath, file, { upsert: true });
 
-            if (uploadError) throw uploadError;
+            if (uploadError) {
+                console.error('Ошибка загрузки в storage:', uploadError);
+                throw uploadError;
+            }
+
+            console.log('Файл загружен в storage');
 
             const { data: { publicUrl } } = supabase.storage
                 .from('user-avatars')
                 .getPublicUrl(filePath);
 
+            console.log('Public URL получен:', publicUrl);
+
             setFormData(prev => ({ ...prev, avatar: publicUrl }));
             setMessage({ type: 'success', text: 'Фото загружено успешно!' });
             setTimeout(() => setMessage(null), 3000);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error uploading avatar:', error);
-            setMessage({ type: 'error', text: 'Ошибка при загрузке фото' });
-            setTimeout(() => setMessage(null), 3000);
+            setMessage({ type: 'error', text: `Ошибка при загрузке фото: ${error.message || 'Неизвестная ошибка'}` });
+            setTimeout(() => setMessage(null), 5000);
         } finally {
             setIsLoading(false);
         }
