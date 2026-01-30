@@ -27,7 +27,6 @@ import { syncAllProjectKpis, shouldSyncKpis } from '../services/kpiSyncService';
 import { autoCalculateContentForProject, shouldCalculateContent } from '../services/contentCalculationService';
 import { projectLegalDocumentsService, ProjectLegalDocument } from '../services/projectLegalDocumentsService';
 import { generatedDocumentService, GeneratedDocument } from '../services/generatedDocumentService';
-import ProjectDatesModal from './ProjectDatesModal';
 
 interface ProjectDetailsProps {
   project: Project;
@@ -808,169 +807,148 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
         </div>
 
         <div className="mt-6 pt-6 border-t border-slate-100">
-          <div className="flex items-center gap-2 mb-6">
-            <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
-              <span className="text-lg">$</span>
-            </div>
-            <h3 className="text-lg font-bold text-slate-800">Финансы и Сроки</h3>
-          </div>
+          <h3 className="text-sm font-bold text-slate-700 mb-4">Основные параметры</h3>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Финансовая секция */}
             <div className="space-y-4">
               <div>
-                <p className="text-xs text-slate-400 uppercase font-semibold mb-2">Стоимость проекта</p>
-                <p className="text-3xl font-bold text-slate-800">{project.budget.toLocaleString()} ₸</p>
+                <p className="text-xs text-slate-400 uppercase font-semibold mb-1">Стоимость проекта</p>
+                <p className="text-2xl font-bold text-slate-800">{project.budget.toLocaleString()} ₸</p>
               </div>
 
               <div>
-                <p className="text-xs text-slate-400 uppercase font-semibold mb-2">Медиа бюджет</p>
-                <p className="text-3xl font-bold text-slate-800">{(project.mediaBudget || 0).toLocaleString()} ₸</p>
+                <p className="text-xs text-slate-400 uppercase font-semibold mb-1">Медиа бюджет</p>
+                <p className="text-2xl font-bold text-slate-800">{(project.mediaBudget || 0).toLocaleString()} ₸</p>
               </div>
 
-              {/* Прогресс-бар медиа бюджета */}
               <div className="pt-2">
-                <p className="text-sm text-slate-600 mb-2">Медиа бюджет (расход):</p>
-                <div className="relative w-full h-6 bg-slate-200 rounded-full overflow-hidden">
+                <p className="text-xs text-slate-500 mb-2">Медиа бюджет (расход):</p>
+                <div className="relative w-full h-4 bg-slate-200 rounded-full overflow-hidden">
                   <div
                     className="absolute top-0 left-0 h-full bg-gradient-to-r from-green-500 to-emerald-500 transition-all duration-300"
                     style={{ width: '0%' }}
                   ></div>
                 </div>
-                <div className="flex justify-between mt-1 text-xs">
-                  <span className="text-emerald-600 font-semibold">Маржа: 100%</span>
-                  <span className="text-slate-500">Расход: 0%</span>
+                <div className="flex justify-end mt-1 text-xs text-slate-500">
+                  Расход: 0%
                 </div>
               </div>
-
-              <button
-                onClick={handleRenewProject}
-                className="w-full px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 mt-4"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span>Продлить работу (+30 дней)</span>
-              </button>
             </div>
 
             {/* Секция сроков проекта */}
-            <div className="bg-slate-50 rounded-xl p-5 border border-slate-200">
-              <div className="flex items-center justify-between mb-4">
-                <h4 className="text-base font-bold text-slate-800">Сроки проекта</h4>
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-xs text-slate-400 uppercase font-semibold">Сроки проекта</h4>
                 <button
-                  onClick={() => setIsEditingDates(!isEditingDates)}
-                  className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  onClick={() => {
+                    setIsEditingDates(!isEditingDates);
+                    if (!isEditingDates) {
+                      setTempStartDate(project.startDate);
+                      setTempDuration(project.duration || 30);
+                    }
+                  }}
+                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
                 >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                   </svg>
                   Редактировать
                 </button>
               </div>
 
-              <div className="space-y-4">
-                {/* Начало */}
-                <div>
-                  <label className="block text-xs text-slate-500 uppercase font-semibold mb-1.5">Начало</label>
-                  {isEditingDates ? (
-                    <input
-                      type="date"
-                      value={tempStartDate || ''}
-                      onChange={(e) => setTempStartDate(e.target.value)}
-                      className="w-full px-3 py-2.5 border-2 border-slate-300 rounded-lg text-base font-semibold bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                    />
-                  ) : (
-                    <div className="px-3 py-2.5 bg-white border-2 border-slate-200 rounded-lg">
-                      <p className="text-base font-bold text-slate-800">
-                        {project.startDate ? new Date(project.startDate).toLocaleDateString('ru-RU') : '-'}
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-500 uppercase font-semibold mb-1.5">Начало</label>
+                    {isEditingDates ? (
+                      <input
+                        type="date"
+                        value={tempStartDate || ''}
+                        onChange={(e) => setTempStartDate(e.target.value)}
+                        className="w-full px-3 py-2 border-2 border-slate-300 rounded-lg text-sm font-medium bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                      />
+                    ) : (
+                      <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+                        <p className="text-sm font-bold text-slate-800">
+                          {project.startDate ? new Date(project.startDate).toLocaleDateString('ru-RU') : '-'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-500 uppercase font-semibold mb-1.5">Завершение</label>
+                    <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+                      <p className={`text-sm font-bold ${new Date(project.endDate) < new Date() ? 'text-red-600' : 'text-slate-800'}`}>
+                        {project.endDate ? new Date(project.endDate).toLocaleDateString('ru-RU') : '-'}
                       </p>
                     </div>
-                  )}
-                </div>
-
-                {/* Срок в днях */}
-                <div>
-                  <label className="block text-xs text-slate-500 uppercase font-semibold mb-1.5">Срок (дней)</label>
-                  {isEditingDates ? (
-                    <input
-                      type="number"
-                      value={tempDuration || ''}
-                      onChange={(e) => setTempDuration(Number(e.target.value))}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full px-3 py-2.5 border-2 border-slate-300 rounded-lg text-base font-semibold bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                    />
-                  ) : (
-                    <div className="px-3 py-2.5 bg-white border-2 border-slate-200 rounded-lg">
-                      <p className="text-base font-bold text-slate-800">{project.duration || 30}</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Окончание */}
-                <div>
-                  <label className="block text-xs text-slate-500 uppercase font-semibold mb-1.5">Окончание</label>
-                  <div className="px-3 py-2.5 bg-white border-2 border-slate-200 rounded-lg">
-                    <p className={`text-base font-bold ${new Date(project.endDate) < new Date() ? 'text-red-600' : 'text-slate-800'}`}>
-                      {project.endDate ? new Date(project.endDate).toLocaleDateString('ru-RU') : '-'}
-                    </p>
                   </div>
                 </div>
 
-                {/* Быстрые кнопки выбора срока */}
                 {isEditingDates && (
                   <>
-                    <div className="flex gap-2 pt-2">
+                    <div>
+                      <label className="block text-xs text-slate-500 uppercase font-semibold mb-1.5">Срок (дней)</label>
+                      <input
+                        type="number"
+                        value={tempDuration || ''}
+                        onChange={(e) => setTempDuration(Number(e.target.value))}
+                        onFocus={(e) => e.target.select()}
+                        className="w-full px-3 py-2 border-2 border-slate-300 rounded-lg text-sm font-medium bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
                       <button
                         onClick={() => setTempDuration(7)}
-                        className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                        className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
                           tempDuration === 7
                             ? 'bg-slate-800 text-white'
-                            : 'bg-white border-2 border-slate-300 text-slate-700 hover:border-slate-400'
+                            : 'bg-white border border-slate-300 text-slate-700 hover:border-slate-400'
                         }`}
                       >
                         7 дней
                       </button>
                       <button
                         onClick={() => setTempDuration(14)}
-                        className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                        className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
                           tempDuration === 14
                             ? 'bg-slate-800 text-white'
-                            : 'bg-white border-2 border-slate-300 text-slate-700 hover:border-slate-400'
+                            : 'bg-white border border-slate-300 text-slate-700 hover:border-slate-400'
                         }`}
                       >
                         14 дней
                       </button>
                       <button
                         onClick={() => setTempDuration(30)}
-                        className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                        className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
                           tempDuration === 30
                             ? 'bg-blue-600 text-white'
-                            : 'bg-white border-2 border-slate-300 text-slate-700 hover:border-slate-400'
+                            : 'bg-white border border-slate-300 text-slate-700 hover:border-slate-400'
                         }`}
                       >
                         30 дней
                       </button>
                     </div>
 
-                    {/* Кнопка сохранения */}
                     <button
                       onClick={() => {
                         handleSaveDates(tempStartDate, tempDuration);
                       }}
-                      className="w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors"
+                      className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
                     >
                       Сохранить изменения
                     </button>
                   </>
                 )}
 
-                {/* Кнопка продления текущего */}
                 <button
                   onClick={handleRenewProject}
-                  className="w-full px-4 py-3 bg-white hover:bg-teal-50 text-teal-600 border-2 border-teal-500 rounded-xl font-semibold transition-all flex items-center justify-center gap-2"
+                  className="w-full px-4 py-2.5 bg-white hover:bg-teal-50 text-teal-600 border-2 border-teal-500 rounded-lg font-medium transition-all flex items-center justify-center gap-2 text-sm"
                 >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
                   <span>Продлить текущий (+30 дней)</span>
@@ -2957,15 +2935,6 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
         projectName={project.name}
         onClose={() => setIsRoadmapSetupModalOpen(false)}
         onComplete={handleRoadmapSetupComplete}
-      />
-
-      <ProjectDatesModal
-        isOpen={isEditingDates}
-        onClose={() => setIsEditingDates(false)}
-        startDate={project.startDate || ''}
-        duration={project.duration || 30}
-        onSave={handleSaveDates}
-        onRenew={handleRenewProject}
       />
 
       <ContentModal
