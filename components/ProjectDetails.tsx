@@ -1264,6 +1264,21 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-3">
                 <h3 className="text-sm font-bold text-slate-800">Настройка отслеживания контента</h3>
+                <button
+                  onClick={() => {
+                    onUpdateProject({
+                      ...project,
+                      contentAutoCalculate: !project.contentAutoCalculate
+                    });
+                  }}
+                  className={`text-xs font-medium px-2 py-1 rounded-lg transition-colors ${
+                    project.contentAutoCalculate === false
+                      ? 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                      : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                  }`}
+                >
+                  {project.contentAutoCalculate === false ? 'Ручной режим' : 'Авто режим'}
+                </button>
                 {client?.calculatorData?.items && (
                   <button
                     onClick={async () => {
@@ -1345,7 +1360,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                                 value={value.fact || ''}
                                 onChange={(e) => {
                                   const updated = { ...project.contentMetrics, [key]: { ...value, fact: Number(e.target.value) } };
-                                  onUpdateProject({ ...project, contentMetrics: updated });
+                                  onUpdateProject({ ...project, contentMetrics: updated, contentAutoCalculate: false });
                                 }}
                                 onFocus={(e) => e.target.select()}
                                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
@@ -1358,7 +1373,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                                 value={value.plan || ''}
                                 onChange={(e) => {
                                   const updated = { ...project.contentMetrics, [key]: { ...value, plan: Number(e.target.value) } };
-                                  onUpdateProject({ ...project, contentMetrics: updated });
+                                  onUpdateProject({ ...project, contentMetrics: updated, contentAutoCalculate: false });
                                 }}
                                 onFocus={(e) => e.target.select()}
                                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
