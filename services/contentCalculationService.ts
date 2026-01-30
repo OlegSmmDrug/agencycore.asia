@@ -1,6 +1,7 @@
 import { Task, TaskStatus, Project, TaskType } from '../types';
 import { projectService } from './projectService';
 import { serviceMappingService, ContentMetrics } from './serviceMappingService';
+import { getLivedunePosts, getLiveduneStories, getLiveduneReels } from './liveduneService';
 
 interface ContentFacts {
   postsFact: number;
@@ -24,6 +25,50 @@ const getTaskTypeForMetric = (metricKey: string): TaskType | null => {
   return null;
 };
 
+interface LiveduneContentCounts {
+  posts: number;
+  reels: number;
+  stories: number;
+}
+
+const getLiveduneContentCounts = async (
+  project: Project,
+  dateRange?: { start: Date; end: Date }
+): Promise<LiveduneContentCounts> => {
+  if (!project.liveduneAccessToken || !project.liveduneAccountId) {
+    return { posts: 0, reels: 0, stories: 0 };
+  }
+
+  try {
+    const config = {
+      accessToken: project.liveduneAccessToken,
+      accountId: project.liveduneAccountId
+    };
+
+    let dateRangeStr = '30d';
+    if (dateRange) {
+      const fromStr = dateRange.start.toISOString().split('T')[0];
+      const toStr = dateRange.end.toISOString().split('T')[0];
+      dateRangeStr = `${fromStr}|${toStr}`;
+    }
+
+    const [posts, reels, stories] = await Promise.all([
+      getLivedunePosts(config, dateRangeStr),
+      getLiveduneReels(config, dateRangeStr),
+      getLiveduneStories(config, dateRangeStr)
+    ]);
+
+    return {
+      posts: posts.length,
+      reels: reels.length,
+      stories: stories.length
+    };
+  } catch (error) {
+    console.error('Error fetching Livedune content counts:', error);
+    return { posts: 0, reels: 0, stories: 0 };
+  }
+};
+
 export const calculateDynamicContentFacts = async (
   project: Project,
   tasks: Task[],
@@ -45,6 +90,8 @@ export const calculateDynamicContentFacts = async (
       });
     }
 
+    const liveduneCounts = await getLiveduneContentCounts(project, dateRange);
+
     const result: ContentMetrics = {};
 
     for (const [key, metric] of Object.entries(currentMetrics)) {
@@ -54,10 +101,22 @@ export const calculateDynamicContentFacts = async (
         continue;
       }
 
-      const count = projectTasks.filter(t => t.type === taskType).length;
+      const taskCount = projectTasks.filter(t => t.type === taskType).length;
+
+      let liveduneCount = 0;
+      if (taskType === 'Post') {
+        liveduneCount = liveduneCounts.posts;
+      } else if (taskType === 'Reels') {
+        liveduneCount = liveduneCounts.reels;
+      } else if (taskType === 'Stories') {
+        liveduneCount = liveduneCounts.stories;
+      }
+
+      const totalCount = Math.max(taskCount, liveduneCount);
+
       result[key] = {
         plan: metric.plan,
-        fact: count
+        fact: totalCount
       };
     }
 
