@@ -87,8 +87,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsPageProps> = ({ user, 
             const { error: updateError } = await supabase
                 .from('users')
                 .update({
-                    avatar: publicUrl,
-                    updated_at: new Date().toISOString()
+                    avatar: publicUrl
                 })
                 .eq('id', user.id);
 
@@ -123,8 +122,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsPageProps> = ({ user, 
                     job_title: formData.jobTitle,
                     iin: formData.iin,
                     email: formData.email,
-                    avatar: formData.avatar,
-                    updated_at: new Date().toISOString()
+                    avatar: formData.avatar
                 })
                 .eq('id', user.id);
 
@@ -174,8 +172,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsPageProps> = ({ user, 
             const { error } = await supabase
                 .from('users')
                 .update({
-                    password: passwordData.newPassword,
-                    updated_at: new Date().toISOString()
+                    password: passwordData.newPassword
                 })
                 .eq('id', user.id)
                 .eq('password', passwordData.currentPassword);
