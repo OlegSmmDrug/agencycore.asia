@@ -217,7 +217,12 @@ export const autoCalculateContentForProject = async (
   }
 
   const startDate = new Date(project.startDate);
-  const endDate = new Date(project.endDate);
+  const projectEndDate = new Date(project.endDate);
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+
+  // Use the earlier date between project end date and today
+  const endDate = projectEndDate > today ? today : projectEndDate;
 
   const dynamicFacts = await calculateDynamicContentFacts(project, tasks, { start: startDate, end: endDate });
 
