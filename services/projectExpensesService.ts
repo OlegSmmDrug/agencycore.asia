@@ -350,7 +350,7 @@ export const projectExpensesService = {
   ): Promise<ProjectExpense> {
     const { data: project, error: projectError } = await supabase
       .from('projects')
-      .select('content_metrics, calculator_data, team_ids')
+      .select('calculator_data, team_ids')
       .eq('id', projectId)
       .single();
 
@@ -359,29 +359,72 @@ export const projectExpensesService = {
     const dynamicExpenses: DynamicExpenses = {};
     const now = new Date().toISOString();
 
-    if (project.content_metrics && Object.keys(project.content_metrics).length > 0) {
-      const mappings = await serviceMappingService.getAll();
-      const services = await calculatorService.getAll();
+    const { data: completedTasks, error: tasksError } = await supabase
+      .from('tasks')
+      .select('id, assignee_id, type, completed_at')
+      .eq('project_id', projectId)
+      .eq('status', 'Done');
 
-      const metrics = project.content_metrics as any;
+    if (tasksError) {
+      console.error('Error fetching completed tasks:', tasksError);
+    }
 
-      for (const metricLabel in metrics) {
-        const metric = metrics[metricLabel];
-        const mapping = mappings.find(m => m.metricLabel === metricLabel);
+    const tasksByExecutor: Record<string, Record<string, number>> = {};
 
-        if (mapping && mapping.serviceId) {
-          const service = services.find(s => s.id === mapping.serviceId);
+    if (completedTasks && completedTasks.length > 0) {
+      for (const task of completedTasks) {
+        if (!task.assignee_id || !task.type) continue;
 
-          if (service && metric.fact > 0) {
-            dynamicExpenses[service.id] = {
-              serviceName: service.name,
-              count: metric.fact,
-              rate: service.price,
-              cost: metric.fact * service.price,
-              category: service.category,
-              syncedAt: now
-            };
-          }
+        if (!tasksByExecutor[task.assignee_id]) {
+          tasksByExecutor[task.assignee_id] = {};
+        }
+
+        const taskType = task.type;
+        tasksByExecutor[task.assignee_id][taskType] =
+          (tasksByExecutor[task.assignee_id][taskType] || 0) + 1;
+      }
+    }
+
+    const salarySchemes = await salarySchemeService.getAll();
+    const { data: users, error: usersError } = await supabase
+      .from('users')
+      .select('id, name, job_title')
+      .in('id', Object.keys(tasksByExecutor));
+
+    if (usersError) {
+      console.error('Error fetching users:', usersError);
+    }
+
+    for (const executorId in tasksByExecutor) {
+      const user = users?.find(u => u.id === executorId);
+      if (!user) continue;
+
+      const userScheme = salarySchemes.find(
+        s => s.targetType === 'user' && s.targetId === executorId
+      );
+      const jobTitleScheme = salarySchemes.find(
+        s => s.targetType === 'jobTitle' && s.targetId === user.job_title
+      );
+
+      const scheme = userScheme || jobTitleScheme;
+      if (!scheme || !scheme.kpiRules || scheme.kpiRules.length === 0) continue;
+
+      const taskTypeCounts = tasksByExecutor[executorId];
+
+      for (const taskType in taskTypeCounts) {
+        const count = taskTypeCounts[taskType];
+        const kpiRule = scheme.kpiRules.find(rule => rule.taskType === taskType);
+
+        if (kpiRule && kpiRule.value > 0) {
+          const serviceKey = `${executorId}_${taskType}`;
+          dynamicExpenses[serviceKey] = {
+            serviceName: `${user.name} - ${taskType}`,
+            count,
+            rate: kpiRule.value,
+            cost: count * kpiRule.value,
+            category: 'KPI',
+            syncedAt: now
+          };
         }
       }
     }
@@ -396,13 +439,6 @@ export const projectExpensesService = {
       }
     }
 
-    const salaryCalculations = await this.calculateTeamSalaries(project.team_ids || [], projectId);
-
-    let totalSalaryExpenses = 0;
-    for (const userId in salaryCalculations) {
-      totalSalaryExpenses += salaryCalculations[userId].shareForThisProject;
-    }
-
     const existing = await this.getExpenseByProjectAndMonth(projectId, month);
 
     let totalDynamicCost = 0;
@@ -410,7 +446,7 @@ export const projectExpensesService = {
       totalDynamicCost += dynamicExpenses[serviceId].cost;
     }
 
-    const totalExpenses = totalDynamicCost + modelsExpenses + totalSalaryExpenses + (existing?.otherExpenses || 0);
+    const totalExpenses = totalDynamicCost + modelsExpenses + (existing?.otherExpenses || 0);
     const marginPercent = calculateMargin(existing?.revenue || 0, totalExpenses);
 
     const expenseData: Partial<ProjectExpense> & { projectId: string; month: string } = {
@@ -419,7 +455,7 @@ export const projectExpensesService = {
       dynamicExpenses,
       lastSyncedAt: now,
       syncSource: existing?.syncSource === 'manual' ? 'mixed' : 'auto',
-      salaryCalculations,
+      salaryCalculations: existing?.salaryCalculations || {},
       modelsExpenses,
       totalExpenses,
       marginPercent,
