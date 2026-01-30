@@ -163,8 +163,9 @@ export const getLivedunePosts = async (config: LiveduneApiConfig, dateRange: str
 
     const data = await response.json();
 
-    if (data.error || !data.response) {
-      return generateMockPosts(config.accountId);
+    if (!data.response || !Array.isArray(data.response)) {
+      console.log(`[Livedune API] accountId=${config.accountId} posts endpoint returned no data, using empty array`);
+      return [];
     }
 
     console.log(`[Livedune API] accountId=${config.accountId} received ${data.response?.length || 0} items from /posts endpoint`);
@@ -425,8 +426,9 @@ export const getLiveduneStories = async (config: LiveduneApiConfig, dateRange: s
 
     const data = await response.json();
 
-    if (data.error || !data.response) {
-      return generateMockStories(config.accountId);
+    if (!data.response || !Array.isArray(data.response)) {
+      console.log(`[Livedune API] accountId=${config.accountId} stories endpoint returned no data, using empty array`);
+      return [];
     }
 
     console.log(`[Livedune API] accountId=${config.accountId} received ${data.response?.length || 0} stories`);
@@ -468,7 +470,7 @@ export const getLiveduneReels = async (config: LiveduneApiConfig, dateRange: str
     if (reelsResponse.ok) {
       const reelsData = await reelsResponse.json();
 
-      if (!reelsData.error && reelsData.response && reelsData.response.length > 0) {
+      if (reelsData.response && Array.isArray(reelsData.response) && reelsData.response.length > 0) {
         console.log(`[Livedune API] accountId=${config.accountId} received ${reelsData.response.length} reels from /reels endpoint`);
         return reelsData.response.map((reel: any) => {
           return {
@@ -501,8 +503,9 @@ export const getLiveduneReels = async (config: LiveduneApiConfig, dateRange: str
 
     const postsData = await postsResponse.json();
 
-    if (postsData.error || !postsData.response) {
-      return generateMockReels(config.accountId);
+    if (!postsData.response || !Array.isArray(postsData.response)) {
+      console.log(`[Livedune API] accountId=${config.accountId} posts endpoint returned no data for reels, using empty array`);
+      return [];
     }
 
     const reelsFromPosts = (postsData.response || [])
