@@ -297,6 +297,7 @@ export const projectService = {
     }
 
     const previousEndDate = project.endDate;
+    const newStartDate = project.endDate;
     const currentEnd = new Date(project.endDate);
     currentEnd.setDate(currentEnd.getDate() + (project.duration || 30));
     const newEndDate = currentEnd.toISOString().split('T')[0];
@@ -320,6 +321,7 @@ export const projectService = {
     }
 
     return this.update(id, {
+      startDate: newStartDate,
       endDate: newEndDate,
       totalLTV: newLTV,
       status: ProjectStatus.IN_WORK

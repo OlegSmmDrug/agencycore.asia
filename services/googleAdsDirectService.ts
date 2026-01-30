@@ -61,7 +61,8 @@ export async function getGoogleAdsAccounts(accessToken: string): Promise<GoogleA
 export async function getGoogleAdsAccountStats(
   accessToken: string,
   customerId: string,
-  dateRange: string = '30d'
+  dateRange?: string,
+  customDateRange?: { since: string; until: string }
 ): Promise<GoogleAdsAccountStats> {
   const campaigns: GoogleAdsCampaign[] = [
     {
@@ -110,9 +111,24 @@ export async function getGoogleAdsAccountStats(
   const totalImpressions = campaigns.reduce((sum, c) => sum + c.metrics.impressions, 0);
   const totalConversions = campaigns.reduce((sum, c) => sum + c.metrics.conversions, 0);
 
-  const dailyStats = Array.from({ length: 30 }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (29 - i));
+  let startDate: Date;
+  let endDate: Date;
+  let numDays: number;
+
+  if (customDateRange?.since && customDateRange?.until) {
+    startDate = new Date(customDateRange.since);
+    endDate = new Date(customDateRange.until);
+    numDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  } else {
+    numDays = 30;
+    endDate = new Date();
+    startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - (numDays - 1));
+  }
+
+  const dailyStats = Array.from({ length: numDays }, (_, i) => {
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + i);
     return {
       date: date.toISOString().split('T')[0],
       cost: Math.floor(Math.random() * 5000) + 2000,

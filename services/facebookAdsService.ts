@@ -41,22 +41,30 @@ export const getAdAccounts = async (accessToken: string): Promise<AdAccount[]> =
 
 export const getAdAccountStats = async (
   config: FacebookApiConfig,
-  dateRange: string = '30d'
+  dateRange?: string,
+  customDateRange?: { since: string; until: string }
 ): Promise<AdAccountStats | null> => {
   if (!config.accessToken || !config.adAccountId) {
     return null;
   }
 
-  const datePreset = getDatePreset(dateRange);
   const accountId = config.adAccountId.startsWith('act_')
     ? config.adAccountId
     : `act_${config.adAccountId}`;
+
+  let dateParams = '';
+  if (customDateRange?.since && customDateRange?.until) {
+    dateParams = `&time_range={'since':'${customDateRange.since}','until':'${customDateRange.until}'}`;
+  } else {
+    const datePreset = getDatePreset(dateRange || '30d');
+    dateParams = `&date_preset=${datePreset}`;
+  }
 
   try {
     const response = await fetch(
       `${FB_GRAPH_URL}/${accountId}/insights?` +
       `fields=spend,impressions,clicks,ctr,cpm,actions,cost_per_action_type,reach` +
-      `&date_preset=${datePreset}` +
+      dateParams +
       `&access_token=${config.accessToken}`
     );
 
@@ -78,7 +86,7 @@ export const getAdAccountStats = async (
     const cpl = leads > 0 ? spend / leads : 0;
     const costPerMessaging = messagingConversations > 0 ? spend / messagingConversations : 0;
 
-    const dailyStats = await getDailyStats(config, dateRange);
+    const dailyStats = await getDailyStats(config, dateRange, customDateRange);
 
     return {
       currency: 'USD',
@@ -285,27 +293,39 @@ export const getAds = async (config: FacebookApiConfig, adsetId?: string, dateRa
   }
 };
 
-const getDailyStats = async (config: FacebookApiConfig, dateRange: string) => {
+const getDailyStats = async (
+  config: FacebookApiConfig,
+  dateRange?: string,
+  customDateRange?: { since: string; until: string }
+) => {
   const accountId = config.adAccountId.startsWith('act_')
     ? config.adAccountId
     : `act_${config.adAccountId}`;
-  const datePreset = getDatePreset(dateRange);
+
+  let dateParams = '';
+  if (customDateRange?.since && customDateRange?.until) {
+    dateParams = `&time_range={'since':'${customDateRange.since}','until':'${customDateRange.until}'}`;
+  } else {
+    const datePreset = getDatePreset(dateRange || '30d');
+    dateParams = `&date_preset=${datePreset}`;
+  }
 
   try {
     const response = await fetch(
       `${FB_GRAPH_URL}/${accountId}/insights?` +
-      `fields=spend,actions&time_increment=1&date_preset=${datePreset}` +
+      `fields=spend,actions&time_increment=1` +
+      dateParams +
       `&access_token=${config.accessToken}`
     );
 
     if (!response.ok) {
-      return generateMockDailyStats(dateRange);
+      return generateMockDailyStats(dateRange || '30d', customDateRange);
     }
 
     const data = await response.json();
 
     if (data.error || !data.data?.length) {
-      return generateMockDailyStats(dateRange);
+      return generateMockDailyStats(dateRange || '30d', customDateRange);
     }
 
     return data.data.map((day: any) => {
@@ -323,7 +343,7 @@ const getDailyStats = async (config: FacebookApiConfig, dateRange: string) => {
       };
     });
   } catch (error) {
-    return generateMockDailyStats(dateRange);
+    return generateMockDailyStats(dateRange || '30d', customDateRange);
   }
 };
 
@@ -357,15 +377,27 @@ const formatDate = (dateStr: string): string => {
   return date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
 };
 
-const generateMockDailyStats = (dateRange: string) => {
-  const days = dateRange === '7d' ? 7 : dateRange === '14d' ? 14 : dateRange === '90d' ? 90 : dateRange === 'ytd' ? 150 : 30;
-  const data = [];
-  const now = new Date();
-  const step = days > 60 ? Math.ceil(days / 30) : 1;
+const generateMockDailyStats = (dateRange: string, customDateRange?: { since: string; until: string }) => {
+  let startDate: Date;
+  let endDate: Date;
 
-  for (let i = days; i >= 0; i -= step) {
-    const date = new Date(now);
-    date.setDate(date.getDate() - i);
+  if (customDateRange?.since && customDateRange?.until) {
+    startDate = new Date(customDateRange.since);
+    endDate = new Date(customDateRange.until);
+  } else {
+    const days = dateRange === '7d' ? 7 : dateRange === '14d' ? 14 : dateRange === '90d' ? 90 : dateRange === 'ytd' ? 150 : 30;
+    endDate = new Date();
+    startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - days);
+  }
+
+  const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+  const data = [];
+  const step = daysDiff > 60 ? Math.ceil(daysDiff / 30) : 1;
+
+  for (let i = 0; i <= daysDiff; i += step) {
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + i);
     const spend = 400 + Math.random() * 200;
     const leads = Math.floor(spend / (12 + Math.random() * 8));
     const messagingConversations = Math.floor(Math.random() * 15);

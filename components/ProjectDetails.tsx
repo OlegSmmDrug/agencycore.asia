@@ -306,12 +306,17 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
       setLoadingAdsData(true);
       try {
         const promises = [];
+        const dateRange = {
+          since: project.startDate,
+          until: project.endDate
+        };
 
         if (project.facebookAccessToken && project.adAccountId) {
           promises.push(
             getFbAdAccountStats(
               { accessToken: project.facebookAccessToken, adAccountId: project.adAccountId },
-              '30d'
+              undefined,
+              dateRange
             )
               .then(stats => stats?.totalSpend || 0)
               .catch(() => 0)
@@ -325,7 +330,8 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
             getGoogleAdsAccountStats(
               project.googleAdsAccessToken,
               project.googleAdsCustomerId,
-              '30d'
+              undefined,
+              dateRange
             )
               .then(stats => stats?.totalCost || 0)
               .catch(() => 0)
@@ -339,7 +345,8 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
             getTikTokAdsStats(
               project.tiktokAdsAccessToken,
               project.tiktokAdsAdvertiserId,
-              '30d'
+              undefined,
+              dateRange
             )
               .then(stats => stats?.totalSpend || 0)
               .catch(() => 0)
@@ -362,6 +369,8 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
     loadAdsSpend();
   }, [
     project.id,
+    project.startDate,
+    project.endDate,
     project.facebookAccessToken,
     project.adAccountId,
     project.googleAdsAccessToken,
