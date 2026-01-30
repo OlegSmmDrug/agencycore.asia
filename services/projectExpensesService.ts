@@ -351,7 +351,7 @@ export const projectExpensesService = {
   ): Promise<ProjectExpense> {
     const { data: project, error: projectError } = await supabase
       .from('projects')
-      .select('id, name, calculator_data, team_ids, livedune_access_token, livedune_account_id, start_date, end_date')
+      .select('id, name, calculator_data, team_ids, livedune_access_token, livedune_account_id, start_date, end_date, content_metrics')
       .eq('id', projectId)
       .single();
 
@@ -364,6 +364,7 @@ export const projectExpensesService = {
       liveduneAccountId: project.livedune_account_id,
       startDate: project.start_date,
       endDate: project.end_date,
+      contentMetrics: project.content_metrics || {},
     } as Project;
 
     const dynamicExpenses: DynamicExpenses = {};
@@ -462,14 +463,48 @@ export const projectExpensesService = {
     const effectiveEndDate = monthEnd > today ? today : monthEnd;
 
     let liveduneContent: LiveduneContentCounts = { posts: 0, reels: 0, stories: 0 };
-    try {
-      liveduneContent = await getLiveduneContentCounts(fullProject, {
-        start: monthStart,
-        end: effectiveEndDate
-      });
-      console.log(`[ProjectExpenses] LiveDune content for ${month}:`, liveduneContent);
-    } catch (error) {
-      console.error('[ProjectExpenses] Error fetching LiveDune content:', error);
+    const hasLivedune = Boolean(fullProject.liveduneAccessToken && fullProject.liveduneAccountId);
+
+    if (hasLivedune) {
+      try {
+        liveduneContent = await getLiveduneContentCounts(fullProject, {
+          start: monthStart,
+          end: effectiveEndDate
+        });
+        console.log(`[ProjectExpenses] LiveDune content for ${month}:`, liveduneContent);
+      } catch (error) {
+        console.error('[ProjectExpenses] Error fetching LiveDune content:', error);
+      }
+    }
+
+    const getManualContentFromMetrics = (): LiveduneContentCounts => {
+      const metrics = fullProject.contentMetrics || {};
+      let posts = 0;
+      let reels = 0;
+      let stories = 0;
+
+      for (const [key, value] of Object.entries(metrics)) {
+        const keyLower = key.toLowerCase();
+        const factValue = (value as any).fact || 0;
+
+        if ((keyLower.includes('post') || keyLower.includes('пост')) && !keyLower.includes('reel') && !keyLower.includes('stor')) {
+          posts += factValue;
+        } else if (keyLower.includes('reel') || keyLower.includes('рилс')) {
+          reels += factValue;
+        } else if (keyLower.includes('stor') || keyLower.includes('стори')) {
+          stories += factValue;
+        }
+      }
+
+      return { posts, reels, stories };
+    };
+
+    if (!hasLivedune || (liveduneContent.posts === 0 && liveduneContent.reels === 0 && liveduneContent.stories === 0)) {
+      const manualContent = getManualContentFromMetrics();
+      if (manualContent.posts > 0 || manualContent.reels > 0 || manualContent.stories > 0) {
+        liveduneContent = manualContent;
+        console.log(`[ProjectExpenses] Using manual content from metrics for ${month}:`, liveduneContent);
+      }
     }
 
     let totalDynamicCost = 0;
