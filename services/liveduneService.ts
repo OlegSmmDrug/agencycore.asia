@@ -166,6 +166,8 @@ export const getLivedunePosts = async (config: LiveduneApiConfig, dateRange: str
       return generateMockPosts(config.accountId);
     }
 
+    console.log(`Received ${data.response?.length || 0} items from /posts endpoint`);
+
     const allPosts = (data.response || []).map((post: any) => {
       return {
         id: config.accountId,
@@ -186,13 +188,25 @@ export const getLivedunePosts = async (config: LiveduneApiConfig, dateRange: str
       };
     });
 
+    const typeDistribution = allPosts.reduce((acc: any, post: any) => {
+      const type = post.type?.toLowerCase() || 'unknown';
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {});
+    console.log('Type distribution in /posts:', typeDistribution);
+
     const fromDate = new Date(dateFrom);
     const toDate = new Date(dateTo);
 
-    return allPosts.filter((post: any) => {
+    const filtered = allPosts.filter((post: any) => {
       const postDate = new Date(post.created);
-      return postDate >= fromDate && postDate <= toDate;
+      const isInDateRange = postDate >= fromDate && postDate <= toDate;
+      const isNotReels = !['reels', 'reel'].includes(post.type?.toLowerCase() || '');
+      return isInDateRange && isNotReels;
     }).slice(0, 50);
+
+    console.log(`Filtered to ${filtered.length} posts (excluding reels)`);
+    return filtered;
   } catch (error) {
     console.error('Error fetching Livedune posts:', error);
     return generateMockPosts(config.accountId);
@@ -443,36 +457,70 @@ export const getLiveduneReels = async (config: LiveduneApiConfig, dateRange: str
   const [dateFrom, dateTo] = dateParams.split('&').map(p => p.split('=')[1]);
 
   try {
-    const url = `${LIVEDUNE_PROXY_URL}?endpoint=/accounts/${config.accountId}/reels&access_token=${encodeURIComponent(config.accessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
-    const response = await fetch(url, { headers: getProxyHeaders() });
+    const reelsUrl = `${LIVEDUNE_PROXY_URL}?endpoint=/accounts/${config.accountId}/reels&access_token=${encodeURIComponent(config.accessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
+    const reelsResponse = await fetch(reelsUrl, { headers: getProxyHeaders() });
 
-    if (!response.ok) {
+    if (reelsResponse.ok) {
+      const reelsData = await reelsResponse.json();
+
+      if (!reelsData.error && reelsData.response && reelsData.response.length > 0) {
+        return reelsData.response.map((reel: any) => {
+          return {
+            id: config.accountId,
+            reel_id: reel.reel_id || reel.post_id || reel.id,
+            created: reel.created || reel.date,
+            url: reel.url || '#',
+            text: reel.text || '',
+            views: getNumber(reel.views || reel.plays),
+            likes: getNumber(reel.reactions?.likes || reel.likes),
+            comments: getNumber(reel.reactions?.comments || reel.comments),
+            shares: getNumber(reel.reactions?.shares || reel.shares),
+            saves: getNumber(reel.reactions?.saved || reel.saves),
+            reach: getNumber(reel.reach?.total || reel.reach),
+            plays: getNumber(reel.plays || reel.views),
+            engagement_rate: getNumber(reel.engagement_rate || reel.er)
+          };
+        });
+      }
+    }
+
+    console.log('Reels endpoint empty or failed, trying to get reels from posts endpoint');
+
+    const postsUrl = `${LIVEDUNE_PROXY_URL}?endpoint=/accounts/${config.accountId}/posts&access_token=${encodeURIComponent(config.accessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
+    const postsResponse = await fetch(postsUrl, { headers: getProxyHeaders() });
+
+    if (!postsResponse.ok) {
       return generateMockReels(config.accountId);
     }
 
-    const data = await response.json();
+    const postsData = await postsResponse.json();
 
-    if (data.error || !data.response) {
+    if (postsData.error || !postsData.response) {
       return generateMockReels(config.accountId);
     }
 
-    return (data.response || []).map((reel: any) => {
-      return {
-        id: config.accountId,
-        reel_id: reel.reel_id || reel.post_id || reel.id,
-        created: reel.created || reel.date,
-        url: reel.url || '#',
-        text: reel.text || '',
-        views: getNumber(reel.views || reel.plays),
-        likes: getNumber(reel.reactions?.likes || reel.likes),
-        comments: getNumber(reel.reactions?.comments || reel.comments),
-        shares: getNumber(reel.reactions?.shares || reel.shares),
-        saves: getNumber(reel.reactions?.saved || reel.saves),
-        reach: getNumber(reel.reach?.total || reel.reach),
-        plays: getNumber(reel.plays || reel.views),
-        engagement_rate: getNumber(reel.engagement_rate || reel.er)
-      };
-    });
+    const reelsFromPosts = (postsData.response || [])
+      .filter((post: any) => ['reels', 'reel'].includes(post.type?.toLowerCase() || ''))
+      .map((reel: any) => {
+        return {
+          id: config.accountId,
+          reel_id: reel.reel_id || reel.post_id || reel.id,
+          created: reel.created || reel.date,
+          url: reel.url || '#',
+          text: reel.text || '',
+          views: getNumber(reel.views || reel.plays),
+          likes: getNumber(reel.reactions?.likes || reel.likes),
+          comments: getNumber(reel.reactions?.comments || reel.comments),
+          shares: getNumber(reel.reactions?.shares || reel.shares),
+          saves: getNumber(reel.reactions?.saved || reel.saves),
+          reach: getNumber(reel.reach?.total || reel.reach),
+          plays: getNumber(reel.plays || reel.views),
+          engagement_rate: getNumber(reel.engagement_rate || reel.er)
+        };
+      });
+
+    console.log(`Found ${reelsFromPosts.length} reels from posts endpoint`);
+    return reelsFromPosts;
   } catch (error) {
     console.error('Error fetching Livedune reels:', error);
     return generateMockReels(config.accountId);
