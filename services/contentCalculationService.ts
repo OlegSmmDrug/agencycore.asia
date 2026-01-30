@@ -52,15 +52,35 @@ const getLiveduneContentCounts = async (
       dateRangeStr = `${fromStr}|${toStr}`;
     }
 
-    const [posts, reels, stories] = await Promise.all([
+    console.log('[Livedune Content] Fetching content for project:', project.name);
+    console.log('[Livedune Content] Date range:', dateRangeStr);
+
+    const [allPosts, stories] = await Promise.all([
       getLivedunePosts(config, dateRangeStr),
-      getLiveduneReels(config, dateRangeStr),
       getLiveduneStories(config, dateRangeStr)
     ]);
 
+    console.log('[Livedune Content] Total posts/reels from API:', allPosts.length);
+    console.log('[Livedune Content] Stories from API:', stories.length);
+
+    let posts = 0;
+    let reels = 0;
+
+    allPosts.forEach(post => {
+      console.log('[Livedune Content] Post type:', post.type, 'ID:', post.post_id);
+      const typeStr = String(post.type || '').toLowerCase();
+      if (typeStr === 'reel' || typeStr === 'reels') {
+        reels++;
+      } else {
+        posts++;
+      }
+    });
+
+    console.log('[Livedune Content] Final count - Posts:', posts, 'Reels:', reels, 'Stories:', stories.length);
+
     return {
-      posts: posts.length,
-      reels: reels.length,
+      posts,
+      reels,
       stories: stories.length
     };
   } catch (error) {
