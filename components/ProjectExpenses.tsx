@@ -19,9 +19,25 @@ interface ProjectExpensesProps {
   currentUser: User;
   project: Project;
   onUpdateProject: (project: Project) => void;
+  adsSpend?: number;
+  loadingAdsSpend?: boolean;
+  facebookSpend?: number;
+  googleSpend?: number;
+  tiktokSpend?: number;
 }
 
-const ProjectExpenses: React.FC<ProjectExpensesProps> = ({ projectId, projectBudget, currentUser, project, onUpdateProject }) => {
+const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
+  projectId,
+  projectBudget,
+  currentUser,
+  project,
+  onUpdateProject,
+  adsSpend = 0,
+  loadingAdsSpend = false,
+  facebookSpend = 0,
+  googleSpend = 0,
+  tiktokSpend = 0
+}) => {
   const [expenses, setExpenses] = useState<ProjectExpense[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
   const [currentExpense, setCurrentExpense] = useState<Partial<ProjectExpense> | null>(null);
@@ -372,8 +388,10 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({ projectId, projectBud
     return true;
   });
 
-  const expensePercent = projectBudget > 0 ? (totalExpenses / projectBudget) * 100 : 0;
-  const profitMarginPercent = revenue > 0 ? ((netProfit / revenue) * 100).toFixed(1) : '0.0';
+  const mediaBudget = project.mediaBudget || 0;
+  const expensePercent = mediaBudget > 0 ? (adsSpend / mediaBudget) * 100 : 0;
+  const netProfitWithAds = revenue - adsSpend;
+  const profitMarginPercent = revenue > 0 ? ((netProfitWithAds / revenue) * 100).toFixed(1) : '0.0';
 
   return (
     <div className="space-y-6">
@@ -413,25 +431,64 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({ projectId, projectBud
                 <div className="w-2 h-2 bg-red-400 rounded-full"></div>
                 <span className="text-xs font-semibold text-blue-100 uppercase tracking-wide">Расходы</span>
               </div>
-              <p className="text-2xl font-bold text-white">{totalExpenses.toLocaleString()} ₸</p>
+              <p className="text-2xl font-bold text-white">
+                {loadingAdsSpend ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Загрузка...
+                  </span>
+                ) : (
+                  `${adsSpend.toLocaleString()} ₸`
+                )}
+              </p>
+              {!loadingAdsSpend && adsSpend > 0 && (
+                <div className="mt-3 space-y-1 text-xs text-blue-200">
+                  {facebookSpend > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span>Facebook Ads</span>
+                      <span className="font-semibold">${facebookSpend.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {googleSpend > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span>Google Ads</span>
+                      <span className="font-semibold">${googleSpend.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {tiktokSpend > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span>TikTok Ads</span>
+                      <span className="font-semibold">${tiktokSpend.toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
               <div className="flex items-center gap-2 mb-2">
-                <div className={`w-2 h-2 rounded-full ${netProfit >= 0 ? 'bg-emerald-400' : 'bg-rose-400'}`}></div>
+                <div className={`w-2 h-2 rounded-full ${netProfitWithAds >= 0 ? 'bg-emerald-400' : 'bg-rose-400'}`}></div>
                 <span className="text-xs font-semibold text-blue-100 uppercase tracking-wide">Прибыль</span>
               </div>
-              <p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-white' : 'text-rose-300'}`}>
-                {netProfit.toLocaleString()} ₸
+              <p className={`text-2xl font-bold ${netProfitWithAds >= 0 ? 'text-white' : 'text-rose-300'}`}>
+                {netProfitWithAds.toLocaleString()} ₸
               </p>
             </div>
           </div>
 
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-semibold text-blue-100">Использование бюджета</span>
+              <span className="text-sm font-semibold text-blue-100">Использование медиа бюджета</span>
               <span className="text-sm font-bold text-white">{expensePercent.toFixed(1)}%</span>
             </div>
+            {mediaBudget > 0 && (
+              <div className="text-xs text-blue-200 mb-2">
+                {adsSpend.toLocaleString()} ₸ из {mediaBudget.toLocaleString()} ₸
+              </div>
+            )}
             <div className="h-4 bg-blue-900/50 rounded-full overflow-hidden border border-blue-700/50">
               <div
                 className={`h-full rounded-full transition-all duration-500 ${

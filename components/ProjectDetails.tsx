@@ -14,9 +14,9 @@ import QuickLinks from './quicklinks';
 import ProjectExpenses from './ProjectExpenses';
 import KpiSuggestionModal from './KpiSuggestionModal';
 import { projectService, extractContentPlanFromCalculator, extractWorkScopeFromCalculator } from '../services/projectService';
-import { validateAccessToken } from '../services/facebookAdsService';
-import { validateGoogleAdsToken } from '../services/googleAdsDirectService';
-import { validateTikTokToken } from '../services/tiktokAdsService';
+import { validateAccessToken, getAdAccountStats as getFbAdAccountStats } from '../services/facebookAdsService';
+import { validateGoogleAdsToken, getGoogleAdsAccountStats } from '../services/googleAdsDirectService';
+import { validateTikTokToken, getTikTokAdsStats } from '../services/tiktokAdsService';
 import { validateLiveduneToken } from '../services/liveduneService';
 import { supabase } from '../lib/supabase';
 import { projectExpensesService } from '../services/projectExpensesService';
@@ -146,6 +146,10 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
   const [newDocDescription, setNewDocDescription] = useState('');
   const [currentMonthExpense, setCurrentMonthExpense] = useState<any | null>(null);
   const [loadingExpenses, setLoadingExpenses] = useState(false);
+  const [facebookSpend, setFacebookSpend] = useState<number>(0);
+  const [googleSpend, setGoogleSpend] = useState<number>(0);
+  const [tiktokSpend, setTiktokSpend] = useState<number>(0);
+  const [loadingAdsData, setLoadingAdsData] = useState(false);
   const [showNewDocForm, setShowNewDocForm] = useState(false);
   const [isEditingClientLegal, setIsEditingClientLegal] = useState(false);
   const [tempClientLegal, setTempClientLegal] = useState({
@@ -295,6 +299,75 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
 
     loadCurrentMonthExpense();
   }, [project.id]);
+
+  useEffect(() => {
+    const loadAdsSpend = async () => {
+      setLoadingAdsData(true);
+      try {
+        const promises = [];
+
+        if (project.facebookAccessToken && project.adAccountId) {
+          promises.push(
+            getFbAdAccountStats(
+              { accessToken: project.facebookAccessToken, adAccountId: project.adAccountId },
+              '30d'
+            )
+              .then(stats => stats?.totalSpend || 0)
+              .catch(() => 0)
+          );
+        } else {
+          promises.push(Promise.resolve(0));
+        }
+
+        if (project.googleAdsAccessToken && project.googleAdsCustomerId) {
+          promises.push(
+            getGoogleAdsAccountStats(
+              project.googleAdsAccessToken,
+              project.googleAdsCustomerId,
+              '30d'
+            )
+              .then(stats => stats?.totalCost || 0)
+              .catch(() => 0)
+          );
+        } else {
+          promises.push(Promise.resolve(0));
+        }
+
+        if (project.tiktokAdsAccessToken && project.tiktokAdsAdvertiserId) {
+          promises.push(
+            getTikTokAdsStats(
+              project.tiktokAdsAccessToken,
+              project.tiktokAdsAdvertiserId,
+              '30d'
+            )
+              .then(stats => stats?.totalSpend || 0)
+              .catch(() => 0)
+          );
+        } else {
+          promises.push(Promise.resolve(0));
+        }
+
+        const [fbSpend, googleSpend, ttSpend] = await Promise.all(promises);
+        setFacebookSpend(fbSpend);
+        setGoogleSpend(googleSpend);
+        setTiktokSpend(ttSpend);
+      } catch (error) {
+        console.error('Error loading ads spend:', error);
+      } finally {
+        setLoadingAdsData(false);
+      }
+    };
+
+    loadAdsSpend();
+  }, [
+    project.id,
+    project.facebookAccessToken,
+    project.adAccountId,
+    project.googleAdsAccessToken,
+    project.googleAdsCustomerId,
+    project.tiktokAdsAccessToken,
+    project.tiktokAdsAdvertiserId
+  ]);
 
   useEffect(() => {
     const syncFromCalculator = async () => {
@@ -2717,6 +2790,8 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
   };
 
   const renderExpenses = () => {
+    const totalAdsSpend = facebookSpend + googleSpend + tiktokSpend;
+
     return (
       <ProjectExpenses
         projectId={project.id}
@@ -2724,6 +2799,11 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
         currentUser={currentUser}
         project={project}
         onUpdateProject={onUpdateProject}
+        adsSpend={totalAdsSpend}
+        loadingAdsSpend={loadingAdsData}
+        facebookSpend={facebookSpend}
+        googleSpend={googleSpend}
+        tiktokSpend={tiktokSpend}
       />
     );
   };
