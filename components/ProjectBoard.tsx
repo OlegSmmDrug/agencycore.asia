@@ -44,7 +44,7 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
   const [selectedClientId, setSelectedClientId] = useState<string>('all');
   const [selectedService, setSelectedService] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<ProjectStatus | 'all'>('all');
-  const [viewScope, setViewScope] = useState<'all' | 'my' | 'archive'>('all');
+  const [viewScope, setViewScope] = useState<'all' | 'my' | 'archive'>('my');
   const [projectStageStatuses, setProjectStageStatuses] = useState<Record<string, Level1StageStatus[]>>({});
   const [level1Stages, setLevel1Stages] = useState<RoadmapStageLevel1[]>([]);
 
