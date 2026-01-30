@@ -29,6 +29,7 @@ export interface LiveduneContentCounts {
   posts: number;
   reels: number;
   stories: number;
+  hasError?: boolean;
 }
 
 export const getLiveduneContentCounts = async (
@@ -37,7 +38,7 @@ export const getLiveduneContentCounts = async (
 ): Promise<LiveduneContentCounts> => {
   if (!project.liveduneAccessToken || !project.liveduneAccountId) {
     console.log(`[Content Calculation] ${project.name}: No Livedune credentials (token=${!!project.liveduneAccessToken}, accountId=${project.liveduneAccountId})`);
-    return { posts: 0, reels: 0, stories: 0 };
+    return { posts: 0, reels: 0, stories: 0, hasError: false };
   }
 
   try {
@@ -70,11 +71,12 @@ export const getLiveduneContentCounts = async (
     return {
       posts: posts.length,
       reels: reels.length,
-      stories: stories.length
+      stories: stories.length,
+      hasError: false
     };
   } catch (error) {
-    console.error('Error fetching Livedune content counts:', error);
-    return { posts: 0, reels: 0, stories: 0 };
+    console.error(`[Content Calculation] ${project.name}: LiveDune API error (token expired or Instagram error):`, error);
+    return { posts: 0, reels: 0, stories: 0, hasError: true };
   }
 };
 
@@ -103,6 +105,10 @@ export const calculateDynamicContentFacts = async (
 
     console.log(`[Content Calculation] Processing metrics for project ${project.name}:`, currentMetrics);
 
+    if (liveduneCounts.hasError) {
+      console.warn(`[Content Calculation] ${project.name}: LiveDune error detected. Preserving manual data.`);
+    }
+
     const result: ContentMetrics = {};
 
     for (const [key, metric] of Object.entries(currentMetrics)) {
@@ -124,13 +130,18 @@ export const calculateDynamicContentFacts = async (
         liveduneCount = liveduneCounts.stories;
       }
 
-      const totalCount = Math.max(taskCount, liveduneCount);
-
-      console.log(`[Content Calculation] ${key} (${taskType}): tasks=${taskCount}, livedune=${liveduneCount}, final fact=${totalCount}`);
+      let finalCount: number;
+      if (liveduneCounts.hasError) {
+        finalCount = Math.max(taskCount, metric.fact || 0);
+        console.log(`[Content Calculation] ${key} (${taskType}): LiveDune error, using tasks=${taskCount} or manual=${metric.fact}, final fact=${finalCount}`);
+      } else {
+        finalCount = Math.max(taskCount, liveduneCount);
+        console.log(`[Content Calculation] ${key} (${taskType}): tasks=${taskCount}, livedune=${liveduneCount}, final fact=${finalCount}`);
+      }
 
       result[key] = {
         plan: metric.plan,
-        fact: totalCount
+        fact: finalCount
       };
     }
 

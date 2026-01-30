@@ -462,18 +462,18 @@ export const projectExpensesService = {
     today.setHours(23, 59, 59, 999);
     const effectiveEndDate = monthEnd > today ? today : monthEnd;
 
-    let liveduneContent: LiveduneContentCounts = { posts: 0, reels: 0, stories: 0 };
+    let liveduneContent: LiveduneContentCounts = { posts: 0, reels: 0, stories: 0, hasError: false };
     const hasLivedune = Boolean(fullProject.liveduneAccessToken && fullProject.liveduneAccountId);
 
     if (hasLivedune) {
-      try {
-        liveduneContent = await getLiveduneContentCounts(fullProject, {
-          start: monthStart,
-          end: effectiveEndDate
-        });
-        console.log(`[ProjectExpenses] LiveDune content for ${month}:`, liveduneContent);
-      } catch (error) {
-        console.error('[ProjectExpenses] Error fetching LiveDune content:', error);
+      liveduneContent = await getLiveduneContentCounts(fullProject, {
+        start: monthStart,
+        end: effectiveEndDate
+      });
+      console.log(`[ProjectExpenses] LiveDune content for ${month}:`, liveduneContent);
+
+      if (liveduneContent.hasError) {
+        console.warn(`[ProjectExpenses] LiveDune API error detected for ${project.name}. Token may be expired or Instagram API issue. Falling back to manual data.`);
       }
     }
 
@@ -499,11 +499,13 @@ export const projectExpensesService = {
       return { posts, reels, stories };
     };
 
-    if (!hasLivedune || (liveduneContent.posts === 0 && liveduneContent.reels === 0 && liveduneContent.stories === 0)) {
+    if (!hasLivedune || liveduneContent.hasError || (liveduneContent.posts === 0 && liveduneContent.reels === 0 && liveduneContent.stories === 0)) {
       const manualContent = getManualContentFromMetrics();
       if (manualContent.posts > 0 || manualContent.reels > 0 || manualContent.stories > 0) {
         liveduneContent = manualContent;
         console.log(`[ProjectExpenses] Using manual content from metrics for ${month}:`, liveduneContent);
+      } else if (!hasLivedune) {
+        console.log(`[ProjectExpenses] No LiveDune and no manual data for ${month}`);
       }
     }
 
