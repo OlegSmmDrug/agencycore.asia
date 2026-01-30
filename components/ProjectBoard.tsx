@@ -828,16 +828,6 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setViewScope('all')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-              viewScope === 'all'
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-100'
-                : 'bg-white text-slate-600 border border-slate-200 hover:border-blue-300'
-            }`}
-          >
-            Все проекты
-          </button>
           {currentUserId && (
             <button
               onClick={() => setViewScope('my')}
@@ -850,6 +840,16 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
               Мои проекты
             </button>
           )}
+          <button
+            onClick={() => setViewScope('all')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              viewScope === 'all'
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-100'
+                : 'bg-white text-slate-600 border border-slate-200 hover:border-blue-300'
+            }`}
+          >
+            Все проекты
+          </button>
           {currentUser?.systemRole === SystemRole.ADMIN && (
             <button
               onClick={() => setViewScope('archive')}
