@@ -59,15 +59,31 @@ Deno.serve(async (req: Request) => {
     console.log('[Livedune Proxy] Request:', liveduneUrl.toString());
 
     const response = await fetch(liveduneUrl.toString());
-    const data = await response.json();
 
-    console.log('Livedune response status:', response.status);
-    console.log('Livedune response data:', data);
+    if (!response.ok) {
+      console.error(`[Livedune Proxy] API returned ${response.status}`, await response.text());
+      return new Response(
+        JSON.stringify({
+          error: `Livedune API error: ${response.status}`,
+          response: []
+        }),
+        {
+          status: 200,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    }
+
+    const data = await response.json();
+    console.log('[Livedune Proxy] Success:', response.status, 'items:', data.response?.length || 0);
 
     return new Response(
       JSON.stringify(data),
       {
-        status: response.status,
+        status: 200,
         headers: {
           ...corsHeaders,
           'Content-Type': 'application/json',
