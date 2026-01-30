@@ -25,13 +25,13 @@ const getTaskTypeForMetric = (metricKey: string): TaskType | null => {
   return null;
 };
 
-interface LiveduneContentCounts {
+export interface LiveduneContentCounts {
   posts: number;
   reels: number;
   stories: number;
 }
 
-const getLiveduneContentCounts = async (
+export const getLiveduneContentCounts = async (
   project: Project,
   dateRange?: { start: Date; end: Date }
 ): Promise<LiveduneContentCounts> => {

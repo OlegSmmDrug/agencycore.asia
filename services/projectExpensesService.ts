@@ -4,6 +4,7 @@ import { GLOBAL_RATES } from './projectAnalytics';
 import { serviceMappingService } from './serviceMappingService';
 import { calculatorService } from './calculatorService';
 import { salarySchemeService } from './salarySchemeService';
+import { getLiveduneContentCounts, LiveduneContentCounts } from './contentCalculationService';
 
 const mapRowToExpense = (row: any): ProjectExpense => ({
   id: row.id,
@@ -350,11 +351,20 @@ export const projectExpensesService = {
   ): Promise<ProjectExpense> {
     const { data: project, error: projectError } = await supabase
       .from('projects')
-      .select('calculator_data, team_ids')
+      .select('id, name, calculator_data, team_ids, livedune_access_token, livedune_account_id, start_date, end_date')
       .eq('id', projectId)
       .single();
 
     if (projectError) throw projectError;
+
+    const fullProject: Project = {
+      id: project.id,
+      name: project.name,
+      liveduneAccessToken: project.livedune_access_token,
+      liveduneAccountId: project.livedune_account_id,
+      startDate: project.start_date,
+      endDate: project.end_date,
+    } as Project;
 
     const dynamicExpenses: DynamicExpenses = {};
     const now = new Date().toISOString();
@@ -441,12 +451,46 @@ export const projectExpensesService = {
 
     const existing = await this.getExpenseByProjectAndMonth(projectId, month);
 
+    const monthStart = new Date(`${month}-01`);
+    const monthEnd = new Date(monthStart);
+    monthEnd.setMonth(monthEnd.getMonth() + 1);
+    monthEnd.setDate(0);
+    monthEnd.setHours(23, 59, 59, 999);
+
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    const effectiveEndDate = monthEnd > today ? today : monthEnd;
+
+    let liveduneContent: LiveduneContentCounts = { posts: 0, reels: 0, stories: 0 };
+    try {
+      liveduneContent = await getLiveduneContentCounts(fullProject, {
+        start: monthStart,
+        end: effectiveEndDate
+      });
+      console.log(`[ProjectExpenses] LiveDune content for ${month}:`, liveduneContent);
+    } catch (error) {
+      console.error('[ProjectExpenses] Error fetching LiveDune content:', error);
+    }
+
     let totalDynamicCost = 0;
     for (const serviceId in dynamicExpenses) {
       totalDynamicCost += dynamicExpenses[serviceId].cost;
     }
 
-    const totalExpenses = totalDynamicCost + modelsExpenses + (existing?.otherExpenses || 0);
+    const tempSmmData = {
+      smmPostsCount: liveduneContent.posts,
+      smmReelsCount: liveduneContent.reels,
+      smmStoriesCount: liveduneContent.stories,
+      smmSpecDesignCount: existing?.smmSpecDesignCount || 0,
+      smmMonitoring: existing?.smmMonitoring || false,
+      smmDubbingCount: existing?.smmDubbingCount || 0,
+      smmScenariosCount: existing?.smmScenariosCount || 0,
+      smmManualAdjustment: existing?.smmManualAdjustment || 0,
+    };
+
+    const calculatedSmmExpenses = calculateSmmExpenses(tempSmmData);
+
+    const totalExpenses = calculatedSmmExpenses + totalDynamicCost + modelsExpenses + (existing?.otherExpenses || 0);
     const marginPercent = calculateMargin(existing?.revenue || 0, totalExpenses);
 
     const expenseData: Partial<ProjectExpense> & { projectId: string; month: string } = {
@@ -459,10 +503,10 @@ export const projectExpensesService = {
       modelsExpenses,
       totalExpenses,
       marginPercent,
-      smmExpenses: existing?.smmExpenses || 0,
-      smmPostsCount: existing?.smmPostsCount || 0,
-      smmReelsCount: existing?.smmReelsCount || 0,
-      smmStoriesCount: existing?.smmStoriesCount || 0,
+      smmExpenses: calculatedSmmExpenses,
+      smmPostsCount: liveduneContent.posts,
+      smmReelsCount: liveduneContent.reels,
+      smmStoriesCount: liveduneContent.stories,
       smmSpecDesignCount: existing?.smmSpecDesignCount || 0,
       smmMonitoring: existing?.smmMonitoring || false,
       smmDubbingCount: existing?.smmDubbingCount || 0,
