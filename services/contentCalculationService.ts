@@ -61,7 +61,7 @@ const getLiveduneContentCounts = async (
       getLiveduneStories(config, dateRangeStr)
     ]);
 
-    console.log(`[Content Calculation] Results:`, {
+    console.log(`[Content Calculation] ${project.name} (accountId=${config.accountId}) Results:`, {
       posts: posts.length,
       reels: reels.length,
       stories: stories.length

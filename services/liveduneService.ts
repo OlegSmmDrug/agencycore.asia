@@ -167,7 +167,7 @@ export const getLivedunePosts = async (config: LiveduneApiConfig, dateRange: str
       return generateMockPosts(config.accountId);
     }
 
-    console.log(`Received ${data.response?.length || 0} items from /posts endpoint`);
+    console.log(`[Livedune API] accountId=${config.accountId} received ${data.response?.length || 0} items from /posts endpoint`);
 
     const allPosts = (data.response || []).map((post: any) => {
       return {
@@ -206,7 +206,7 @@ export const getLivedunePosts = async (config: LiveduneApiConfig, dateRange: str
       return isInDateRange && isNotReels;
     }).slice(0, 50);
 
-    console.log(`Filtered to ${filtered.length} posts (excluding reels)`);
+    console.log(`[Livedune API] accountId=${config.accountId} filtered to ${filtered.length} posts (excluding reels)`);
     return filtered;
   } catch (error) {
     console.error('Error fetching Livedune posts:', error);
@@ -429,6 +429,8 @@ export const getLiveduneStories = async (config: LiveduneApiConfig, dateRange: s
       return generateMockStories(config.accountId);
     }
 
+    console.log(`[Livedune API] accountId=${config.accountId} received ${data.response?.length || 0} stories`);
+
     return (data.response || []).map((story: any) => {
       return {
         id: config.accountId,
@@ -467,6 +469,7 @@ export const getLiveduneReels = async (config: LiveduneApiConfig, dateRange: str
       const reelsData = await reelsResponse.json();
 
       if (!reelsData.error && reelsData.response && reelsData.response.length > 0) {
+        console.log(`[Livedune API] accountId=${config.accountId} received ${reelsData.response.length} reels from /reels endpoint`);
         return reelsData.response.map((reel: any) => {
           return {
             id: config.accountId,
@@ -522,7 +525,7 @@ export const getLiveduneReels = async (config: LiveduneApiConfig, dateRange: str
         };
       });
 
-    console.log(`Found ${reelsFromPosts.length} reels from posts endpoint`);
+    console.log(`[Livedune API] accountId=${config.accountId} found ${reelsFromPosts.length} reels from /posts endpoint`);
     return reelsFromPosts;
   } catch (error) {
     console.error('Error fetching Livedune reels:', error);
