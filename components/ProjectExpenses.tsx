@@ -372,8 +372,90 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({ projectId, projectBud
     return true;
   });
 
+  const expensePercent = projectBudget > 0 ? (totalExpenses / projectBudget) * 100 : 0;
+  const profitMarginPercent = revenue > 0 ? ((netProfit / revenue) * 100).toFixed(1) : '0.0';
+
   return (
     <div className="space-y-6">
+      <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl border border-blue-700 shadow-2xl overflow-hidden">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-500/30 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="font-bold text-white text-lg">Финансы проекта</h3>
+            </div>
+            {loading && (
+              <span className="text-xs text-blue-200 flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Обновление...
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                <span className="text-xs font-semibold text-blue-100 uppercase tracking-wide">Выручка</span>
+              </div>
+              <p className="text-2xl font-bold text-white">{revenue.toLocaleString()} ₸</p>
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+                <span className="text-xs font-semibold text-blue-100 uppercase tracking-wide">Расходы</span>
+              </div>
+              <p className="text-2xl font-bold text-white">{totalExpenses.toLocaleString()} ₸</p>
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+              <div className="flex items-center gap-2 mb-2">
+                <div className={`w-2 h-2 rounded-full ${netProfit >= 0 ? 'bg-emerald-400' : 'bg-rose-400'}`}></div>
+                <span className="text-xs font-semibold text-blue-100 uppercase tracking-wide">Прибыль</span>
+              </div>
+              <p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-white' : 'text-rose-300'}`}>
+                {netProfit.toLocaleString()} ₸
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-blue-100">Использование бюджета</span>
+              <span className="text-sm font-bold text-white">{expensePercent.toFixed(1)}%</span>
+            </div>
+            <div className="h-4 bg-blue-900/50 rounded-full overflow-hidden border border-blue-700/50">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  expensePercent > 90 ? 'bg-gradient-to-r from-rose-500 to-rose-600' :
+                  expensePercent > 70 ? 'bg-gradient-to-r from-amber-500 to-amber-600' :
+                  'bg-gradient-to-r from-emerald-500 to-emerald-600'
+                }`}
+                style={{ width: `${Math.min(expensePercent, 100)}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between mt-2">
+              <span className="text-xs text-blue-200">Маржинальность:</span>
+              <span className={`text-sm font-bold ${
+                Number(profitMarginPercent) >= 50 ? 'text-emerald-300' :
+                Number(profitMarginPercent) >= 20 ? 'text-amber-300' :
+                'text-rose-300'
+              }`}>
+                {profitMarginPercent}%
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="bg-white border border-slate-200 rounded-xl p-2">
         <div className="flex gap-2">
           <button
