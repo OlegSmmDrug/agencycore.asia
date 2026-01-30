@@ -43,6 +43,8 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({ projectId, projectBud
 
   const canEdit = currentUser.jobTitle.toLowerCase().includes('pm') ||
                   currentUser.jobTitle.toLowerCase().includes('project manager') ||
+                  currentUser.jobTitle.toLowerCase().includes('бухгалтер') ||
+                  currentUser.jobTitle.toLowerCase().includes('accountant') ||
                   currentUser.systemRole === 'Admin';
 
   const margin = project.budget - (project.mediaBudget || 0);

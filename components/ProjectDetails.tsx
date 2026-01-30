@@ -2735,9 +2735,11 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
               const isAdmin = currentUser.systemRole === 'Admin';
               const isPM = currentUser.jobTitle.toLowerCase().includes('pm') ||
                            currentUser.jobTitle.toLowerCase().includes('project manager');
+              const isAccountant = currentUser.jobTitle.toLowerCase().includes('бухгалтер') ||
+                                   currentUser.jobTitle.toLowerCase().includes('accountant');
 
               if (tab.id === 'expenses' || tab.id === 'legal') {
-                return isAdmin || isPM;
+                return isAdmin || isPM || isAccountant;
               }
               return true;
             }).map((tab) => (
