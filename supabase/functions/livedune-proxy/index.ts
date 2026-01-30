@@ -38,10 +38,12 @@ Deno.serve(async (req: Request) => {
 
     // Extract accountId from endpoint path (e.g., /accounts/123/posts -> 123)
     let extractedAccountId: string | null = null;
-    const accountIdMatch = endpoint.match(/\/accounts\/(\d+)\//);
+    const accountIdMatch = endpoint.match(/\/accounts\/(\d+)/);
     if (accountIdMatch) {
       extractedAccountId = accountIdMatch[1];
       console.log('[Livedune Proxy] Extracted accountId from endpoint:', extractedAccountId);
+    } else {
+      console.log('[Livedune Proxy] Could not extract accountId from endpoint:', endpoint);
     }
 
     const liveduneUrl = new URL(endpoint, LIVEDUNE_API_URL);
