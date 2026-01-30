@@ -517,6 +517,24 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
     autoSync();
   }, [project.id, activeTab]);
 
+  useEffect(() => {
+    const recalculateContent = async () => {
+      if (project.contentAutoCalculate === false) return;
+      if (!project.contentMetrics || Object.keys(project.contentMetrics).length === 0) return;
+
+      try {
+        const updatedProject = await autoCalculateContentForProject(project, tasks);
+        if (updatedProject && onProjectChangedLocal) {
+          onProjectChangedLocal(updatedProject);
+        }
+      } catch (error) {
+        console.error('Error recalculating content on task change:', error);
+      }
+    };
+
+    recalculateContent();
+  }, [tasks.length, tasks.filter(t => t.status === TaskStatus.DONE).length]);
+
   const handleSyncKpis = async () => {
     setIsSyncingKpis(true);
     try {

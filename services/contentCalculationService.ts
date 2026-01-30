@@ -1,4 +1,4 @@
-import { Task, TaskStatus, Project } from '../types';
+import { Task, TaskStatus, Project, TaskType } from '../types';
 import { projectService } from './projectService';
 import { serviceMappingService, ContentMetrics } from './serviceMappingService';
 
@@ -8,18 +8,34 @@ interface ContentFacts {
   storiesFact: number;
 }
 
+const getTaskTypeForMetric = (metricKey: string): TaskType | null => {
+  const key = metricKey.toLowerCase();
+
+  if (key.includes('post') || key.includes('посты') || key.includes('пост')) {
+    return 'Post';
+  }
+  if (key.includes('reel') || key.includes('рилс')) {
+    return 'Reels';
+  }
+  if (key.includes('stor') || key.includes('стори')) {
+    return 'Stories';
+  }
+
+  return null;
+};
+
 export const calculateDynamicContentFacts = async (
-  projectId: string,
+  project: Project,
   tasks: Task[],
   dateRange?: { start: Date; end: Date }
 ): Promise<ContentMetrics> => {
   try {
-    const mappings = await serviceMappingService.getWidgetMappings();
-    if (mappings.length === 0) {
+    const currentMetrics = project.contentMetrics || {};
+    if (Object.keys(currentMetrics).length === 0) {
       return {};
     }
 
-    let projectTasks = tasks.filter(t => t.projectId === projectId && t.status === TaskStatus.DONE);
+    let projectTasks = tasks.filter(t => t.projectId === project.id && t.status === TaskStatus.DONE);
 
     if (dateRange) {
       projectTasks = projectTasks.filter(t => {
@@ -31,14 +47,16 @@ export const calculateDynamicContentFacts = async (
 
     const result: ContentMetrics = {};
 
-    for (const mapping of mappings) {
-      if (!mapping.taskType) continue;
+    for (const [key, metric] of Object.entries(currentMetrics)) {
+      const taskType = getTaskTypeForMetric(key);
+      if (!taskType) {
+        result[key] = { plan: metric.plan, fact: metric.fact };
+        continue;
+      }
 
-      const key = mapping.metricLabel.toLowerCase().replace(/[^a-z0-9]/g, '_');
-      const count = projectTasks.filter(t => t.type === mapping.taskType).length;
-
+      const count = projectTasks.filter(t => t.type === taskType).length;
       result[key] = {
-        plan: 0,
+        plan: metric.plan,
         fact: count
       };
     }
@@ -128,7 +146,7 @@ export const autoCalculateContentForProject = async (
   const startDate = new Date(project.startDate);
   const endDate = new Date(project.endDate);
 
-  const dynamicFacts = await calculateDynamicContentFacts(project.id, tasks, { start: startDate, end: endDate });
+  const dynamicFacts = await calculateDynamicContentFacts(project, tasks, { start: startDate, end: endDate });
 
   if (Object.keys(dynamicFacts).length > 0) {
     return await updateProjectDynamicContentFacts(project, dynamicFacts);
