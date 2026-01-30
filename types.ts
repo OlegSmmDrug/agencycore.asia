@@ -315,6 +315,7 @@ export interface Project {
   contentAutoCalculate?: boolean;
   contentLastCalculatedAt?: string;
   contentMetrics?: { [key: string]: { plan: number; fact: number } };
+  contentMetricsVisible?: string[];
   lastContentSyncAt?: string;
 
   publicShareToken?: string;

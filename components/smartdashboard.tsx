@@ -36,12 +36,16 @@ const SmartDashboard: React.FC<SmartDashboardProps> = ({
     const hasRisks = (project.risks && project.risks.length > 0) || hasOverdue || kpiHealth;
 
     const contentMetrics = project.contentMetrics || {};
-    const contentArray = Object.entries(contentMetrics).map(([key, value]) => ({
+    let contentArray = Object.entries(contentMetrics).map(([key, value]) => ({
       key,
       label: key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
       done: value.fact || 0,
       total: value.plan || 0
     }));
+
+    if (project.contentMetricsVisible && project.contentMetricsVisible.length > 0) {
+      contentArray = contentArray.filter(item => project.contentMetricsVisible!.includes(item.key));
+    }
 
     const hasContentMetrics = contentArray.length > 0;
 

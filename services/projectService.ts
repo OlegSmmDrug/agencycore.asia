@@ -117,6 +117,7 @@ const mapRowToProject = (row: any): Project => ({
   contentAutoCalculate: row.content_auto_calculate !== false,
   contentLastCalculatedAt: row.content_last_calculated_at || undefined,
   contentMetrics: row.content_metrics || {},
+  contentMetricsVisible: row.content_metrics_visible || undefined,
   lastContentSyncAt: row.last_content_sync_at || undefined
 });
 
@@ -258,6 +259,8 @@ export const projectService = {
     if (updates.kpiLastSyncedAt !== undefined) updateData.kpi_last_synced_at = updates.kpiLastSyncedAt;
     if (updates.contentAutoCalculate !== undefined) updateData.content_auto_calculate = updates.contentAutoCalculate;
     if (updates.contentLastCalculatedAt !== undefined) updateData.content_last_calculated_at = updates.contentLastCalculatedAt;
+    if (updates.contentMetrics !== undefined) updateData.content_metrics = updates.contentMetrics;
+    if (updates.contentMetricsVisible !== undefined) updateData.content_metrics_visible = updates.contentMetricsVisible;
 
     const organizationId = getCurrentOrganizationId();
     const { data, error } = await supabase

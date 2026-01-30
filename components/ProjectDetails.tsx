@@ -1245,24 +1245,17 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-lg">
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-3">
-                <h3 className="text-sm font-bold text-slate-800">Редактирование контента</h3>
+                <h3 className="text-sm font-bold text-slate-800">Настройка отслеживания контента</h3>
                 {client?.calculatorData?.items && (
                   <button
                     onClick={async () => {
                       const contentMetrics = await extractContentPlanFromCalculator(client);
-
-                      if (Object.keys(contentMetrics).length > 0) {
-                        const firstMetric = Object.entries(contentMetrics)[0];
-                        const secondMetric = Object.entries(contentMetrics)[1];
-                        const thirdMetric = Object.entries(contentMetrics)[2];
-
-                        setTempContent(prev => ({
-                          ...prev,
-                          postsPlan: firstMetric?.[1]?.plan || prev.postsPlan,
-                          reelsPlan: secondMetric?.[1]?.plan || prev.reelsPlan,
-                          storiesPlan: thirdMetric?.[1]?.plan || prev.storiesPlan
-                        }));
-                      }
+                      const allKeys = Object.keys(contentMetrics);
+                      onUpdateProject({
+                        ...project,
+                        contentMetrics: contentMetrics,
+                        contentMetricsVisible: allKeys.slice(0, 3)
+                      });
                     }}
                     className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
                   >
@@ -1277,48 +1270,89 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-slate-500 mb-1 block">Посты (факт)</label>
-                  <input type="number" value={tempContent.postsFact || ''} onChange={(e) => setTempContent({ ...tempContent, postsFact: Number(e.target.value) })}
-                    onFocus={(e) => e.target.select()}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+            <div className="space-y-4">
+              {project.contentMetrics && Object.keys(project.contentMetrics).length > 0 ? (
+                <>
+                  <div className="border-b border-slate-200 pb-3">
+                    <p className="text-xs text-slate-600 font-semibold mb-2">Выберите метрики для отображения (максимум 3):</p>
+                    <div className="space-y-1.5">
+                      {Object.entries(project.contentMetrics).map(([key, value]) => {
+                        const label = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                        const isVisible = project.contentMetricsVisible?.includes(key) || false;
+                        const canSelect = !isVisible && (project.contentMetricsVisible?.length || 0) < 3;
+
+                        return (
+                          <label key={key} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${isVisible ? 'bg-blue-50' : canSelect ? 'hover:bg-slate-50' : 'opacity-50 cursor-not-allowed'}`}>
+                            <input
+                              type="checkbox"
+                              checked={isVisible}
+                              disabled={!isVisible && !canSelect}
+                              onChange={(e) => {
+                                const current = project.contentMetricsVisible || [];
+                                const updated = e.target.checked
+                                  ? [...current, key]
+                                  : current.filter(k => k !== key);
+                                onUpdateProject({ ...project, contentMetricsVisible: updated });
+                              }}
+                              className="w-4 h-4 text-blue-600 rounded"
+                            />
+                            <span className="text-sm text-slate-700">{label}</span>
+                            <span className="text-xs text-slate-400 ml-auto">{value.fact} / {value.plan}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-slate-600 font-semibold mb-2">Редактировать значения:</p>
+                    <div className="space-y-2">
+                      {Object.entries(project.contentMetrics).filter(([key]) => project.contentMetricsVisible?.includes(key) || !project.contentMetricsVisible).map(([key, value]) => {
+                        const label = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                        return (
+                          <div key={key} className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-xs text-slate-500 mb-1 block">{label} (факт)</label>
+                              <input
+                                type="number"
+                                value={value.fact || ''}
+                                onChange={(e) => {
+                                  const updated = { ...project.contentMetrics, [key]: { ...value, fact: Number(e.target.value) } };
+                                  onUpdateProject({ ...project, contentMetrics: updated });
+                                }}
+                                onFocus={(e) => e.target.select()}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-slate-500 mb-1 block">{label} (план)</label>
+                              <input
+                                type="number"
+                                value={value.plan || ''}
+                                onChange={(e) => {
+                                  const updated = { ...project.contentMetrics, [key]: { ...value, plan: Number(e.target.value) } };
+                                  onUpdateProject({ ...project, contentMetrics: updated });
+                                }}
+                                onFocus={(e) => e.target.select()}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-6 text-slate-500 text-sm">
+                  <p className="mb-2">Нет метрик контента</p>
+                  {client?.calculatorData?.items && (
+                    <p className="text-xs">Нажмите "Загрузить из калькулятора" выше</p>
+                  )}
                 </div>
-                <div>
-                  <label className="text-xs text-slate-500 mb-1 block">Посты (план)</label>
-                  <input type="number" value={tempContent.postsPlan || ''} onChange={(e) => setTempContent({ ...tempContent, postsPlan: Number(e.target.value) })}
-                    onFocus={(e) => e.target.select()}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-500 mb-1 block">Reels (факт)</label>
-                  <input type="number" value={tempContent.reelsFact || ''} onChange={(e) => setTempContent({ ...tempContent, reelsFact: Number(e.target.value) })}
-                    onFocus={(e) => e.target.select()}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-500 mb-1 block">Reels (план)</label>
-                  <input type="number" value={tempContent.reelsPlan || ''} onChange={(e) => setTempContent({ ...tempContent, reelsPlan: Number(e.target.value) })}
-                    onFocus={(e) => e.target.select()}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-500 mb-1 block">Stories (факт)</label>
-                  <input type="number" value={tempContent.storiesFact || ''} onChange={(e) => setTempContent({ ...tempContent, storiesFact: Number(e.target.value) })}
-                    onFocus={(e) => e.target.select()}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-500 mb-1 block">Stories (план)</label>
-                  <input type="number" value={tempContent.storiesPlan || ''} onChange={(e) => setTempContent({ ...tempContent, storiesPlan: Number(e.target.value) })}
-                    onFocus={(e) => e.target.select()}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => { handleSaveContent(); setIsEditingContent(false); }} className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">Сохранить</button>
-                <button onClick={() => setIsEditingContent(false)} className="px-4 py-2 text-slate-600 rounded-lg text-sm hover:bg-slate-100">Отмена</button>
+              )}
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => setIsEditingContent(false)} className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">Готово</button>
               </div>
             </div>
           </div>
