@@ -1249,13 +1249,22 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                 {client?.calculatorData?.items && (
                   <button
                     onClick={async () => {
-                      const contentMetrics = await extractContentPlanFromCalculator(client);
-                      const allKeys = Object.keys(contentMetrics);
-                      onUpdateProject({
-                        ...project,
-                        contentMetrics: contentMetrics,
-                        contentMetricsVisible: allKeys.slice(0, 3)
-                      });
+                      try {
+                        const contentMetrics = await extractContentPlanFromCalculator(client);
+                        if (Object.keys(contentMetrics).length === 0) {
+                          alert('В калькуляторе нет услуг с количеством');
+                          return;
+                        }
+                        const allKeys = Object.keys(contentMetrics);
+                        onUpdateProject({
+                          ...project,
+                          contentMetrics: contentMetrics,
+                          contentMetricsVisible: allKeys.slice(0, 3)
+                        });
+                      } catch (error) {
+                        console.error('Error loading from calculator:', error);
+                        alert('Ошибка при загрузке из калькулятора');
+                      }
                     }}
                     className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
                   >

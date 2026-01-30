@@ -15,16 +15,14 @@ export const extractContentPlanFromCalculator = async (client?: Client): Promise
   }
 
   try {
-    const allMappings = await serviceMappingService.getAll();
     const result: ContentMetrics = {};
 
     for (const calcItem of client.calculatorData.items) {
-      if (!calcItem.serviceId) continue;
+      if (!calcItem.quantity || calcItem.quantity === 0) continue;
 
-      const mapping = allMappings.find(m => m.serviceId === calcItem.serviceId);
-      if (!mapping || !mapping.showInWidget) continue;
+      const metricLabel = calcItem.name || `service_${calcItem.serviceId}`;
+      const key = metricLabel.toLowerCase().replace(/[^a-zа-я0-9]/gi, '_').replace(/_+/g, '_');
 
-      const key = mapping.metricLabel.toLowerCase().replace(/[^a-z0-9]/g, '_');
       result[key] = {
         plan: calcItem.quantity || 0,
         fact: 0
