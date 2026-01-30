@@ -31,6 +31,8 @@ export const CLIENT_STATUS_LABELS: Record<ClientStatus, string> = {
     [ClientStatus.ARCHIVED]: 'Архив'
 };
 
+export const USD_TO_KZT_RATE = 475;
+
 // Module IDs must match Sidebar item IDs and platform_modules slugs
 export const ALL_MODULES = [
     'dashboard',

@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Project, Client, Task, User, TaskStatus, ProjectStatus, RoadmapTemplate, ProjectKpi, ProjectQuickLink, ProjectRisk, ProjectFocus, ProjectHealthStatus, Note } from '../types';
+import { USD_TO_KZT_RATE } from '../constants';
 import SmmAnalytics from './SmmAnalytics';
 import RoadmapTemplateModal from './RoadmapTemplateModal';
 import ContentCalendar from './contentcalendar';
@@ -956,13 +957,39 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
               <div className="pt-2">
                 <p className="text-xs text-slate-500 mb-2">Медиа бюджет (расход):</p>
                 <div className="relative w-full h-4 bg-slate-200 rounded-full overflow-hidden">
-                  <div
-                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-green-500 to-emerald-500 transition-all duration-300"
-                    style={{ width: '0%' }}
-                  ></div>
+                  {loadingAdsData ? (
+                    <div className="absolute top-0 left-0 h-full w-full bg-slate-300 animate-pulse"></div>
+                  ) : (
+                    <div
+                      className={`absolute top-0 left-0 h-full transition-all duration-300 ${
+                        ((facebookSpend + googleSpend + tiktokSpend) * USD_TO_KZT_RATE / Math.max(project.mediaBudget || 1, 1)) * 100 > 90
+                          ? 'bg-gradient-to-r from-red-500 to-rose-500'
+                          : ((facebookSpend + googleSpend + tiktokSpend) * USD_TO_KZT_RATE / Math.max(project.mediaBudget || 1, 1)) * 100 > 70
+                          ? 'bg-gradient-to-r from-amber-500 to-orange-500'
+                          : 'bg-gradient-to-r from-green-500 to-emerald-500'
+                      }`}
+                      style={{ width: `${Math.min(((facebookSpend + googleSpend + tiktokSpend) * USD_TO_KZT_RATE / Math.max(project.mediaBudget || 1, 1)) * 100, 100)}%` }}
+                    ></div>
+                  )}
                 </div>
-                <div className="flex justify-end mt-1 text-xs text-slate-500">
-                  Расход: 0%
+                <div className="flex justify-between items-end mt-1">
+                  <div className="text-xs text-slate-600">
+                    {loadingAdsData ? (
+                      <span className="text-slate-400">Загрузка...</span>
+                    ) : (
+                      <>
+                        <span className="font-semibold">
+                          {((facebookSpend + googleSpend + tiktokSpend) * USD_TO_KZT_RATE).toLocaleString()} ₸
+                        </span>
+                        <span className="text-slate-400 ml-1">
+                          (${(facebookSpend + googleSpend + tiktokSpend).toLocaleString()})
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {loadingAdsData ? '—' : `${Math.min(((facebookSpend + googleSpend + tiktokSpend) * USD_TO_KZT_RATE / Math.max(project.mediaBudget || 1, 1)) * 100, 100).toFixed(1)}%`}
+                  </div>
                 </div>
               </div>
             </div>

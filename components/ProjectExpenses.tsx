@@ -388,9 +388,11 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     return true;
   });
 
+  const USD_TO_KZT_RATE = 475;
+  const adsSpendInKZT = adsSpend * USD_TO_KZT_RATE;
   const mediaBudget = project.mediaBudget || 0;
-  const expensePercent = mediaBudget > 0 ? (adsSpend / mediaBudget) * 100 : 0;
-  const netProfitWithAds = revenue - adsSpend;
+  const expensePercent = mediaBudget > 0 ? (adsSpendInKZT / mediaBudget) * 100 : 0;
+  const netProfitWithAds = revenue - adsSpendInKZT;
   const profitMarginPercent = revenue > 0 ? ((netProfitWithAds / revenue) * 100).toFixed(1) : '0.0';
 
   return (
@@ -431,37 +433,53 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                 <div className="w-2 h-2 bg-red-400 rounded-full"></div>
                 <span className="text-xs font-semibold text-blue-100 uppercase tracking-wide">Расходы</span>
               </div>
-              <p className="text-2xl font-bold text-white">
-                {loadingAdsSpend ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Загрузка...
-                  </span>
-                ) : (
-                  `${adsSpend.toLocaleString()} ₸`
+              <div>
+                <p className="text-2xl font-bold text-white">
+                  {loadingAdsSpend ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Загрузка...
+                    </span>
+                  ) : (
+                    `${adsSpendInKZT.toLocaleString()} ₸`
+                  )}
+                </p>
+                {!loadingAdsSpend && adsSpend > 0 && (
+                  <p className="text-xs text-blue-200 mt-1">
+                    ${adsSpend.toLocaleString()}
+                  </p>
                 )}
-              </p>
+              </div>
               {!loadingAdsSpend && adsSpend > 0 && (
                 <div className="mt-3 space-y-1 text-xs text-blue-200">
                   {facebookSpend > 0 && (
                     <div className="flex items-center justify-between">
                       <span>Facebook Ads</span>
-                      <span className="font-semibold">${facebookSpend.toLocaleString()}</span>
+                      <span className="font-semibold">
+                        {(facebookSpend * USD_TO_KZT_RATE).toLocaleString()} ₸
+                        <span className="text-blue-300 ml-1">(${facebookSpend.toLocaleString()})</span>
+                      </span>
                     </div>
                   )}
                   {googleSpend > 0 && (
                     <div className="flex items-center justify-between">
                       <span>Google Ads</span>
-                      <span className="font-semibold">${googleSpend.toLocaleString()}</span>
+                      <span className="font-semibold">
+                        {(googleSpend * USD_TO_KZT_RATE).toLocaleString()} ₸
+                        <span className="text-blue-300 ml-1">(${googleSpend.toLocaleString()})</span>
+                      </span>
                     </div>
                   )}
                   {tiktokSpend > 0 && (
                     <div className="flex items-center justify-between">
                       <span>TikTok Ads</span>
-                      <span className="font-semibold">${tiktokSpend.toLocaleString()}</span>
+                      <span className="font-semibold">
+                        {(tiktokSpend * USD_TO_KZT_RATE).toLocaleString()} ₸
+                        <span className="text-blue-300 ml-1">(${tiktokSpend.toLocaleString()})</span>
+                      </span>
                     </div>
                   )}
                 </div>
@@ -486,7 +504,10 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
             </div>
             {mediaBudget > 0 && (
               <div className="text-xs text-blue-200 mb-2">
-                {adsSpend.toLocaleString()} ₸ из {mediaBudget.toLocaleString()} ₸
+                {adsSpendInKZT.toLocaleString()} ₸ из {mediaBudget.toLocaleString()} ₸
+                {adsSpend > 0 && (
+                  <span className="text-blue-300 ml-1">(${adsSpend.toLocaleString()})</span>
+                )}
               </div>
             )}
             <div className="h-4 bg-blue-900/50 rounded-full overflow-hidden border border-blue-700/50">
