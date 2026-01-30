@@ -52,11 +52,19 @@ const getLiveduneContentCounts = async (
       dateRangeStr = `${fromStr}|${toStr}`;
     }
 
+    console.log(`[Content Calculation] Fetching Livedune content for date range: ${dateRangeStr}`);
+
     const [posts, reels, stories] = await Promise.all([
       getLivedunePosts(config, dateRangeStr),
       getLiveduneReels(config, dateRangeStr),
       getLiveduneStories(config, dateRangeStr)
     ]);
+
+    console.log(`[Content Calculation] Results:`, {
+      posts: posts.length,
+      reels: reels.length,
+      stories: stories.length
+    });
 
     return {
       posts: posts.length,
@@ -92,12 +100,15 @@ export const calculateDynamicContentFacts = async (
 
     const liveduneCounts = await getLiveduneContentCounts(project, dateRange);
 
+    console.log(`[Content Calculation] Processing metrics for project ${project.name}:`, currentMetrics);
+
     const result: ContentMetrics = {};
 
     for (const [key, metric] of Object.entries(currentMetrics)) {
       const taskType = getTaskTypeForMetric(key);
       if (!taskType) {
         result[key] = { plan: metric.plan, fact: metric.fact };
+        console.log(`[Content Calculation] ${key}: No task type mapping, keeping fact=${metric.fact}`);
         continue;
       }
 
@@ -113,6 +124,8 @@ export const calculateDynamicContentFacts = async (
       }
 
       const totalCount = Math.max(taskCount, liveduneCount);
+
+      console.log(`[Content Calculation] ${key} (${taskType}): tasks=${taskCount}, livedune=${liveduneCount}, final fact=${totalCount}`);
 
       result[key] = {
         plan: metric.plan,
