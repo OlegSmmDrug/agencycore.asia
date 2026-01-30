@@ -36,6 +36,7 @@ const getLiveduneContentCounts = async (
   dateRange?: { start: Date; end: Date }
 ): Promise<LiveduneContentCounts> => {
   if (!project.liveduneAccessToken || !project.liveduneAccountId) {
+    console.log(`[Content Calculation] ${project.name}: No Livedune credentials (token=${!!project.liveduneAccessToken}, accountId=${project.liveduneAccountId})`);
     return { posts: 0, reels: 0, stories: 0 };
   }
 
@@ -52,7 +53,7 @@ const getLiveduneContentCounts = async (
       dateRangeStr = `${fromStr}|${toStr}`;
     }
 
-    console.log(`[Content Calculation] Fetching Livedune content for date range: ${dateRangeStr}`);
+    console.log(`[Content Calculation] ${project.name}: Fetching Livedune content with accountId=${config.accountId} for date range: ${dateRangeStr}`);
 
     const [posts, reels, stories] = await Promise.all([
       getLivedunePosts(config, dateRangeStr),

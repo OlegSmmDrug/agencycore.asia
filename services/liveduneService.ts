@@ -154,6 +154,7 @@ export const getLivedunePosts = async (config: LiveduneApiConfig, dateRange: str
 
   try {
     const url = `${LIVEDUNE_PROXY_URL}?endpoint=/accounts/${config.accountId}/posts&access_token=${encodeURIComponent(config.accessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
+    console.log(`[Livedune API] Fetching posts for accountId=${config.accountId}, dates=${dateFrom} to ${dateTo}`);
     const response = await fetch(url, { headers: getProxyHeaders() });
 
     if (!response.ok) {
@@ -415,6 +416,7 @@ export const getLiveduneStories = async (config: LiveduneApiConfig, dateRange: s
 
   try {
     const url = `${LIVEDUNE_PROXY_URL}?endpoint=/accounts/${config.accountId}/stories&access_token=${encodeURIComponent(config.accessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
+    console.log(`[Livedune API] Fetching stories for accountId=${config.accountId}, dates=${dateFrom} to ${dateTo}`);
     const response = await fetch(url, { headers: getProxyHeaders() });
 
     if (!response.ok) {
@@ -458,6 +460,7 @@ export const getLiveduneReels = async (config: LiveduneApiConfig, dateRange: str
 
   try {
     const reelsUrl = `${LIVEDUNE_PROXY_URL}?endpoint=/accounts/${config.accountId}/reels&access_token=${encodeURIComponent(config.accessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
+    console.log(`[Livedune API] Fetching reels for accountId=${config.accountId}, dates=${dateFrom} to ${dateTo}`);
     const reelsResponse = await fetch(reelsUrl, { headers: getProxyHeaders() });
 
     if (reelsResponse.ok) {
