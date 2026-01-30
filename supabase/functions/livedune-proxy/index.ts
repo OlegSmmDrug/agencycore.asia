@@ -20,7 +20,6 @@ Deno.serve(async (req: Request) => {
     const url = new URL(req.url);
     const endpoint = url.searchParams.get('endpoint') || '/accounts';
     const accessToken = url.searchParams.get('access_token');
-    const accountId = url.searchParams.get('account_id');
     const dateFrom = url.searchParams.get('date_from');
     const dateTo = url.searchParams.get('date_to');
 
@@ -37,12 +36,17 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Extract accountId from endpoint path (e.g., /accounts/123/posts -> 123)
+    let extractedAccountId: string | null = null;
+    const accountIdMatch = endpoint.match(/\/accounts\/(\d+)\//);
+    if (accountIdMatch) {
+      extractedAccountId = accountIdMatch[1];
+      console.log('[Livedune Proxy] Extracted accountId from endpoint:', extractedAccountId);
+    }
+
     const liveduneUrl = new URL(endpoint, LIVEDUNE_API_URL);
     liveduneUrl.searchParams.set('access_token', accessToken);
 
-    if (accountId) {
-      liveduneUrl.searchParams.set('id', accountId);
-    }
     if (dateFrom) {
       liveduneUrl.searchParams.set('date_from', dateFrom);
     }
@@ -50,7 +54,7 @@ Deno.serve(async (req: Request) => {
       liveduneUrl.searchParams.set('date_to', dateTo);
     }
 
-    console.log('Proxying request to Livedune:', liveduneUrl.toString());
+    console.log('[Livedune Proxy] Request:', liveduneUrl.toString());
 
     const response = await fetch(liveduneUrl.toString());
     const data = await response.json();
