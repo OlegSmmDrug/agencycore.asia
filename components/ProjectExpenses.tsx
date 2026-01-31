@@ -113,6 +113,41 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     setSelectedMonth(date.toISOString().slice(0, 7));
   };
 
+  const detectCategory = (serviceName: string): string => {
+    const lower = serviceName.toLowerCase();
+
+    if (lower.includes('post') || lower.includes('пост') ||
+        lower.includes('stor') || lower.includes('стори') ||
+        lower.includes('reel') || lower.includes('рилс') ||
+        lower.includes('карусель') || lower.includes('анализ') ||
+        lower.includes('мониторинг') || lower.includes('стратеги') ||
+        lower.includes('дублирование') || lower.includes('визуал') ||
+        lower.includes('язык')) {
+      return 'smm';
+    }
+
+    if (lower.includes('видео') || lower.includes('монтаж') ||
+        lower.includes('съем') || lower.includes('shooting') ||
+        lower.includes('видеограф') || lower.includes('цветокор') ||
+        lower.includes('анимац') || lower.includes('фото') ||
+        lower.includes('ретуш') || lower.includes('мобилограф')) {
+      return 'video';
+    }
+
+    if (lower.includes('таргет') || lower.includes('реклам') ||
+        lower.includes('креатив')) {
+      return 'target';
+    }
+
+    if (lower.includes('сайт') || lower.includes('landing') ||
+        lower.includes('посадоч') || lower.includes('wordpress') ||
+        lower.includes('ворд пресс')) {
+      return 'sites';
+    }
+
+    return 'smm';
+  };
+
   const copyFromPreviousMonth = async () => {
     const date = new Date(selectedMonth + '-01');
     date.setMonth(date.getMonth() - 1);
@@ -138,9 +173,10 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
 
     const updatedDynamicExpenses = { ...currentExpense.dynamicExpenses };
     if (!updatedDynamicExpenses[serviceId]) {
+      const serviceName = serviceId.replace('kpi_', '').charAt(0).toUpperCase() + serviceId.replace('kpi_', '').slice(1).replace(/_/g, ' ');
       updatedDynamicExpenses[serviceId] = {
-        serviceName: serviceId,
-        category: 'smm',
+        serviceName,
+        category: detectCategory(serviceName),
         count: 0,
         rate: 0,
         cost: 0,
@@ -610,15 +646,18 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
 
                     if (!existingKey) {
                       const kpiKey = `kpi_${metricKey}`;
+                      const serviceName = metricKey.charAt(0).toUpperCase() + metricKey.slice(1).replace(/_/g, ' ');
+                      const detectedCategory = detectCategory(serviceName);
+
                       enrichedDynamicExpenses[kpiKey] = {
-                        serviceName: metricKey.charAt(0).toUpperCase() + metricKey.slice(1).replace(/_/g, ' '),
-                        category: 'smm',
+                        serviceName,
+                        category: detectedCategory,
                         count: 0,
                         rate: 0,
                         cost: 0,
                         syncedAt: new Date().toISOString()
                       };
-                      categoriesInUse.add('smm');
+                      categoriesInUse.add(detectedCategory);
                     }
                   });
                 }
