@@ -537,14 +537,14 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
             previousMonthExpenses={previousMonthExpense?.totalExpenses}
           />
 
-          {currentExpense?.dynamicExpenses && Object.keys(currentExpense.dynamicExpenses).length > 0 && (
+          {(currentExpense?.dynamicExpenses && Object.keys(currentExpense.dynamicExpenses).length > 0) || (project.contentMetricsVisible && project.contentMetricsVisible.length > 0) ? (
             <div className="bg-gradient-to-br from-blue-50 to-sky-50 border-2 border-blue-200 rounded-xl p-6">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                   <span className="text-2xl">💰</span>
                   Детализация расходов по услугам
                 </h3>
-                {currentExpense.lastSyncedAt && (
+                {currentExpense?.lastSyncedAt && (
                   <div className="text-xs text-slate-500">
                     Синхронизировано: {new Date(currentExpense.lastSyncedAt).toLocaleString('ru-RU')}
                   </div>
@@ -552,12 +552,47 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
               </div>
 
               {(() => {
-                const dynamicExpenses = currentExpense.dynamicExpenses || {};
+                const dynamicExpenses = currentExpense?.dynamicExpenses || {};
                 const categoriesInUse = new Set<string>();
 
                 Object.values(dynamicExpenses).forEach(item => {
                   if (item.category) categoriesInUse.add(item.category);
                 });
+
+                const normalize = (str: string): string => {
+                  return str
+                    .toLowerCase()
+                    .replace(/[_\s]+/g, '')
+                    .replace(/[^a-zа-я0-9]/g, '')
+                    .trim();
+                };
+
+                const enrichedDynamicExpenses: Record<string, DynamicExpenseItem> = { ...dynamicExpenses };
+
+                if (project.contentMetricsVisible && Array.isArray(project.contentMetricsVisible)) {
+                  project.contentMetricsVisible.forEach((metricKey: string) => {
+                    const metricKeyNormalized = normalize(metricKey);
+
+                    const existingKey = Object.keys(enrichedDynamicExpenses).find(key => {
+                      const keyNormalized = normalize(key.replace('kpi_', ''));
+                      const itemNormalized = normalize(enrichedDynamicExpenses[key]?.serviceName || '');
+                      return keyNormalized === metricKeyNormalized || itemNormalized === metricKeyNormalized;
+                    });
+
+                    if (!existingKey) {
+                      const kpiKey = `kpi_${metricKey}`;
+                      enrichedDynamicExpenses[kpiKey] = {
+                        serviceName: metricKey.charAt(0).toUpperCase() + metricKey.slice(1).replace(/_/g, ' '),
+                        category: 'smm',
+                        count: 0,
+                        rate: 0,
+                        cost: 0,
+                        syncedAt: new Date().toISOString()
+                      };
+                      categoriesInUse.add('smm');
+                    }
+                  });
+                }
 
                 const sortedCategories = categories
                   .filter(cat => categoriesInUse.has(cat.id))
@@ -565,11 +600,11 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
 
                 if (sortedCategories.length === 0) {
                   const legacyCategories = ['smm', 'video', 'target', 'sites'].filter(catId =>
-                    Object.values(dynamicExpenses).some(item => item.category === catId)
+                    Object.values(enrichedDynamicExpenses).some(item => item.category === catId)
                   );
 
                   return legacyCategories.map(category => {
-                    const categoryServices = Object.entries(dynamicExpenses).filter(
+                    const categoryServices = Object.entries(enrichedDynamicExpenses).filter(
                       ([_, item]) => item.category === category
                     );
                     if (categoryServices.length === 0) return null;
@@ -634,7 +669,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                 }
 
                 return sortedCategories.map(category => {
-                  const categoryServices = Object.entries(dynamicExpenses).filter(
+                  const categoryServices = Object.entries(enrichedDynamicExpenses).filter(
                     ([_, item]) => item.category === category.id
                   );
                   if (categoryServices.length === 0) return null;
@@ -693,7 +728,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                 });
               })()}
             </div>
-          )}
+          ) : null}
 
           <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
