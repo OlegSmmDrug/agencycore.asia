@@ -162,6 +162,10 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
           await loadExpenses();
           setLastAutoSync(new Date());
           setNextSyncIn(180);
+
+          const { calculateProductionExpensesFromTasks } = await import('../services/projectExpensesService');
+          const productionResult = await calculateProductionExpensesFromTasks(projectId, selectedMonth);
+          setProductionDetails(productionResult.details);
         } catch (error) {
           console.error('Auto-sync error:', error);
         }
@@ -237,6 +241,10 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
           notes: '',
         });
       }
+
+      const { calculateProductionExpensesFromTasks } = await import('../services/projectExpensesService');
+      const productionResult = await calculateProductionExpensesFromTasks(projectId, month);
+      setProductionDetails(productionResult.details);
     } catch (error) {
       console.error('Error loading expense:', error);
     } finally {
@@ -642,24 +650,28 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {categoryServices.map(([serviceId, item]) => (
-                        <div key={serviceId} className="bg-white p-4 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors">
-                          <div className="flex justify-between items-start mb-2">
-                            <span className="text-sm text-slate-700 font-medium">{item.serviceName}</span>
-                            <span className="text-lg font-bold text-slate-900">{item.cost.toLocaleString()} ₸</span>
-                          </div>
-                          <div className="flex justify-between items-center text-xs text-slate-500">
-                            <span>Количество: {item.count}</span>
-                            <span>Ставка: {item.rate.toLocaleString()} ₸</span>
-                          </div>
-                          <div className="mt-2 pt-2 border-t border-slate-100">
-                            <div className="flex justify-between text-xs">
-                              <span className="text-slate-600">Итого:</span>
-                              <span className="font-semibold text-slate-700">{item.count} × {item.rate.toLocaleString()} = {item.cost.toLocaleString()} ₸</span>
+                      {categoryServices.map(([serviceId, item]) => {
+                        const isProductionOrPhoto = category === 'video' || item.serviceName.includes(' - Shooting') || item.serviceName.includes(' - Мобилография');
+                        const countLabel = isProductionOrPhoto ? 'Часов' : 'Количество';
+                        return (
+                          <div key={serviceId} className="bg-white p-4 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors">
+                            <div className="flex justify-between items-start mb-2">
+                              <span className="text-sm text-slate-700 font-medium">{item.serviceName}</span>
+                              <span className="text-lg font-bold text-slate-900">{item.cost.toLocaleString()} ₸</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs text-slate-500">
+                              <span>{countLabel}: {item.count}</span>
+                              <span>Ставка: {item.rate.toLocaleString()} ₸</span>
+                            </div>
+                            <div className="mt-2 pt-2 border-t border-slate-100">
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-600">Итого:</span>
+                                <span className="font-semibold text-slate-700">{item.count} × {item.rate.toLocaleString()} = {item.cost.toLocaleString()} ₸</span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -673,43 +685,12 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                 <span className="text-2xl">💼</span>
                 ФОТ (Фонд оплаты труда)
               </h3>
-              <button
-                onClick={async () => {
-                  if (!currentExpense || saving) return;
-                  setSaving(true);
-                  try {
-                    const { calculateFotExpenses } = await import('../services/projectExpensesService');
-                    const { fotExpenses, fotCalculations } = await calculateFotExpenses(project.id, selectedMonth);
-
-                    const totalExpenses = calculateTotalExpenses({
-                      ...currentExpense,
-                      fotExpenses,
-                    });
-
-                    const updated: Partial<ProjectExpense> & { projectId: string; month: string } = {
-                      ...currentExpense,
-                      projectId: project.id,
-                      month: selectedMonth,
-                      fotExpenses,
-                      fotCalculations,
-                      totalExpenses,
-                      marginPercent: calculateMargin(currentExpense.revenue || 0, totalExpenses),
-                    };
-
-                    await projectExpensesService.createOrUpdateExpense(updated, currentUser.id);
-                    const updatedExpenses = await projectExpensesService.getExpensesByProject(project.id);
-                    setExpenses(updatedExpenses);
-                  } catch (error) {
-                    console.error('Error recalculating FOT:', error);
-                  } finally {
-                    setSaving(false);
-                  }
-                }}
-                disabled={saving}
-                className="px-3 py-1 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-              >
-                🔄 Пересчитать
-              </button>
+              {currentExpense?.lastSyncedAt && !isMonthFrozen && (
+                <div className="text-xs text-green-600 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
+                  Синхронизировано автоматически
+                </div>
+              )}
             </div>
 
             <div className="mb-4 p-3 bg-white rounded-lg border border-green-200">
@@ -759,7 +740,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                     </p>
                     <p className="text-sm text-slate-600">
                       Перейдите в <strong>Зарплатные схемы</strong> и настройте фиксированную оплату
-                      (Base Salary) для нужных сотрудников, затем нажмите "Пересчитать".
+                      (Base Salary) для нужных сотрудников. {!isMonthFrozen && 'Расчет произойдет автоматически.'}
                     </p>
                   </div>
                 </div>
@@ -773,58 +754,12 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                 <span className="text-2xl">🎬</span>
                 Продакшн
               </h3>
-              <button
-                onClick={async () => {
-                  if (!currentExpense || saving) return;
-                  setSaving(true);
-                  try {
-                    const { calculateProductionExpensesFromTasks } = await import('../services/projectExpensesService');
-                    const result = await calculateProductionExpensesFromTasks(project.id, selectedMonth);
-
-                    setProductionDetails(result.details);
-
-                    const updatedDynamicExpenses = {
-                      ...(currentExpense.dynamicExpenses || {}),
-                      ...result.calculatorServices,
-                    };
-
-                    const productionExpensesValue = result.totalCost;
-
-                    const totalExpenses = calculateTotalExpenses({
-                      ...currentExpense,
-                      productionExpenses: productionExpensesValue,
-                      dynamicExpenses: updatedDynamicExpenses,
-                    });
-
-                    const updated: Partial<ProjectExpense> & { projectId: string; month: string } = {
-                      ...currentExpense,
-                      projectId: project.id,
-                      month: selectedMonth,
-                      productionExpenses: productionExpensesValue,
-                      dynamicExpenses: updatedDynamicExpenses,
-                      totalExpenses,
-                      marginPercent: calculateMargin(currentExpense.revenue || 0, totalExpenses),
-                    };
-
-                    await projectExpensesService.createOrUpdateExpense(updated, currentUser.id);
-                    const updatedExpenses = await projectExpensesService.getExpensesByProject(project.id);
-                    setExpenses(updatedExpenses);
-
-                    const updatedExp = updatedExpenses.find(e => e.month === selectedMonth);
-                    if (updatedExp) {
-                      setCurrentExpense(updatedExp);
-                    }
-                  } catch (error) {
-                    console.error('Error syncing production from tasks:', error);
-                  } finally {
-                    setSaving(false);
-                  }
-                }}
-                disabled={!canEdit || isMonthFrozen || saving}
-                className="px-3 py-1 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 transition-colors"
-              >
-                🔄 Синхронизировать из задач
-              </button>
+              {currentExpense?.lastSyncedAt && !isMonthFrozen && (
+                <div className="text-xs text-orange-600 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-pulse"></span>
+                  Синхронизировано автоматически
+                </div>
+              )}
             </div>
 
             {productionDetails.length > 0 ? (
@@ -862,8 +797,8 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                               <span className="text-lg font-bold text-slate-900">{detail.cost.toLocaleString()} ₸</span>
                             </div>
                             <div className="flex justify-between items-center text-xs text-slate-500 mb-2">
-                              <span>Количество: {detail.hours}</span>
-                              <span>Ставка: {detail.rate.toLocaleString()} ₸</span>
+                              <span>Часов: {detail.hours}</span>
+                              <span>Ставка: {detail.rate.toLocaleString()} ₸/ч</span>
                             </div>
                             <div className="mt-2 pt-2 border-t border-slate-100">
                               <div className="flex justify-between text-xs mb-1">
@@ -885,7 +820,11 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
             ) : (
               <div className="bg-white rounded-lg p-6 text-center border border-orange-200">
                 <div className="text-slate-500 mb-2">Нет выполненных задач продакшна</div>
-                <div className="text-sm text-slate-400">Нажмите "Синхронизировать из задач" чтобы загрузить выполненные задачи</div>
+                <div className="text-sm text-slate-400">
+                  {isMonthFrozen
+                    ? 'Месяц заморожен - расчеты приостановлены'
+                    : 'Расходы синхронизируются автоматически каждые 3 минуты'}
+                </div>
               </div>
             )}
           </div>

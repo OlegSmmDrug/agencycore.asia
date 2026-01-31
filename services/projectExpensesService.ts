@@ -634,7 +634,7 @@ export const projectExpensesService = {
 
     const { data: completedTasks, error: tasksError } = await supabase
       .from('tasks')
-      .select('id, assignee_id, type, completed_at')
+      .select('id, assignee_id, type, completed_at, estimated_hours')
       .eq('project_id', projectId)
       .eq('status', 'Done');
 
@@ -653,8 +653,9 @@ export const projectExpensesService = {
         }
 
         const taskType = task.type;
+        const hours = Number(task.estimated_hours) || 1;
         tasksByExecutor[task.assignee_id][taskType] =
-          (tasksByExecutor[task.assignee_id][taskType] || 0) + 1;
+          (tasksByExecutor[task.assignee_id][taskType] || 0) + hours;
       }
     }
 
@@ -716,7 +717,7 @@ export const projectExpensesService = {
       const taskTypeCounts = tasksByExecutor[executorId];
 
       for (const taskType in taskTypeCounts) {
-        const count = taskTypeCounts[taskType];
+        const hours = taskTypeCounts[taskType];
         const kpiRule = scheme.kpiRules.find(rule => rule.taskType === taskType);
 
         if (kpiRule && kpiRule.value > 0) {
@@ -725,9 +726,9 @@ export const projectExpensesService = {
 
           dynamicExpenses[serviceKey] = {
             serviceName: `${user.name} - ${taskType}`,
-            count,
+            count: hours,
             rate: kpiRule.value,
-            cost: count * kpiRule.value,
+            cost: hours * kpiRule.value,
             category,
             syncedAt: now
           };
@@ -886,6 +887,15 @@ export const projectExpensesService = {
     }
 
     const { fotExpenses, fotCalculations } = await calculateFotExpenses(projectId, month);
+    const productionResult = await calculateProductionExpensesFromTasks(projectId, month);
+
+    for (const serviceId in productionResult.calculatorServices) {
+      const service = productionResult.calculatorServices[serviceId];
+      if (service.count > 0 && service.cost > 0) {
+        dynamicExpenses[serviceId] = service;
+        totalDynamicCost += service.cost;
+      }
+    }
 
     const projectRevenue = fullProject.budget || existing?.revenue || 0;
     const totalExpenses = totalDynamicCost + modelsExpenses + fotExpenses + (existing?.otherExpenses || 0);
