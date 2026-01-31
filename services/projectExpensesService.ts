@@ -406,6 +406,37 @@ export const projectExpensesService = {
       console.error('Error fetching users:', usersError);
     }
 
+    const getCategoryByJobTitleAndTaskType = (jobTitle: string, taskType: string): string => {
+      const jobTitleLower = jobTitle.toLowerCase();
+      const taskTypeLower = taskType.toLowerCase();
+
+      if (jobTitleLower.includes('smm') || jobTitleLower.includes('контент')) {
+        return 'SMM';
+      }
+      if (jobTitleLower.includes('mobilograph') || jobTitleLower.includes('мобилограф')) {
+        return 'Продакшн';
+      }
+      if (jobTitleLower.includes('photographer') || jobTitleLower.includes('фотограф')) {
+        return 'Фотосъемка';
+      }
+      if (jobTitleLower.includes('videographer') || jobTitleLower.includes('видеограф')) {
+        return 'Видеосъемка';
+      }
+      if (jobTitleLower.includes('target') || jobTitleLower.includes('таргет')) {
+        return 'Таргет';
+      }
+
+      if (taskTypeLower.includes('post') || taskTypeLower.includes('пост') ||
+          taskTypeLower.includes('reel') || taskTypeLower.includes('stor')) {
+        return 'SMM';
+      }
+      if (taskTypeLower.includes('shoot') || taskTypeLower.includes('съемка')) {
+        return 'Продакшн';
+      }
+
+      return 'Прочее';
+    };
+
     for (const executorId in tasksByExecutor) {
       const user = users?.find(u => u.id === executorId);
       if (!user) continue;
@@ -428,12 +459,14 @@ export const projectExpensesService = {
 
         if (kpiRule && kpiRule.value > 0) {
           const serviceKey = `${executorId}_${taskType}`;
+          const category = getCategoryByJobTitleAndTaskType(user.job_title, taskType);
+
           dynamicExpenses[serviceKey] = {
             serviceName: `${user.name} - ${taskType}`,
             count,
             rate: kpiRule.value,
             cost: count * kpiRule.value,
-            category: 'KPI',
+            category,
             syncedAt: now
           };
         }

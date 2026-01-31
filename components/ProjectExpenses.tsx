@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ProjectExpense, User, Project } from '../types';
+import { ProjectExpense, User, Project, DynamicExpenseItem } from '../types';
 import { projectExpensesService, calculateSmmExpenses, calculateProductionExpenses, calculateTotalExpenses, calculateMargin } from '../services/projectExpensesService';
 import { GLOBAL_RATES } from '../services/projectAnalytics';
 import { projectService } from '../services/projectService';
 import { costAnalysisService } from '../services/costAnalysisService';
+import { calculatorCategoryService } from '../services/calculatorCategoryService';
 import CostBreakdown from './CostBreakdown';
 import PlanFactComparison from './PlanFactComparison';
 import ExpenseTrends from './ExpenseTrends';
@@ -12,6 +13,13 @@ import { ExpenseCategoryCard } from './ExpenseCategoryCard';
 import { SyncPreviewModal } from './SyncPreviewModal';
 import { ExpenseValidation } from './ExpenseValidation';
 import { ChevronLeft, ChevronRight, Lock, Unlock, Search, Filter, Copy } from 'lucide-react';
+
+interface CalculatorCategory {
+  id: string;
+  name: string;
+  icon: string;
+  sortOrder: number;
+}
 
 interface ProjectExpensesProps {
   projectId: string;
@@ -56,6 +64,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   const [isMonthFrozen, setIsMonthFrozen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'filled' | 'deviations'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [calculatorCategories, setCalculatorCategories] = useState<CalculatorCategory[]>([]);
 
   const canEdit = currentUser.jobTitle.toLowerCase().includes('pm') ||
                   currentUser.jobTitle.toLowerCase().includes('project manager') ||
@@ -136,11 +145,21 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
 
   useEffect(() => {
     loadExpenses();
+    loadCalculatorCategories();
   }, [projectId]);
 
   useEffect(() => {
     loadExpenseForMonth(selectedMonth);
   }, [selectedMonth]);
+
+  const loadCalculatorCategories = async () => {
+    try {
+      const categories = await calculatorCategoryService.getAll();
+      setCalculatorCategories(categories);
+    } catch (error) {
+      console.error('Error loading calculator categories:', error);
+    }
+  };
 
   useEffect(() => {
     if (isMonthFrozen) return;
@@ -326,60 +345,117 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     return e.month === date.toISOString().slice(0, 7);
   });
 
-  const categories = [
-    {
-      name: 'SMM',
-      total: currentExpense?.smmExpenses || 0,
-      percentage: totalExpenses > 0 ? ((currentExpense?.smmExpenses || 0) / totalExpenses * 100) : 0,
-      trend: previousMonthExpense ? ((currentExpense?.smmExpenses || 0) - previousMonthExpense.smmExpenses) / Math.max(previousMonthExpense.smmExpenses, 1) * 100 : undefined,
-      icon: '📱',
-      color: 'bg-blue-100',
-      fields: [
-        { label: 'Посты', value: currentExpense?.smmPostsCount || 0, key: 'smmPostsCount', unit: 'шт', rate: GLOBAL_RATES.SMM.post },
-        { label: 'Reels', value: currentExpense?.smmReelsCount || 0, key: 'smmReelsCount', unit: 'шт', rate: GLOBAL_RATES.SMM.reel },
-        { label: 'Stories', value: currentExpense?.smmStoriesCount || 0, key: 'smmStoriesCount', unit: 'шт', rate: GLOBAL_RATES.SMM.story },
-        { label: 'Спец. дизайн', value: currentExpense?.smmSpecDesignCount || 0, key: 'smmSpecDesignCount', unit: 'шт' },
-      ]
-    },
-    {
-      name: 'Production',
-      total: currentExpense?.productionExpenses || 0,
-      percentage: totalExpenses > 0 ? ((currentExpense?.productionExpenses || 0) / totalExpenses * 100) : 0,
-      trend: previousMonthExpense ? ((currentExpense?.productionExpenses || 0) - previousMonthExpense.productionExpenses) / Math.max(previousMonthExpense.productionExpenses, 1) * 100 : undefined,
-      icon: '🎬',
-      color: 'bg-orange-100',
-      fields: [
-        { label: 'Мобилограф', value: currentExpense?.productionMobilographHours || 0, key: 'productionMobilographHours', unit: 'часов' },
-        { label: 'Фотограф', value: currentExpense?.productionPhotographerHours || 0, key: 'productionPhotographerHours', unit: 'часов' },
-        { label: 'Видеограф', value: currentExpense?.productionVideographerHours || 0, key: 'productionVideographerHours', unit: 'часов' },
-        { label: 'Стоимость видео', value: currentExpense?.productionVideoCost || 0, key: 'productionVideoCost', unit: '₸' },
-      ]
-    },
-    {
-      name: 'Salaries',
-      total: (currentExpense?.pmExpenses || 0) + (currentExpense?.targetologistExpenses || 0),
-      percentage: totalExpenses > 0 ? (((currentExpense?.pmExpenses || 0) + (currentExpense?.targetologistExpenses || 0)) / totalExpenses * 100) : 0,
-      trend: previousMonthExpense ? (((currentExpense?.pmExpenses || 0) + (currentExpense?.targetologistExpenses || 0)) - (previousMonthExpense.pmExpenses + previousMonthExpense.targetologistExpenses)) / Math.max((previousMonthExpense.pmExpenses + previousMonthExpense.targetologistExpenses), 1) * 100 : undefined,
-      icon: '💼',
-      color: 'bg-purple-100',
-      fields: [
-        { label: 'Проджект (ЗП)', value: currentExpense?.pmExpenses || 0, key: 'pmExpenses', unit: '₸' },
-        { label: 'Таргетолог (ЗП)', value: currentExpense?.targetologistExpenses || 0, key: 'targetologistExpenses', unit: '₸' },
-      ]
-    },
-    {
-      name: 'Models & Other',
-      total: (currentExpense?.modelsExpenses || 0) + (currentExpense?.otherExpenses || 0),
-      percentage: totalExpenses > 0 ? (((currentExpense?.modelsExpenses || 0) + (currentExpense?.otherExpenses || 0)) / totalExpenses * 100) : 0,
-      trend: previousMonthExpense ? (((currentExpense?.modelsExpenses || 0) + (currentExpense?.otherExpenses || 0)) - (previousMonthExpense.modelsExpenses + previousMonthExpense.otherExpenses)) / Math.max((previousMonthExpense.modelsExpenses + previousMonthExpense.otherExpenses), 1) * 100 : undefined,
-      icon: '📸',
-      color: 'bg-pink-100',
-      fields: [
-        { label: 'Модели', value: currentExpense?.modelsExpenses || 0, key: 'modelsExpenses', unit: '₸' },
-        { label: 'Прочее', value: currentExpense?.otherExpenses || 0, key: 'otherExpenses', unit: '₸' },
-      ]
-    },
-  ];
+  const getCategoryNameMapping = (dbName: string): string => {
+    const mapping: Record<string, string> = {
+      'SMM': 'SMM',
+      'Видеосъемка': 'Production',
+      'Продакшн': 'Production',
+      'Фотосъемка': 'Production',
+      'Таргет': 'Advertising',
+      'Сайты': 'Development'
+    };
+    return mapping[dbName] || dbName;
+  };
+
+  const categories = useMemo(() => {
+    const dynamicExpenses = currentExpense?.dynamicExpenses || {};
+    const categoryMap = new Map<string, {
+      name: string;
+      icon: string;
+      total: number;
+      fields: Array<{ label: string; value: number; key: string; unit: string; rate: number }>;
+      sortOrder: number;
+    }>();
+
+    calculatorCategories.forEach(calcCat => {
+      categoryMap.set(calcCat.name, {
+        name: calcCat.name,
+        icon: calcCat.icon,
+        total: 0,
+        fields: [],
+        sortOrder: calcCat.sortOrder
+      });
+    });
+
+    for (const [serviceId, expense] of Object.entries(dynamicExpenses)) {
+      const expenseItem = expense as DynamicExpenseItem;
+      const categoryName = expenseItem.category || 'Прочее';
+
+      if (!categoryMap.has(categoryName)) {
+        categoryMap.set(categoryName, {
+          name: categoryName,
+          icon: '📊',
+          total: 0,
+          fields: [],
+          sortOrder: 999
+        });
+      }
+
+      const category = categoryMap.get(categoryName)!;
+      category.total += expenseItem.cost;
+      category.fields.push({
+        label: expenseItem.serviceName,
+        value: expenseItem.count,
+        key: serviceId,
+        unit: 'шт',
+        rate: expenseItem.rate
+      });
+    }
+
+    if ((currentExpense?.modelsExpenses || 0) > 0 || (currentExpense?.otherExpenses || 0) > 0) {
+      if (!categoryMap.has('Прочее')) {
+        categoryMap.set('Прочее', {
+          name: 'Прочее',
+          icon: '📋',
+          total: 0,
+          fields: [],
+          sortOrder: 1000
+        });
+      }
+      const otherCategory = categoryMap.get('Прочее')!;
+      otherCategory.total += (currentExpense?.modelsExpenses || 0) + (currentExpense?.otherExpenses || 0);
+      if ((currentExpense?.modelsExpenses || 0) > 0) {
+        otherCategory.fields.push({
+          label: 'Модели',
+          value: currentExpense?.modelsExpenses || 0,
+          key: 'modelsExpenses',
+          unit: '₸',
+          rate: 0
+        });
+      }
+      if ((currentExpense?.otherExpenses || 0) > 0) {
+        otherCategory.fields.push({
+          label: 'Другие расходы',
+          value: currentExpense?.otherExpenses || 0,
+          key: 'otherExpenses',
+          unit: '₸',
+          rate: 0
+        });
+      }
+    }
+
+    const previousTotals = new Map<string, number>();
+    if (previousMonthExpense?.dynamicExpenses) {
+      for (const [_, expense] of Object.entries(previousMonthExpense.dynamicExpenses)) {
+        const expenseItem = expense as DynamicExpenseItem;
+        const categoryName = expenseItem.category || 'Прочее';
+        previousTotals.set(categoryName, (previousTotals.get(categoryName) || 0) + expenseItem.cost);
+      }
+    }
+
+    return Array.from(categoryMap.values())
+      .filter(cat => cat.fields.length > 0 || cat.total > 0)
+      .map(cat => {
+        const prevTotal = previousTotals.get(cat.name) || 0;
+        return {
+          ...cat,
+          percentage: totalExpenses > 0 ? (cat.total / totalExpenses * 100) : 0,
+          trend: prevTotal > 0 ? ((cat.total - prevTotal) / prevTotal * 100) : undefined,
+          color: 'bg-blue-100'
+        };
+      })
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [currentExpense, calculatorCategories, previousMonthExpense, totalExpenses]);
 
   const filteredCategories = categories.filter(cat => {
     if (categoryFilter === 'filled' && cat.total === 0) return false;
