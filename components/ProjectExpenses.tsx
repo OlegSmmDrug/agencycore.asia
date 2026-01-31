@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ProjectExpense, User, Project, DynamicExpenseItem } from '../types';
-import { projectExpensesService, calculateSmmExpenses, calculateProductionExpenses, calculateTotalExpenses, calculateMargin, calculateProjectPeriodDates, getProjectMonthsCount } from '../services/projectExpensesService';
+import { projectExpensesService, calculateSmmExpenses, calculateProductionExpenses, calculateTotalExpenses, calculateMargin } from '../services/projectExpensesService';
 import { GLOBAL_RATES } from '../services/projectAnalytics';
 import { projectService } from '../services/projectService';
 import { costAnalysisService } from '../services/costAnalysisService';
 import { calculatorCategoryHelper, CalculatorCategoryInfo } from '../services/calculatorCategoryHelper';
-import { getProjectPeriods, getCurrentPeriodNumber, getMonthName, formatPeriodDateRange } from '../utils/projectPeriodHelper';
 import CostBreakdown from './CostBreakdown';
 import PlanFactComparison from './PlanFactComparison';
 import ExpenseTrends from './ExpenseTrends';
@@ -40,9 +39,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   tiktokSpend = 0
 }) => {
   const [expenses, setExpenses] = useState<ProjectExpense[]>([]);
-  const [selectedPeriodNumber, setSelectedPeriodNumber] = useState<number>(() => {
-    return project.startDate ? getCurrentPeriodNumber(project.startDate) : 1;
-  });
+  const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
   const [currentExpense, setCurrentExpense] = useState<Partial<ProjectExpense> | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -68,22 +65,6 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   const margin = project.budget - (project.mediaBudget || 0);
   const marginPercent = project.budget > 0 ? Math.round((margin / project.budget) * 100) : 0;
   const mediaPercent = project.budget > 0 ? Math.round(((project.mediaBudget || 0) / project.budget) * 100) : 0;
-
-  const projectPeriods = useMemo(() => {
-    return getProjectPeriods(project.startDate || '', project.endDate);
-  }, [project.startDate, project.endDate]);
-
-  const currentPeriod = useMemo(() => {
-    return projectPeriods.find(p => p.monthNumber === selectedPeriodNumber) || projectPeriods[0];
-  }, [projectPeriods, selectedPeriodNumber]);
-
-  const currentMonthNumber = useMemo(() => {
-    return project.startDate ? getCurrentPeriodNumber(project.startDate) : 1;
-  }, [project.startDate]);
-
-  const currentCalendarMonth = useMemo(() => {
-    return currentPeriod?.calendarMonth || new Date().toISOString().slice(0, 7);
-  }, [currentPeriod]);
 
   const costAnalysis = useMemo(() => {
     if (currentExpense && currentExpense.id) {
@@ -117,19 +98,19 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     try {
       const updatedProject = await projectService.renewProject(project.id, project, currentUser.id);
       onUpdateProject(updatedProject);
-      const newCurrentPeriod = getCurrentPeriodNumber(updatedProject.startDate || '');
-      setSelectedPeriodNumber(newCurrentPeriod);
     } catch (error) {
       console.error('Error renewing project:', error);
     }
   };
 
-  const navigatePeriod = (direction: 'prev' | 'next') => {
-    if (direction === 'prev' && selectedPeriodNumber > 1) {
-      setSelectedPeriodNumber(selectedPeriodNumber - 1);
-    } else if (direction === 'next' && selectedPeriodNumber < currentMonthNumber) {
-      setSelectedPeriodNumber(selectedPeriodNumber + 1);
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    const date = new Date(selectedMonth + '-01');
+    if (direction === 'prev') {
+      date.setMonth(date.getMonth() - 1);
+    } else {
+      date.setMonth(date.getMonth() + 1);
     }
+    setSelectedMonth(date.toISOString().slice(0, 7));
   };
 
   const detectCategory = (serviceName: string): string => {
@@ -168,19 +149,17 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   };
 
   const copyFromPreviousMonth = async () => {
-    const prevPeriodNumber = selectedPeriodNumber - 1;
-    if (prevPeriodNumber < 1) return;
+    const date = new Date(selectedMonth + '-01');
+    date.setMonth(date.getMonth() - 1);
+    const prevMonth = date.toISOString().slice(0, 7);
 
     try {
-      const prevExpense = await projectExpensesService.getExpenseByProjectAndPeriod(projectId, prevPeriodNumber);
-      if (prevExpense && currentPeriod) {
+      const prevExpense = await projectExpensesService.getExpenseByProjectAndMonth(projectId, prevMonth);
+      if (prevExpense) {
         setCurrentExpense({
           ...prevExpense,
           id: currentExpense?.id,
-          month: currentPeriod.calendarMonth,
-          projectMonthNumber: selectedPeriodNumber,
-          periodStartDate: currentPeriod.startDate,
-          periodEndDate: currentPeriod.endDate,
+          month: selectedMonth,
           revenue: 0
         });
       }
@@ -220,22 +199,13 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   };
 
   useEffect(() => {
-    if (project.startDate) {
-      const current = getCurrentPeriodNumber(project.startDate);
-      setSelectedPeriodNumber(current);
-    }
-  }, [project.startDate, project.endDate]);
-
-  useEffect(() => {
     loadExpenses();
     loadCategories();
   }, [projectId]);
 
   useEffect(() => {
-    if (projectPeriods.length > 0) {
-      loadExpenseForPeriod(selectedPeriodNumber);
-    }
-  }, [selectedPeriodNumber, projectPeriods]);
+    loadExpenseForMonth(selectedMonth);
+  }, [selectedMonth]);
 
   const loadCategories = async () => {
     try {
@@ -252,7 +222,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     const autoSync = async () => {
       if (!saving && canEdit) {
         try {
-          const synced = await projectExpensesService.syncDynamicExpenses(projectId, currentCalendarMonth, currentUser.id);
+          const synced = await projectExpensesService.syncDynamicExpenses(projectId, selectedMonth, currentUser.id);
           setCurrentExpense(synced);
           await loadExpenses();
           setLastAutoSync(new Date());
@@ -281,7 +251,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
       clearInterval(syncInterval);
       clearInterval(countdownInterval);
     };
-  }, [projectId, selectedPeriodNumber, canEdit, isMonthFrozen]);
+  }, [projectId, selectedMonth, canEdit, isMonthFrozen]);
 
   const loadExpenses = async () => {
     try {
@@ -295,25 +265,16 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     }
   };
 
-  const loadExpenseForPeriod = async (periodNumber: number) => {
+  const loadExpenseForMonth = async (month: string) => {
     try {
       setLoading(true);
-      const period = projectPeriods.find(p => p.monthNumber === periodNumber);
-      if (!period) {
-        setLoading(false);
-        return;
-      }
-
-      const expense = await projectExpensesService.getExpenseByProjectAndPeriod(projectId, periodNumber);
+      const expense = await projectExpensesService.getExpenseByProjectAndMonth(projectId, month);
       if (expense) {
         setCurrentExpense(expense);
       } else {
         setCurrentExpense({
           projectId,
-          month: period.calendarMonth,
-          projectMonthNumber: periodNumber,
-          periodStartDate: period.startDate,
-          periodEndDate: period.endDate,
+          month,
           smmExpenses: 0,
           smmPostsCount: 0,
           smmReelsCount: 0,
@@ -352,7 +313,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   const handleSyncFromProject = async () => {
     try {
       setSaving(true);
-      const synced = await projectExpensesService.syncFromProjectContent(projectId, currentCalendarMonth, currentUser.id);
+      const synced = await projectExpensesService.syncFromProjectContent(projectId, selectedMonth, currentUser.id);
       setCurrentExpense(synced);
       await loadExpenses();
       setLastAutoSync(new Date());
@@ -368,7 +329,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   const handleSyncDynamicExpenses = async () => {
     try {
       setSaving(true);
-      const synced = await projectExpensesService.syncDynamicExpenses(projectId, currentCalendarMonth, currentUser.id);
+      const synced = await projectExpensesService.syncDynamicExpenses(projectId, selectedMonth, currentUser.id);
       setCurrentExpense(synced);
       await loadExpenses();
       setLastAutoSync(new Date());
@@ -383,19 +344,11 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
 
   const handleSave = async () => {
     if (!currentExpense || !currentExpense.projectId || !currentExpense.month) return;
-    if (!currentPeriod) return;
 
     try {
       setSaving(true);
-      const expenseToSave = {
-        ...currentExpense,
-        projectMonthNumber: selectedPeriodNumber,
-        periodStartDate: currentPeriod.startDate,
-        periodEndDate: currentPeriod.endDate,
-      };
-
       const saved = await projectExpensesService.createOrUpdateExpense(
-        expenseToSave as ProjectExpense,
+        currentExpense as ProjectExpense,
         currentUser.id
       );
       setCurrentExpense(saved);
@@ -435,7 +388,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   const netProfit = revenue - totalExpenses;
 
   const previousMonthExpense = expenses.find(e => {
-    const date = new Date(currentCalendarMonth + '-01');
+    const date = new Date(selectedMonth + '-01');
     date.setMonth(date.getMonth() - 1);
     return e.month === date.toISOString().slice(0, 7);
   });
@@ -548,26 +501,22 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-4">
                 <button
-                  onClick={() => navigatePeriod('prev')}
-                  disabled={selectedPeriodNumber <= 1}
-                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  onClick={() => navigateMonth('prev')}
+                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
                 >
                   <ChevronLeft className="w-5 h-5 text-slate-600" />
                 </button>
 
                 <div>
                   <h2 className="text-2xl font-bold text-slate-800">
-                    {currentPeriod ? getMonthName(currentPeriod.monthNumber) : 'Расходы проекта'}
+                    {new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
                   </h2>
-                  <p className="text-sm text-slate-500">
-                    {currentPeriod ? formatPeriodDateRange(currentPeriod.startDate, currentPeriod.endDate) : 'Управление расходами проекта'}
-                  </p>
+                  <p className="text-sm text-slate-500">Управление расходами проекта</p>
                 </div>
 
                 <button
-                  onClick={() => navigatePeriod('next')}
-                  disabled={selectedPeriodNumber >= currentMonthNumber}
-                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  onClick={() => navigateMonth('next')}
+                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
                 >
                   <ChevronRight className="w-5 h-5 text-slate-600" />
                 </button>
@@ -626,7 +575,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                     <button
                       onClick={() => {
                         setIsEditing(false);
-                        loadExpenseForPeriod(selectedPeriodNumber);
+                        loadExpenseForMonth(selectedMonth);
                       }}
                       className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors"
                     >
@@ -1135,32 +1084,11 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                       <tr
                         key={exp.id}
                         className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer ${
-                          exp.projectMonthNumber === selectedPeriodNumber ? 'bg-blue-50' : ''
+                          exp.month === selectedMonth ? 'bg-blue-50' : ''
                         }`}
-                        onClick={() => exp.projectMonthNumber && setSelectedPeriodNumber(exp.projectMonthNumber)}
+                        onClick={() => setSelectedMonth(exp.month)}
                       >
-                        <td className="py-3 px-4 text-sm font-medium">
-                          {exp.projectMonthNumber ? (
-                            <div>
-                              <div className="font-semibold">
-                                {exp.projectMonthNumber === 1 ? 'Первый' :
-                                 exp.projectMonthNumber === 2 ? 'Второй' :
-                                 exp.projectMonthNumber === 3 ? 'Третий' :
-                                 exp.projectMonthNumber === 4 ? 'Четвертый' :
-                                 exp.projectMonthNumber === 5 ? 'Пятый' :
-                                 exp.projectMonthNumber === 6 ? 'Шестой' :
-                                 `${exp.projectMonthNumber}-й`} месяц
-                              </div>
-                              {exp.periodStartDate && exp.periodEndDate && (
-                                <div className="text-xs text-slate-500">
-                                  {new Date(exp.periodStartDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })} - {new Date(exp.periodEndDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            exp.month
-                          )}
-                        </td>
+                        <td className="py-3 px-4 text-sm font-medium">{exp.month}</td>
                         <td className="py-3 px-4 text-sm text-right">{exp.smmExpenses.toLocaleString()} ₸</td>
                         <td className="py-3 px-4 text-sm text-right">{exp.productionExpenses.toLocaleString()} ₸</td>
                         <td className="py-3 px-4 text-sm text-right">
