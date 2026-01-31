@@ -655,6 +655,48 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
             </div>
           )}
 
+          {currentExpense?.fotCalculations && Object.keys(currentExpense.fotCalculations).length > 0 && (
+            <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-6">
+              <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <span className="text-2xl">💼</span>
+                ФОТ (Фонд оплаты труда)
+              </h3>
+              <div className="mb-4 p-3 bg-white rounded-lg border border-green-200">
+                <div className="text-sm text-slate-600 mb-1">Итого ФОТ</div>
+                <div className="text-2xl font-bold text-green-700">{(currentExpense.fotExpenses || 0).toLocaleString()} ₸</div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {Object.entries(currentExpense.fotCalculations).map(([userId, calc]) => (
+                  <div key={userId} className="bg-white p-4 rounded-lg border border-slate-200">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <div className="font-semibold text-slate-800">{calc.userName}</div>
+                        <div className="text-xs text-slate-500">{calc.jobTitle}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-green-700">{calc.shareForThisProject.toLocaleString()} ₸</div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-slate-600 space-y-1 pt-2 border-t border-slate-100">
+                      <div className="flex justify-between">
+                        <span>Фиксированная ЗП:</span>
+                        <span className="font-medium">{calc.baseSalary.toLocaleString()} ₸</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Активных проектов:</span>
+                        <span className="font-medium">{calc.activeProjectsCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Доля на проект:</span>
+                        <span className="font-medium">{calc.shareForThisProject.toLocaleString()} ₸</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {currentExpense?.salaryCalculations && Object.keys(currentExpense.salaryCalculations).length > 0 && (
             <div className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200 rounded-xl p-6">
               <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">

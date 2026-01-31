@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { ProjectExpense, ProjectExpenseHistory, Project, User, DynamicExpenses, DynamicExpenseItem, SalaryCalculations } from '../types';
+import { ProjectExpense, ProjectExpenseHistory, Project, User, DynamicExpenses, DynamicExpenseItem, SalaryCalculations, FotCalculations } from '../types';
 import { GLOBAL_RATES } from './projectAnalytics';
 import { serviceMappingService } from './serviceMappingService';
 import { calculatorService } from './calculatorService';
@@ -37,6 +37,9 @@ const mapRowToExpense = (row: any): ProjectExpense => ({
   targetologistExpenses: Number(row.targetologist_expenses) || 0,
   targetologistSalaryShare: Number(row.targetologist_salary_share) || 0,
   targetologistProjectCount: row.targetologist_project_count || 1,
+
+  fotExpenses: Number(row.fot_expenses) || 0,
+  fotCalculations: row.fot_calculations || {},
 
   otherExpenses: Number(row.other_expenses) || 0,
   otherExpensesDescription: row.other_expenses_description || '',
@@ -91,7 +94,7 @@ export const calculateTotalExpenses = (expense: Partial<ProjectExpense>): number
   }
 
   if (dynamicTotal > 0) {
-    return dynamicTotal + (expense.modelsExpenses || 0) + (expense.otherExpenses || 0);
+    return dynamicTotal + (expense.modelsExpenses || 0) + (expense.fotExpenses || 0) + (expense.otherExpenses || 0);
   }
 
   const smmExp = expense.smmExpenses || 0;
@@ -99,9 +102,10 @@ export const calculateTotalExpenses = (expense: Partial<ProjectExpense>): number
   const prodExp = expense.productionExpenses || 0;
   const modelsExp = expense.modelsExpenses || 0;
   const targetExp = expense.targetologistExpenses || 0;
+  const fotExp = expense.fotExpenses || 0;
   const otherExp = expense.otherExpenses || 0;
 
-  return smmExp + pmExp + prodExp + modelsExp + targetExp + otherExp;
+  return smmExp + pmExp + prodExp + modelsExp + targetExp + fotExp + otherExp;
 };
 
 export const calculateMargin = (revenue: number, totalExpenses: number): number => {
@@ -136,6 +140,71 @@ export const distributePMSalary = async (
   return {
     pmExpenses,
     pmProjectCount: projectCount,
+  };
+};
+
+export const calculateFotExpenses = async (
+  projectId: string,
+  month: string
+): Promise<{ fotExpenses: number; fotCalculations: FotCalculations }> => {
+  const { data: project } = await supabase
+    .from('projects')
+    .select('team_ids')
+    .eq('id', projectId)
+    .maybeSingle();
+
+  if (!project || !project.team_ids || project.team_ids.length === 0) {
+    return { fotExpenses: 0, fotCalculations: {} };
+  }
+
+  const { data: users } = await supabase
+    .from('users')
+    .select('id, name, job_title')
+    .in('id', project.team_ids);
+
+  if (!users || users.length === 0) {
+    return { fotExpenses: 0, fotCalculations: {} };
+  }
+
+  const { data: salarySchemes } = await supabase
+    .from('salary_schemes')
+    .select('target_id, base_salary, kpi_rules')
+    .eq('target_type', 'user')
+    .in('target_id', users.map(u => u.id));
+
+  const fotCalculations: FotCalculations = {};
+  let totalFot = 0;
+
+  for (const user of users) {
+    const scheme = salarySchemes?.find(s => s.target_id === user.id);
+
+    if (!scheme || !scheme.base_salary || scheme.base_salary <= 0) {
+      continue;
+    }
+
+    const hasKpiRules = scheme.kpi_rules && Array.isArray(scheme.kpi_rules) && scheme.kpi_rules.length > 0;
+    if (hasKpiRules) {
+      continue;
+    }
+
+    const projectCount = await getActiveProjectsCountForUser(user.id);
+    const shareForThisProject = projectCount > 0 ? scheme.base_salary / projectCount : 0;
+
+    fotCalculations[user.id] = {
+      userName: user.name,
+      jobTitle: user.job_title || '',
+      baseSalary: Number(scheme.base_salary),
+      activeProjectsCount: projectCount,
+      shareForThisProject,
+      calculatedAt: new Date().toISOString(),
+    };
+
+    totalFot += shareForThisProject;
+  }
+
+  return {
+    fotExpenses: totalFot,
+    fotCalculations,
   };
 };
 
@@ -229,6 +298,9 @@ export const projectExpensesService = {
       targetologist_expenses: expense.targetologistExpenses || 0,
       targetologist_salary_share: expense.targetologistSalaryShare || 0,
       targetologist_project_count: expense.targetologistProjectCount || 1,
+
+      fot_expenses: expense.fotExpenses || 0,
+      fot_calculations: expense.fotCalculations || {},
 
       other_expenses: expense.otherExpenses || 0,
       other_expenses_description: expense.otherExpensesDescription || '',
@@ -661,8 +733,10 @@ export const projectExpensesService = {
       totalDynamicCost += dynamicExpenses[serviceId].cost;
     }
 
+    const { fotExpenses, fotCalculations } = await calculateFotExpenses(projectId, month);
+
     const projectRevenue = fullProject.budget || existing?.revenue || 0;
-    const totalExpenses = totalDynamicCost + modelsExpenses + (existing?.otherExpenses || 0);
+    const totalExpenses = totalDynamicCost + modelsExpenses + fotExpenses + (existing?.otherExpenses || 0);
     const marginPercent = calculateMargin(projectRevenue, totalExpenses);
 
     const expenseData: Partial<ProjectExpense> & { projectId: string; month: string } = {
@@ -696,6 +770,8 @@ export const projectExpensesService = {
       targetologistExpenses: 0,
       targetologistSalaryShare: existing?.targetologistSalaryShare || 0,
       targetologistProjectCount: existing?.targetologistProjectCount || 1,
+      fotExpenses,
+      fotCalculations,
       otherExpenses: existing?.otherExpenses || 0,
       otherExpensesDescription: existing?.otherExpensesDescription || '',
       revenue: projectRevenue,

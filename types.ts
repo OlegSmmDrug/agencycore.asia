@@ -916,6 +916,19 @@ export interface CostAnalysis {
   }[];
 }
 
+export interface FotCalculationItem {
+  userName: string;
+  jobTitle: string;
+  baseSalary: number;
+  activeProjectsCount: number;
+  shareForThisProject: number;
+  calculatedAt: string;
+}
+
+export interface FotCalculations {
+  [userId: string]: FotCalculationItem;
+}
+
 export interface ProjectExpense {
   id: string;
   projectId: string;
@@ -947,6 +960,9 @@ export interface ProjectExpense {
   targetologistExpenses: number;
   targetologistSalaryShare: number;
   targetologistProjectCount: number;
+
+  fotExpenses: number;
+  fotCalculations?: FotCalculations;
 
   otherExpenses: number;
   otherExpensesDescription: string;
