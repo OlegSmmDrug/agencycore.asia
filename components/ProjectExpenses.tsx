@@ -4,22 +4,13 @@ import { projectExpensesService, calculateSmmExpenses, calculateProductionExpens
 import { GLOBAL_RATES } from '../services/projectAnalytics';
 import { projectService } from '../services/projectService';
 import { costAnalysisService } from '../services/costAnalysisService';
-import { calculatorCategoryService } from '../services/calculatorCategoryService';
 import CostBreakdown from './CostBreakdown';
 import PlanFactComparison from './PlanFactComparison';
 import ExpenseTrends from './ExpenseTrends';
 import ProjectFinancialSummary from './ProjectFinancialSummary';
-import { ExpenseCategoryCard } from './ExpenseCategoryCard';
 import { SyncPreviewModal } from './SyncPreviewModal';
 import { ExpenseValidation } from './ExpenseValidation';
-import { ChevronLeft, ChevronRight, Lock, Unlock, Search, Filter, Copy } from 'lucide-react';
-
-interface CalculatorCategory {
-  id: string;
-  name: string;
-  icon: string;
-  sortOrder: number;
-}
+import { ChevronLeft, ChevronRight, Lock, Unlock, Copy } from 'lucide-react';
 
 interface ProjectExpensesProps {
   projectId: string;
@@ -62,9 +53,6 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   const [syncChanges, setSyncChanges] = useState<any[]>([]);
   const [syncType, setSyncType] = useState<'legacy' | 'dynamic'>('dynamic');
   const [isMonthFrozen, setIsMonthFrozen] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'filled' | 'deviations'>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [calculatorCategories, setCalculatorCategories] = useState<CalculatorCategory[]>([]);
 
   const canEdit = currentUser.jobTitle.toLowerCase().includes('pm') ||
                   currentUser.jobTitle.toLowerCase().includes('project manager') ||
@@ -143,18 +131,8 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     }
   };
 
-  const loadCalculatorCategories = async () => {
-    try {
-      const categories = await calculatorCategoryService.getAll();
-      setCalculatorCategories(categories);
-    } catch (error) {
-      console.error('Error loading calculator categories:', error);
-    }
-  };
-
   useEffect(() => {
     loadExpenses();
-    loadCalculatorCategories();
   }, [projectId]);
 
   useEffect(() => {
@@ -337,132 +315,6 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     return e.month === date.toISOString().slice(0, 7);
   });
 
-  const getCategoryNameMapping = (dbName: string): string => {
-    const mapping: Record<string, string> = {
-      'SMM': 'SMM',
-      'Видеосъемка': 'Production',
-      'Продакшн': 'Production',
-      'Фотосъемка': 'Production',
-      'Таргет': 'Advertising',
-      'Сайты': 'Development'
-    };
-    return mapping[dbName] || dbName;
-  };
-
-  const categories = useMemo(() => {
-    const dynamicExpenses = currentExpense?.dynamicExpenses || {};
-    const categoryMap = new Map<string, {
-      name: string;
-      icon: string;
-      total: number;
-      fields: Array<{ label: string; value: number; key: string; unit: string; rate: number }>;
-      sortOrder: number;
-    }>();
-
-    calculatorCategories.forEach(calcCat => {
-      categoryMap.set(calcCat.name, {
-        name: calcCat.name,
-        icon: calcCat.icon,
-        total: 0,
-        fields: [],
-        sortOrder: calcCat.sortOrder
-      });
-    });
-
-    for (const [serviceId, expense] of Object.entries(dynamicExpenses)) {
-      const expenseItem = expense as DynamicExpenseItem;
-      const categoryName = expenseItem.category || 'Прочее';
-
-      if (!categoryMap.has(categoryName)) {
-        categoryMap.set(categoryName, {
-          name: categoryName,
-          icon: '📊',
-          total: 0,
-          fields: [],
-          sortOrder: 999
-        });
-      }
-
-      const category = categoryMap.get(categoryName)!;
-      category.total += expenseItem.cost;
-      category.fields.push({
-        label: expenseItem.serviceName,
-        value: expenseItem.count,
-        key: serviceId,
-        unit: 'шт',
-        rate: expenseItem.rate
-      });
-    }
-
-    if ((currentExpense?.modelsExpenses || 0) > 0 || (currentExpense?.otherExpenses || 0) > 0) {
-      if (!categoryMap.has('Прочее')) {
-        categoryMap.set('Прочее', {
-          name: 'Прочее',
-          icon: '📋',
-          total: 0,
-          fields: [],
-          sortOrder: 1000
-        });
-      }
-      const otherCategory = categoryMap.get('Прочее')!;
-      otherCategory.total += (currentExpense?.modelsExpenses || 0) + (currentExpense?.otherExpenses || 0);
-      if ((currentExpense?.modelsExpenses || 0) > 0) {
-        otherCategory.fields.push({
-          label: 'Модели',
-          value: currentExpense?.modelsExpenses || 0,
-          key: 'modelsExpenses',
-          unit: '₸',
-          rate: 0
-        });
-      }
-      if ((currentExpense?.otherExpenses || 0) > 0) {
-        otherCategory.fields.push({
-          label: 'Другие расходы',
-          value: currentExpense?.otherExpenses || 0,
-          key: 'otherExpenses',
-          unit: '₸',
-          rate: 0
-        });
-      }
-    }
-
-    const previousTotals = new Map<string, number>();
-    if (previousMonthExpense?.dynamicExpenses) {
-      for (const [_, expense] of Object.entries(previousMonthExpense.dynamicExpenses)) {
-        const expenseItem = expense as DynamicExpenseItem;
-        const categoryName = expenseItem.category || 'Прочее';
-        previousTotals.set(categoryName, (previousTotals.get(categoryName) || 0) + expenseItem.cost);
-      }
-    }
-
-    return Array.from(categoryMap.values())
-      .filter(cat => cat.fields.length > 0 || cat.total > 0)
-      .map(cat => {
-        const prevTotal = previousTotals.get(cat.name) || 0;
-        return {
-          ...cat,
-          percentage: totalExpenses > 0 ? (cat.total / totalExpenses * 100) : 0,
-          trend: prevTotal > 0 ? ((cat.total - prevTotal) / prevTotal * 100) : undefined,
-          color: 'bg-blue-100'
-        };
-      })
-      .sort((a, b) => a.sortOrder - b.sortOrder);
-  }, [currentExpense, calculatorCategories, previousMonthExpense, totalExpenses]);
-
-  const filteredCategories = categories.filter(cat => {
-    if (categoryFilter === 'filled' && cat.total === 0) return false;
-    if (categoryFilter === 'deviations' && (!cat.trend || Math.abs(cat.trend) < 10)) return false;
-    if (searchQuery && !cat.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
-  });
-
-  const USD_TO_KZT_RATE = 475;
-  const adsSpendInKZT = adsSpend * USD_TO_KZT_RATE;
-  const mediaBudget = project.mediaBudget || 0;
-  const expensePercent = mediaBudget > 0 ? (adsSpendInKZT / mediaBudget) * 100 : 0;
-  const netProfitWithAds = revenue - adsSpendInKZT;
-  const profitMarginPercent = revenue > 0 ? ((netProfitWithAds / revenue) * 100).toFixed(1) : '0.0';
-
   if (loading && !currentExpense) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -507,104 +359,29 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-2 h-2 bg-red-400 rounded-full"></div>
-                <span className="text-xs font-semibold text-blue-100 uppercase tracking-wide">Расходы</span>
+                <span className="text-xs font-semibold text-blue-100 uppercase tracking-wide">Расходы на услуги</span>
               </div>
-              <div>
-                <p className="text-2xl font-bold text-white">
-                  {loadingAdsSpend ? (
-                    <span className="flex items-center gap-2">
-                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Загрузка...
-                    </span>
-                  ) : (
-                    `${adsSpendInKZT.toLocaleString()} ₸`
-                  )}
+              <p className="text-2xl font-bold text-white">{totalExpenses.toLocaleString()} ₸</p>
+              {totalExpenses > 0 && (
+                <p className="text-xs text-blue-200 mt-2">
+                  Себестоимость услуг
                 </p>
-                {!loadingAdsSpend && adsSpend > 0 && (
-                  <p className="text-xs text-blue-200 mt-1">
-                    ${adsSpend.toLocaleString()}
-                  </p>
-                )}
-              </div>
-              {!loadingAdsSpend && adsSpend > 0 && (
-                <div className="mt-3 space-y-1 text-xs text-blue-200">
-                  {facebookSpend > 0 && (
-                    <div className="flex items-center justify-between">
-                      <span>Facebook Ads</span>
-                      <span className="font-semibold">
-                        {(facebookSpend * USD_TO_KZT_RATE).toLocaleString()} ₸
-                        <span className="text-blue-300 ml-1">(${facebookSpend.toLocaleString()})</span>
-                      </span>
-                    </div>
-                  )}
-                  {googleSpend > 0 && (
-                    <div className="flex items-center justify-between">
-                      <span>Google Ads</span>
-                      <span className="font-semibold">
-                        {(googleSpend * USD_TO_KZT_RATE).toLocaleString()} ₸
-                        <span className="text-blue-300 ml-1">(${googleSpend.toLocaleString()})</span>
-                      </span>
-                    </div>
-                  )}
-                  {tiktokSpend > 0 && (
-                    <div className="flex items-center justify-between">
-                      <span>TikTok Ads</span>
-                      <span className="font-semibold">
-                        {(tiktokSpend * USD_TO_KZT_RATE).toLocaleString()} ₸
-                        <span className="text-blue-300 ml-1">(${tiktokSpend.toLocaleString()})</span>
-                      </span>
-                    </div>
-                  )}
-                </div>
               )}
             </div>
 
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
               <div className="flex items-center gap-2 mb-2">
-                <div className={`w-2 h-2 rounded-full ${netProfitWithAds >= 0 ? 'bg-emerald-400' : 'bg-rose-400'}`}></div>
+                <div className={`w-2 h-2 rounded-full ${netProfit >= 0 ? 'bg-emerald-400' : 'bg-rose-400'}`}></div>
                 <span className="text-xs font-semibold text-blue-100 uppercase tracking-wide">Прибыль</span>
               </div>
-              <p className={`text-2xl font-bold ${netProfitWithAds >= 0 ? 'text-white' : 'text-rose-300'}`}>
-                {netProfitWithAds.toLocaleString()} ₸
+              <p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-white' : 'text-rose-300'}`}>
+                {netProfit.toLocaleString()} ₸
               </p>
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-semibold text-blue-100">Использование медиа бюджета</span>
-              <span className="text-sm font-bold text-white">{expensePercent.toFixed(1)}%</span>
-            </div>
-            {mediaBudget > 0 && (
-              <div className="text-xs text-blue-200 mb-2">
-                {adsSpendInKZT.toLocaleString()} ₸ из {mediaBudget.toLocaleString()} ₸
-                {adsSpend > 0 && (
-                  <span className="text-blue-300 ml-1">(${adsSpend.toLocaleString()})</span>
-                )}
-              </div>
-            )}
-            <div className="h-4 bg-blue-900/50 rounded-full overflow-hidden border border-blue-700/50">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  expensePercent > 90 ? 'bg-gradient-to-r from-rose-500 to-rose-600' :
-                  expensePercent > 70 ? 'bg-gradient-to-r from-amber-500 to-amber-600' :
-                  'bg-gradient-to-r from-emerald-500 to-emerald-600'
-                }`}
-                style={{ width: `${Math.min(expensePercent, 100)}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between mt-2">
-              <span className="text-xs text-blue-200">Маржинальность:</span>
-              <span className={`text-sm font-bold ${
-                Number(profitMarginPercent) >= 50 ? 'text-emerald-300' :
-                Number(profitMarginPercent) >= 20 ? 'text-amber-300' :
-                'text-rose-300'
-              }`}>
-                {profitMarginPercent}%
-              </span>
+              {revenue > 0 && (
+                <p className="text-xs text-blue-200 mt-2">
+                  Маржинальность: {expenseMargin.toFixed(1)}%
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -753,66 +530,37 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setCategoryFilter('all')}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    categoryFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  Все
-                </button>
-                <button
-                  onClick={() => setCategoryFilter('filled')}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    categoryFilter === 'filled' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  Заполненные
-                </button>
-                <button
-                  onClick={() => setCategoryFilter('deviations')}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    categoryFilter === 'deviations' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  С отклонениями
-                </button>
-              </div>
-
-              {canEdit && (
-                <div className="flex gap-2">
-                  {isEditing ? (
-                    <>
-                      <button
-                        onClick={handleSave}
-                        disabled={saving}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                      >
-                        {saving ? 'Сохранение...' : 'Сохранить'}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsEditing(false);
-                          loadExpenseForMonth(selectedMonth);
-                        }}
-                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors"
-                      >
-                        Отмена
-                      </button>
-                    </>
-                  ) : (
+            {canEdit && (
+              <div className="flex gap-2 justify-end">
+                {isEditing ? (
+                  <>
                     <button
-                      onClick={() => setIsEditing(true)}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                      onClick={handleSave}
+                      disabled={saving}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
                     >
-                      Редактировать
+                      {saving ? 'Сохранение...' : 'Сохранить'}
                     </button>
-                  )}
-                </div>
-              )}
-            </div>
+                    <button
+                      onClick={() => {
+                        setIsEditing(false);
+                        loadExpenseForMonth(selectedMonth);
+                      }}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Отмена
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Редактировать
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           <ExpenseValidation
@@ -823,29 +571,12 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
             previousMonthExpenses={previousMonthExpense?.totalExpenses}
           />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredCategories.map((category) => (
-              <ExpenseCategoryCard
-                key={category.name}
-                category={category}
-                isEditing={isEditing}
-                onFieldChange={(key, value) => updateField(key as keyof ProjectExpense, value)}
-                previousMonthData={previousMonthExpense ?
-                  (category.name === 'SMM' ? previousMonthExpense.smmExpenses :
-                   category.name === 'Production' ? previousMonthExpense.productionExpenses :
-                   category.name === 'Salaries' ? previousMonthExpense.pmExpenses + previousMonthExpense.targetologistExpenses :
-                   previousMonthExpense.modelsExpenses + previousMonthExpense.otherExpenses) : undefined
-                }
-              />
-            ))}
-          </div>
-
           {currentExpense?.dynamicExpenses && Object.keys(currentExpense.dynamicExpenses).length > 0 && (
             <div className="bg-gradient-to-br from-blue-50 to-sky-50 border-2 border-blue-200 rounded-xl p-6">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <span className="text-2xl">✨</span>
-                  Динамические расходы из калькулятора
+                  <span className="text-2xl">💰</span>
+                  Детализация расходов по услугам
                 </h3>
                 {currentExpense.lastSyncedAt && (
                   <div className="text-xs text-slate-500">
@@ -863,7 +594,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
 
                 const categoryNames: Record<string, string> = {
                   smm: 'SMM',
-                  video: 'Production',
+                  video: 'Продакшн',
                   target: 'Таргет',
                   sites: 'Сайты'
                 };
@@ -875,21 +606,45 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                   sites: '🌐'
                 };
 
+                const categoryTotal = categoryServices.reduce((sum, [_, item]) => sum + item.cost, 0);
+                const categoryPercent = totalExpenses > 0 ? (categoryTotal / totalExpenses * 100).toFixed(1) : '0.0';
+
                 return (
-                  <div key={category} className="mb-4 last:mb-0">
-                    <div className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
-                      <span>{categoryIcons[category]}</span>
-                      {categoryNames[category]}
+                  <div key={category} className="mb-6 last:mb-0">
+                    <div className="bg-white rounded-lg p-4 mb-3 border border-blue-300">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">{categoryIcons[category]}</span>
+                          <span className="text-lg font-bold text-slate-800">{categoryNames[category]}</span>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xl font-bold text-blue-700">{categoryTotal.toLocaleString()} ₸</div>
+                          <div className="text-xs text-slate-500">{categoryPercent}% от общих расходов</div>
+                        </div>
+                      </div>
+                      <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(Number(categoryPercent), 100)}%` }}
+                        />
+                      </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {categoryServices.map(([serviceId, item]) => (
-                        <div key={serviceId} className="bg-white p-3 rounded-lg border border-slate-200">
-                          <div className="flex justify-between items-start mb-1">
+                        <div key={serviceId} className="bg-white p-4 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors">
+                          <div className="flex justify-between items-start mb-2">
                             <span className="text-sm text-slate-700 font-medium">{item.serviceName}</span>
-                            <span className="text-sm font-bold text-slate-800">{item.cost.toLocaleString()} ₸</span>
+                            <span className="text-lg font-bold text-slate-900">{item.cost.toLocaleString()} ₸</span>
                           </div>
-                          <div className="text-xs text-slate-500">
-                            {item.count} × {item.rate.toLocaleString()} ₸
+                          <div className="flex justify-between items-center text-xs text-slate-500">
+                            <span>Количество: {item.count}</span>
+                            <span>Ставка: {item.rate.toLocaleString()} ₸</span>
+                          </div>
+                          <div className="mt-2 pt-2 border-t border-slate-100">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-slate-600">Итого:</span>
+                              <span className="font-semibold text-slate-700">{item.count} × {item.rate.toLocaleString()} = {item.cost.toLocaleString()} ₸</span>
+                            </div>
                           </div>
                         </div>
                       ))}
