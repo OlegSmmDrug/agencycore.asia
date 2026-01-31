@@ -4,6 +4,7 @@ import { projectExpensesService, calculateSmmExpenses, calculateProductionExpens
 import { GLOBAL_RATES } from '../services/projectAnalytics';
 import { projectService } from '../services/projectService';
 import { costAnalysisService } from '../services/costAnalysisService';
+import { calculatorCategoryHelper, CalculatorCategoryInfo } from '../services/calculatorCategoryHelper';
 import CostBreakdown from './CostBreakdown';
 import PlanFactComparison from './PlanFactComparison';
 import ExpenseTrends from './ExpenseTrends';
@@ -65,6 +66,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   const [syncChanges, setSyncChanges] = useState<any[]>([]);
   const [syncType, setSyncType] = useState<'legacy' | 'dynamic'>('dynamic');
   const [isMonthFrozen, setIsMonthFrozen] = useState(false);
+  const [categories, setCategories] = useState<CalculatorCategoryInfo[]>([]);
 
   const canEdit = currentUser.jobTitle.toLowerCase().includes('pm') ||
                   currentUser.jobTitle.toLowerCase().includes('project manager') ||
@@ -145,11 +147,21 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
 
   useEffect(() => {
     loadExpenses();
+    loadCategories();
   }, [projectId]);
 
   useEffect(() => {
     loadExpenseForMonth(selectedMonth);
   }, [selectedMonth]);
+
+  const loadCategories = async () => {
+    try {
+      const cats = await calculatorCategoryHelper.getAllCategories();
+      setCategories(cats);
+    } catch (error) {
+      console.error('Error loading categories:', error);
+    }
+  };
 
   useEffect(() => {
     if (isMonthFrozen) return;
@@ -605,77 +617,147 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                 )}
               </div>
 
-              {['smm', 'video', 'target', 'sites'].map(category => {
-                const categoryServices = Object.entries(currentExpense.dynamicExpenses || {}).filter(
-                  ([_, item]) => item.category === category
-                );
+              {(() => {
+                const dynamicExpenses = currentExpense.dynamicExpenses || {};
+                const categoriesInUse = new Set<string>();
 
-                if (categoryServices.length === 0) return null;
+                Object.values(dynamicExpenses).forEach(item => {
+                  if (item.category) categoriesInUse.add(item.category);
+                });
 
-                const categoryNames: Record<string, string> = {
-                  smm: 'SMM',
-                  video: 'Продакшн',
-                  target: 'Таргет',
-                  sites: 'Сайты'
-                };
+                const sortedCategories = categories
+                  .filter(cat => categoriesInUse.has(cat.id))
+                  .sort((a, b) => a.sortOrder - b.sortOrder);
 
-                const categoryIcons: Record<string, string> = {
-                  smm: '📱',
-                  video: '🎬',
-                  target: '🎯',
-                  sites: '🌐'
-                };
+                if (sortedCategories.length === 0) {
+                  const legacyCategories = ['smm', 'video', 'target', 'sites'].filter(catId =>
+                    Object.values(dynamicExpenses).some(item => item.category === catId)
+                  );
 
-                const categoryTotal = categoryServices.reduce((sum, [_, item]) => sum + item.cost, 0);
-                const categoryPercent = totalExpenses > 0 ? (categoryTotal / totalExpenses * 100).toFixed(1) : '0.0';
+                  return legacyCategories.map(category => {
+                    const categoryServices = Object.entries(dynamicExpenses).filter(
+                      ([_, item]) => item.category === category
+                    );
+                    if (categoryServices.length === 0) return null;
 
-                return (
-                  <div key={category} className="mb-6 last:mb-0">
-                    <div className="bg-white rounded-lg p-4 mb-3 border border-blue-300">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-2xl">{categoryIcons[category]}</span>
-                          <span className="text-lg font-bold text-slate-800">{categoryNames[category]}</span>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-xl font-bold text-blue-700">{categoryTotal.toLocaleString()} ₸</div>
-                          <div className="text-xs text-slate-500">{categoryPercent}% от общих расходов</div>
-                        </div>
-                      </div>
-                      <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-500"
-                          style={{ width: `${Math.min(Number(categoryPercent), 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {categoryServices.map(([serviceId, item]) => {
-                        const isProductionOrPhoto = category === 'video' || item.serviceName.includes(' - Shooting') || item.serviceName.includes(' - Мобилография');
-                        const countLabel = isProductionOrPhoto ? 'Часов' : 'Количество';
-                        return (
-                          <div key={serviceId} className="bg-white p-4 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors">
-                            <div className="flex justify-between items-start mb-2">
-                              <span className="text-sm text-slate-700 font-medium">{item.serviceName}</span>
-                              <span className="text-lg font-bold text-slate-900">{item.cost.toLocaleString()} ₸</span>
+                    const legacyNames: Record<string, string> = {
+                      smm: 'SMM', video: 'Продакшн', target: 'Таргет', sites: 'Сайты'
+                    };
+                    const legacyIcons: Record<string, string> = {
+                      smm: '📱', video: '🎬', target: '🎯', sites: '🌐'
+                    };
+
+                    const categoryTotal = categoryServices.reduce((sum, [_, item]) => sum + item.cost, 0);
+                    const categoryPercent = totalExpenses > 0 ? (categoryTotal / totalExpenses * 100).toFixed(1) : '0.0';
+
+                    return (
+                      <div key={category} className="mb-6 last:mb-0">
+                        <div className="bg-white rounded-lg p-4 mb-3 border border-blue-300">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-2xl">{legacyIcons[category] || '📁'}</span>
+                              <span className="text-lg font-bold text-slate-800">{legacyNames[category] || category}</span>
                             </div>
-                            <div className="flex justify-between items-center text-xs text-slate-500">
-                              <span>{countLabel}: {item.count}</span>
-                              <span>Ставка: {item.rate.toLocaleString()} ₸</span>
-                            </div>
-                            <div className="mt-2 pt-2 border-t border-slate-100">
-                              <div className="flex justify-between text-xs">
-                                <span className="text-slate-600">Итого:</span>
-                                <span className="font-semibold text-slate-700">{item.count} × {item.rate.toLocaleString()} = {item.cost.toLocaleString()} ₸</span>
-                              </div>
+                            <div className="text-right">
+                              <div className="text-xl font-bold text-blue-700">{categoryTotal.toLocaleString()} ₸</div>
+                              <div className="text-xs text-slate-500">{categoryPercent}% от общих расходов</div>
                             </div>
                           </div>
-                        );
-                      })}
+                          <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-500"
+                              style={{ width: `${Math.min(Number(categoryPercent), 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {categoryServices.map(([serviceId, item]) => {
+                            const isProductionOrPhoto = category === 'video' || item.serviceName.includes(' - Shooting') || item.serviceName.includes(' - Мобилография');
+                            const countLabel = isProductionOrPhoto ? 'Часов' : 'Количество';
+                            return (
+                              <div key={serviceId} className="bg-white p-4 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors">
+                                <div className="flex justify-between items-start mb-2">
+                                  <span className="text-sm text-slate-700 font-medium">{item.serviceName}</span>
+                                  <span className="text-lg font-bold text-slate-900">{item.cost.toLocaleString()} ₸</span>
+                                </div>
+                                <div className="flex justify-between items-center text-xs text-slate-500">
+                                  <span>{countLabel}: {item.count}</span>
+                                  <span>Ставка: {item.rate.toLocaleString()} ₸</span>
+                                </div>
+                                <div className="mt-2 pt-2 border-t border-slate-100">
+                                  <div className="flex justify-between text-xs">
+                                    <span className="text-slate-600">Итого:</span>
+                                    <span className="font-semibold text-slate-700">{item.count} × {item.rate.toLocaleString()} = {item.cost.toLocaleString()} ₸</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  });
+                }
+
+                return sortedCategories.map(category => {
+                  const categoryServices = Object.entries(dynamicExpenses).filter(
+                    ([_, item]) => item.category === category.id
+                  );
+                  if (categoryServices.length === 0) return null;
+
+                  const categoryTotal = categoryServices.reduce((sum, [_, item]) => sum + item.cost, 0);
+                  const categoryPercent = totalExpenses > 0 ? (categoryTotal / totalExpenses * 100).toFixed(1) : '0.0';
+
+                  return (
+                    <div key={category.id} className="mb-6 last:mb-0">
+                      <div className="bg-white rounded-lg p-4 mb-3 border border-blue-300">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-2xl">{category.icon}</span>
+                            <span className="text-lg font-bold text-slate-800">{category.name}</span>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xl font-bold text-blue-700">{categoryTotal.toLocaleString()} ₸</div>
+                            <div className="text-xs text-slate-500">{categoryPercent}% от общих расходов</div>
+                          </div>
+                        </div>
+                        <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-500"
+                            style={{ width: `${Math.min(Number(categoryPercent), 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {categoryServices.map(([serviceId, item]) => {
+                          const isProductionOrPhoto = ['video', 'Продакшн', 'Видеосъемка', 'Фотосъемка'].some(c =>
+                            category.id.includes(c) || category.name.includes(c)
+                          ) || item.serviceName.includes(' - Shooting') || item.serviceName.includes(' - Мобилография');
+                          const countLabel = isProductionOrPhoto ? 'Часов' : 'Количество';
+                          return (
+                            <div key={serviceId} className="bg-white p-4 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors">
+                              <div className="flex justify-between items-start mb-2">
+                                <span className="text-sm text-slate-700 font-medium">{item.serviceName}</span>
+                                <span className="text-lg font-bold text-slate-900">{item.cost.toLocaleString()} ₸</span>
+                              </div>
+                              <div className="flex justify-between items-center text-xs text-slate-500">
+                                <span>{countLabel}: {item.count}</span>
+                                <span>Ставка: {item.rate.toLocaleString()} ₸</span>
+                              </div>
+                              <div className="mt-2 pt-2 border-t border-slate-100">
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-slate-600">Итого:</span>
+                                  <span className="font-semibold text-slate-700">{item.count} × {item.rate.toLocaleString()} = {item.cost.toLocaleString()} ₸</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           )}
 

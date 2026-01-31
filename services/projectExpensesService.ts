@@ -5,6 +5,7 @@ import { serviceMappingService } from './serviceMappingService';
 import { calculatorService } from './calculatorService';
 import { salarySchemeService } from './salarySchemeService';
 import { getLiveduneContentCounts, LiveduneContentCounts } from './contentCalculationService';
+import { calculatorCategoryHelper } from './calculatorCategoryHelper';
 
 const mapRowToExpense = (row: any): ProjectExpense => ({
   id: row.id,
@@ -669,37 +670,6 @@ export const projectExpensesService = {
       console.error('Error fetching users:', usersError);
     }
 
-    const getCategoryByJobTitleAndTaskType = (jobTitle: string, taskType: string): string => {
-      const jobTitleLower = jobTitle.toLowerCase();
-      const taskTypeLower = taskType.toLowerCase();
-
-      if (jobTitleLower.includes('smm') || jobTitleLower.includes('контент')) {
-        return 'SMM';
-      }
-      if (jobTitleLower.includes('mobilograph') || jobTitleLower.includes('мобилограф')) {
-        return 'Продакшн';
-      }
-      if (jobTitleLower.includes('photographer') || jobTitleLower.includes('фотограф')) {
-        return 'Фотосъемка';
-      }
-      if (jobTitleLower.includes('videographer') || jobTitleLower.includes('видеограф')) {
-        return 'Видеосъемка';
-      }
-      if (jobTitleLower.includes('target') || jobTitleLower.includes('таргет')) {
-        return 'Таргет';
-      }
-
-      if (taskTypeLower.includes('post') || taskTypeLower.includes('пост') ||
-          taskTypeLower.includes('reel') || taskTypeLower.includes('stor')) {
-        return 'SMM';
-      }
-      if (taskTypeLower.includes('shoot') || taskTypeLower.includes('съемка')) {
-        return 'Продакшн';
-      }
-
-      return 'Прочее';
-    };
-
     for (const executorId in tasksByExecutor) {
       const user = users?.find(u => u.id === executorId);
       if (!user) continue;
@@ -722,7 +692,7 @@ export const projectExpensesService = {
 
         if (kpiRule && kpiRule.value > 0) {
           const serviceKey = `${executorId}_${taskType}`;
-          const category = getCategoryByJobTitleAndTaskType(user.job_title, taskType);
+          const category = await calculatorCategoryHelper.getCategoryByJobTitleAndTaskType(user.job_title, taskType);
 
           dynamicExpenses[serviceKey] = {
             serviceName: `${user.name} - ${taskType}`,
@@ -791,19 +761,7 @@ export const projectExpensesService = {
           const serviceKey = `kpi_${metricKey}`;
           const cost = fact * kpiRule.value;
 
-          let category = 'smm';
-          const jobTitleLower = (kpiRule.jobTitle || '').toLowerCase();
-          if (jobTitleLower.includes('smm') || jobTitleLower.includes('контент')) {
-            category = 'smm';
-          } else if (jobTitleLower.includes('mobilograph') || jobTitleLower.includes('мобилограф')) {
-            category = 'video';
-          } else if (jobTitleLower.includes('photographer') || jobTitleLower.includes('фотограф')) {
-            category = 'video';
-          } else if (jobTitleLower.includes('videographer') || jobTitleLower.includes('видеограф')) {
-            category = 'video';
-          } else if (jobTitleLower.includes('target') || jobTitleLower.includes('таргет')) {
-            category = 'target';
-          }
+          const category = await calculatorCategoryHelper.getCategoryByJobTitleAndTaskType(kpiRule.jobTitle || '', metricKey);
 
           dynamicExpenses[serviceKey] = {
             serviceName: kpiRule.taskType,
