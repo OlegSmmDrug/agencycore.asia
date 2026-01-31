@@ -12,6 +12,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   target: '#ec4899',
   sites: '#10b981',
   salaries: '#f59e0b',
+  fot: '#14b8a6',
   models: '#ef4444',
   other: '#6b7280'
 };
@@ -22,6 +23,7 @@ const CATEGORY_ICONS: Record<string, string> = {
   target: '🎯',
   sites: '🌐',
   salaries: '👥',
+  fot: '💼',
   models: '🌟',
   other: '📦'
 };

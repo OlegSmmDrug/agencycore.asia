@@ -19,6 +19,9 @@ export const costAnalysisService = {
     const salariesCategory = this.analyzeSalariesCosts(expense);
     if (salariesCategory.totalCost > 0) categories.push(salariesCategory);
 
+    const fotCategory = this.analyzeFotCosts(expense);
+    if (fotCategory.totalCost > 0) categories.push(fotCategory);
+
     const modelsCategory = this.analyzeModelsCosts(expense);
     if (modelsCategory.totalCost > 0) categories.push(modelsCategory);
 
@@ -100,7 +103,7 @@ export const costAnalysisService = {
 
     return {
       category: 'video',
-      categoryName: 'Production',
+      categoryName: 'Продакшн',
       totalCost,
       percentage: 0,
       items
@@ -185,6 +188,29 @@ export const costAnalysisService = {
     return {
       category: 'salaries',
       categoryName: 'Зарплаты',
+      totalCost,
+      percentage: 0,
+      items
+    };
+  },
+
+  analyzeFotCosts(expense: ProjectExpense): CategoryCostBreakdown {
+    const items: CategoryCostBreakdown['items'] = [];
+
+    if (expense.fotCalculations) {
+      Object.entries(expense.fotCalculations).forEach(([_, calc]) => {
+        items.push({
+          name: `${calc.userName} (${calc.jobTitle})`,
+          cost: calc.shareForThisProject
+        });
+      });
+    }
+
+    const totalCost = items.reduce((sum, item) => sum + item.cost, 0);
+
+    return {
+      category: 'fot',
+      categoryName: 'ФОТ',
       totalCost,
       percentage: 0,
       items

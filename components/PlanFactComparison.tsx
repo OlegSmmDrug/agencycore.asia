@@ -24,9 +24,14 @@ const PlanFactComparison: React.FC<PlanFactComparisonProps> = ({ project, expens
       const plan = metric.plan || 0;
       const fact = metric.fact || 0;
 
-      const expenseItem = Object.values(expense.dynamicExpenses || {}).find(
-        item => item.serviceName.toLowerCase().includes(label.toLowerCase())
-      );
+      const expenseItem = Object.values(expense.dynamicExpenses || {}).find(item => {
+        const serviceName = item.serviceName.toLowerCase();
+        const labelLower = label.toLowerCase();
+
+        return serviceName === labelLower ||
+               serviceName.includes(labelLower) ||
+               labelLower.includes(serviceName);
+      });
 
       if (expenseItem) {
         const planCost = plan * expenseItem.rate;
@@ -35,7 +40,7 @@ const PlanFactComparison: React.FC<PlanFactComparisonProps> = ({ project, expens
         const variancePercent = plan > 0 ? ((fact - plan) / plan) * 100 : 0;
 
         comparisons.push({
-          name: label,
+          name: expenseItem.serviceName,
           plan,
           fact,
           planCost,

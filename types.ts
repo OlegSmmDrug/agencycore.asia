@@ -891,7 +891,7 @@ export interface SalaryCalculations {
 export type SyncSource = 'auto' | 'manual' | 'mixed';
 
 export interface CategoryCostBreakdown {
-  category: 'smm' | 'video' | 'target' | 'sites' | 'salaries' | 'models' | 'other';
+  category: 'smm' | 'video' | 'target' | 'sites' | 'salaries' | 'fot' | 'models' | 'other';
   categoryName: string;
   totalCost: number;
   percentage: number;
