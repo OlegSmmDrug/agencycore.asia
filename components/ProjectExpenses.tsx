@@ -655,16 +655,57 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
             </div>
           )}
 
-          {currentExpense?.fotCalculations && Object.keys(currentExpense.fotCalculations).length > 0 && (
-            <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-6">
-              <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <span className="text-2xl">💼</span>
                 ФОТ (Фонд оплаты труда)
               </h3>
-              <div className="mb-4 p-3 bg-white rounded-lg border border-green-200">
-                <div className="text-sm text-slate-600 mb-1">Итого ФОТ</div>
-                <div className="text-2xl font-bold text-green-700">{(currentExpense.fotExpenses || 0).toLocaleString()} ₸</div>
-              </div>
+              <button
+                onClick={async () => {
+                  if (!currentExpense || saving) return;
+                  setSaving(true);
+                  try {
+                    const { calculateFotExpenses } = await import('../services/projectExpensesService');
+                    const { fotExpenses, fotCalculations } = await calculateFotExpenses(project.id, selectedMonth);
+
+                    const totalExpenses = calculateTotalExpenses({
+                      ...currentExpense,
+                      fotExpenses,
+                    });
+
+                    const updated: Partial<ProjectExpense> & { projectId: string; month: string } = {
+                      ...currentExpense,
+                      projectId: project.id,
+                      month: selectedMonth,
+                      fotExpenses,
+                      fotCalculations,
+                      totalExpenses,
+                      marginPercent: calculateMargin(currentExpense.revenue || 0, totalExpenses),
+                    };
+
+                    await projectExpensesService.createOrUpdateExpense(updated, currentUser.id);
+                    const updatedExpenses = await projectExpensesService.getExpensesByProject(project.id);
+                    setExpenses(updatedExpenses);
+                  } catch (error) {
+                    console.error('Error recalculating FOT:', error);
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                disabled={saving}
+                className="px-3 py-1 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                🔄 Пересчитать
+              </button>
+            </div>
+
+            <div className="mb-4 p-3 bg-white rounded-lg border border-green-200">
+              <div className="text-sm text-slate-600 mb-1">Итого ФОТ</div>
+              <div className="text-2xl font-bold text-green-700">{(currentExpense?.fotExpenses || 0).toLocaleString()} ₸</div>
+            </div>
+
+            {currentExpense?.fotCalculations && Object.keys(currentExpense.fotCalculations).length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {Object.entries(currentExpense.fotCalculations).map(([userId, calc]) => (
                   <div key={userId} className="bg-white p-4 rounded-lg border border-slate-200">
@@ -694,8 +735,25 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">ℹ️</span>
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-slate-800 mb-2">Настройте зарплатные схемы</h4>
+                    <p className="text-sm text-slate-600 mb-3">
+                      ФОТ рассчитывается для сотрудников с фиксированной оплатой (без KPI).
+                      Формула: Фикс / Количество активных проектов сотрудника.
+                    </p>
+                    <p className="text-sm text-slate-600">
+                      Перейдите в <strong>Зарплатные схемы</strong> и настройте фиксированную оплату
+                      (Base Salary) для нужных сотрудников, затем нажмите "Пересчитать".
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {currentExpense?.salaryCalculations && Object.keys(currentExpense.salaryCalculations).length > 0 && (
             <div className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200 rounded-xl p-6">
