@@ -145,7 +145,10 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   const loadCategories = async () => {
     try {
       const cats = await calculatorCategoryHelper.getAllCategories();
-      setCategories(cats);
+      const filteredCats = cats.filter(cat =>
+        cat.name !== 'Видеосъемка' && cat.name !== 'Фотосъемка'
+      );
+      setCategories(filteredCats);
     } catch (error) {
       console.error('Error loading categories:', error);
     }
