@@ -143,15 +143,6 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     }
   };
 
-  useEffect(() => {
-    loadExpenses();
-    loadCalculatorCategories();
-  }, [projectId]);
-
-  useEffect(() => {
-    loadExpenseForMonth(selectedMonth);
-  }, [selectedMonth]);
-
   const loadCalculatorCategories = async () => {
     try {
       const categories = await calculatorCategoryService.getAll();
@@ -160,6 +151,15 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
       console.error('Error loading calculator categories:', error);
     }
   };
+
+  useEffect(() => {
+    loadExpenses();
+    loadCalculatorCategories();
+  }, [projectId]);
+
+  useEffect(() => {
+    loadExpenseForMonth(selectedMonth);
+  }, [selectedMonth]);
 
   useEffect(() => {
     if (isMonthFrozen) return;

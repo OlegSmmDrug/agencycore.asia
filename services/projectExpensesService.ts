@@ -351,7 +351,7 @@ export const projectExpensesService = {
   ): Promise<ProjectExpense> {
     const { data: project, error: projectError } = await supabase
       .from('projects')
-      .select('id, name, calculator_data, team_ids, livedune_access_token, livedune_account_id, start_date, end_date, content_metrics')
+      .select('id, name, team_ids, livedune_access_token, livedune_account_id, start_date, end_date, content_metrics')
       .eq('id', projectId)
       .single();
 
@@ -473,17 +473,8 @@ export const projectExpensesService = {
       }
     }
 
-    let modelsExpenses = 0;
-    if (project.calculator_data && project.calculator_data.items) {
-      const modelItem = project.calculator_data.items.find((item: any) =>
-        item.name && item.name.toLowerCase().includes('модел')
-      );
-      if (modelItem && modelItem.quantity > 0) {
-        modelsExpenses = modelItem.price * modelItem.quantity;
-      }
-    }
-
     const existing = await this.getExpenseByProjectAndMonth(projectId, month);
+    const modelsExpenses = existing?.modelsExpenses || 0;
 
     const monthStart = new Date(`${month}-01`);
     const monthEnd = new Date(monthStart);
