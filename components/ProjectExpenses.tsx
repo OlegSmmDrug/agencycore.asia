@@ -13,17 +13,6 @@ import { SyncPreviewModal } from './SyncPreviewModal';
 import { ExpenseValidation } from './ExpenseValidation';
 import { ChevronLeft, ChevronRight, Lock, Unlock, Copy } from 'lucide-react';
 
-interface ProductionTaskDetail {
-  taskId: string;
-  taskTitle: string;
-  assigneeName: string;
-  jobTitle: string;
-  hours: number;
-  rate: number;
-  cost: number;
-  shootingDate: string;
-}
-
 interface ProjectExpensesProps {
   projectId: string;
   projectBudget: number;
@@ -57,7 +46,6 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   const [saving, setSaving] = useState(false);
   const [isEditingDates, setIsEditingDates] = useState(false);
   const [tempStartDate, setTempStartDate] = useState(project.startDate || '');
-  const [productionDetails, setProductionDetails] = useState<ProductionTaskDetail[]>([]);
   const [tempDuration, setTempDuration] = useState(project.duration || 30);
   const [lastAutoSync, setLastAutoSync] = useState<Date | null>(null);
   const [nextSyncIn, setNextSyncIn] = useState<number>(180);
@@ -175,9 +163,6 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
           setLastAutoSync(new Date());
           setNextSyncIn(180);
 
-          const { calculateProductionExpensesFromTasks } = await import('../services/projectExpensesService');
-          const productionResult = await calculateProductionExpensesFromTasks(projectId, selectedMonth);
-          setProductionDetails(productionResult.details);
         } catch (error) {
           console.error('Auto-sync error:', error);
         }
@@ -253,10 +238,6 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
           notes: '',
         });
       }
-
-      const { calculateProductionExpensesFromTasks } = await import('../services/projectExpensesService');
-      const productionResult = await calculateProductionExpensesFromTasks(projectId, month);
-      setProductionDetails(productionResult.details);
     } catch (error) {
       console.error('Error loading expense:', error);
     } finally {
@@ -512,53 +493,6 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                     )}
                   </>
                 )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200">
-                <div className="text-sm font-medium text-blue-700 mb-1">Выручка</div>
-                <div className="text-3xl font-bold text-blue-900">{revenue.toLocaleString()} ₸</div>
-                {isEditing && canEdit && (
-                  <input
-                    type="number"
-                    value={revenue || ''}
-                    onChange={(e) => updateField('revenue', Number(e.target.value))}
-                    onFocus={(e) => e.target.select()}
-                    className="mt-2 w-full px-3 py-2 border border-blue-300 rounded-lg text-sm"
-                    placeholder="Введите выручку"
-                  />
-                )}
-              </div>
-
-              <div className="bg-gradient-to-br from-red-50 to-red-100 p-6 rounded-xl border border-red-200">
-                <div className="text-sm font-medium text-red-700 mb-1">Расходы</div>
-                <div className="text-3xl font-bold text-red-900">{totalExpenses.toLocaleString()} ₸</div>
-                <div className="text-xs text-red-600 mt-1">
-                  {((totalExpenses / projectBudget) * 100).toFixed(1)}% от бюджета
-                </div>
-              </div>
-
-              <div className={`bg-gradient-to-br p-6 rounded-xl border ${
-                expenseMargin >= 30 ? 'from-green-50 to-green-100 border-green-200' :
-                expenseMargin >= 15 ? 'from-yellow-50 to-yellow-100 border-yellow-200' :
-                'from-red-50 to-red-100 border-red-200'
-              }`}>
-                <div className={`text-sm font-medium mb-1 ${
-                  expenseMargin >= 30 ? 'text-green-700' :
-                  expenseMargin >= 15 ? 'text-yellow-700' :
-                  'text-red-700'
-                }`}>Прибыль / Маржа</div>
-                <div className={`text-3xl font-bold ${
-                  expenseMargin >= 30 ? 'text-green-900' :
-                  expenseMargin >= 15 ? 'text-yellow-900' :
-                  'text-red-900'
-                }`}>{netProfit.toLocaleString()} ₸</div>
-                <div className={`text-xs mt-1 ${
-                  expenseMargin >= 30 ? 'text-green-600' :
-                  expenseMargin >= 15 ? 'text-yellow-600' :
-                  'text-red-600'
-                }`}>{expenseMargin.toFixed(1)}% маржа</div>
               </div>
             </div>
 
@@ -825,87 +759,6 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                       (Base Salary) для нужных сотрудников. {!isMonthFrozen && 'Расчет произойдет автоматически.'}
                     </p>
                   </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-orange-200 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <span className="text-2xl">🎬</span>
-                Продакшн
-              </h3>
-              {currentExpense?.lastSyncedAt && !isMonthFrozen && (
-                <div className="text-xs text-orange-600 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-pulse"></span>
-                  Синхронизировано автоматически
-                </div>
-              )}
-            </div>
-
-            {productionDetails.length > 0 ? (
-              <>
-                {(() => {
-                  const productionTotal = productionDetails.reduce((sum, detail) => sum + detail.cost, 0);
-                  const productionPercent = totalExpenses > 0 ? (productionTotal / totalExpenses * 100).toFixed(1) : '0.0';
-
-                  return (
-                    <>
-                      <div className="bg-white rounded-lg p-4 mb-4 border border-orange-300">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-2xl">🎬</span>
-                            <span className="text-lg font-bold text-slate-800">Продакшн</span>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-xl font-bold text-orange-700">{productionTotal.toLocaleString()} ₸</div>
-                            <div className="text-xs text-slate-500">{productionPercent}% от общих расходов</div>
-                          </div>
-                        </div>
-                        <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-orange-500 to-amber-600 rounded-full transition-all duration-500"
-                            style={{ width: `${Math.min(Number(productionPercent), 100)}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {productionDetails.map((detail) => (
-                          <div key={detail.taskId} className="bg-white p-4 rounded-lg border border-slate-200 hover:border-orange-300 transition-colors">
-                            <div className="flex justify-between items-start mb-2">
-                              <span className="text-sm text-slate-700 font-medium">{detail.taskTitle}</span>
-                              <span className="text-lg font-bold text-slate-900">{detail.cost.toLocaleString()} ₸</span>
-                            </div>
-                            <div className="flex justify-between items-center text-xs text-slate-500 mb-2">
-                              <span>Часов: {detail.hours}</span>
-                              <span>Ставка: {detail.rate.toLocaleString()} ₸/ч</span>
-                            </div>
-                            <div className="mt-2 pt-2 border-t border-slate-100">
-                              <div className="flex justify-between text-xs mb-1">
-                                <span className="text-slate-600">Исполнитель:</span>
-                                <span className="font-medium text-slate-700">{detail.assigneeName}</span>
-                              </div>
-                              <div className="flex justify-between text-xs">
-                                <span className="text-slate-600">Итого:</span>
-                                <span className="font-semibold text-slate-700">{detail.hours} ч × {detail.rate.toLocaleString()} = {detail.cost.toLocaleString()} ₸</span>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  );
-                })()}
-              </>
-            ) : (
-              <div className="bg-white rounded-lg p-6 text-center border border-orange-200">
-                <div className="text-slate-500 mb-2">Нет выполненных задач продакшна</div>
-                <div className="text-sm text-slate-400">
-                  {isMonthFrozen
-                    ? 'Месяц заморожен - расчеты приостановлены'
-                    : 'Расходы синхронизируются автоматически каждые 3 минуты'}
                 </div>
               </div>
             )}
