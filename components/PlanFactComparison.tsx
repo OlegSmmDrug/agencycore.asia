@@ -20,36 +20,54 @@ const PlanFactComparison: React.FC<PlanFactComparisonProps> = ({ project, expens
   const comparisons: ComparisonItem[] = [];
 
   if (project.contentMetrics && expense.dynamicExpenses) {
+    const metricsByService: Record<string, { plan: number; fact: number; items: any[] }> = {};
+
     Object.entries(project.contentMetrics).forEach(([label, metric]: [string, any]) => {
       const plan = metric.plan || 0;
       const fact = metric.fact || 0;
+      const labelLower = label.toLowerCase().trim();
 
-      const expenseItem = Object.values(expense.dynamicExpenses || {}).find(item => {
+      const matchingItems = Object.values(expense.dynamicExpenses || {}).filter(item => {
         const serviceName = item.serviceName.toLowerCase();
-        const labelLower = label.toLowerCase();
+
+        const serviceNameParts = serviceName.split(' - ');
+        const serviceType = serviceNameParts.length > 1 ? serviceNameParts[1].toLowerCase().trim() : serviceName;
 
         return serviceName === labelLower ||
                serviceName.includes(labelLower) ||
-               labelLower.includes(serviceName);
+               labelLower.includes(serviceName) ||
+               serviceType === labelLower ||
+               labelLower.includes(serviceType);
       });
 
-      if (expenseItem) {
-        const planCost = plan * expenseItem.rate;
-        const factCost = fact * expenseItem.rate;
-        const variance = fact - plan;
-        const variancePercent = plan > 0 ? ((fact - plan) / plan) * 100 : 0;
-
-        comparisons.push({
-          name: expenseItem.serviceName,
-          plan,
-          fact,
-          planCost,
-          factCost,
-          variance,
-          variancePercent
-        });
+      if (matchingItems.length > 0) {
+        if (!metricsByService[label]) {
+          metricsByService[label] = { plan, fact, items: [] };
+        }
+        metricsByService[label].items.push(...matchingItems);
       }
     });
+
+    for (const [label, data] of Object.entries(metricsByService)) {
+      const totalCount = data.items.reduce((sum, item) => sum + (item.count || 0), 0);
+      const totalCost = data.items.reduce((sum, item) => sum + (item.cost || 0), 0);
+      const avgRate = totalCount > 0 ? totalCost / totalCount : 0;
+
+      const planCost = data.plan * avgRate;
+      const factCost = data.fact * avgRate;
+      const variance = data.fact - data.plan;
+      const variancePercent = data.plan > 0 ? ((data.fact - data.plan) / data.plan) * 100 : 0;
+
+      comparisons.push({
+        name: label,
+        plan: data.plan,
+        fact: data.fact,
+        planCost: Math.round(planCost),
+        factCost: Math.round(factCost),
+        variance,
+        variancePercent
+      });
+    }
   }
 
   if (comparisons.length === 0) {

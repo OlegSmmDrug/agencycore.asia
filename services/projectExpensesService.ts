@@ -874,6 +874,22 @@ export const projectExpensesService = {
     const totalExpenses = totalDynamicCost + modelsExpenses + fotExpenses + (existing?.otherExpenses || 0);
     const marginPercent = calculateMargin(projectRevenue, totalExpenses);
 
+    let smmExpenses = 0;
+    let productionExpenses = 0;
+    let targetologistExpenses = 0;
+    let pmExpenses = 0;
+
+    for (const serviceId in dynamicExpenses) {
+      const item = dynamicExpenses[serviceId];
+      if (item.category === 'smm') {
+        smmExpenses += item.cost;
+      } else if (item.category === 'video') {
+        productionExpenses += item.cost;
+      } else if (item.category === 'target') {
+        targetologistExpenses += item.cost;
+      }
+    }
+
     const expenseData: Partial<ProjectExpense> & { projectId: string; month: string } = {
       projectId,
       month,
@@ -884,7 +900,7 @@ export const projectExpensesService = {
       modelsExpenses,
       totalExpenses,
       marginPercent,
-      smmExpenses: 0,
+      smmExpenses,
       smmPostsCount: liveduneContent.posts,
       smmReelsCount: liveduneContent.reels,
       smmStoriesCount: liveduneContent.stories,
@@ -893,16 +909,16 @@ export const projectExpensesService = {
       smmDubbingCount: existing?.smmDubbingCount || 0,
       smmScenariosCount: existing?.smmScenariosCount || 0,
       smmManualAdjustment: existing?.smmManualAdjustment || 0,
-      pmExpenses: 0,
+      pmExpenses,
       pmSalaryShare: existing?.pmSalaryShare || 0,
       pmProjectCount: existing?.pmProjectCount || 1,
-      productionExpenses: 0,
+      productionExpenses,
       productionMobilographHours: existing?.productionMobilographHours || 0,
       productionPhotographerHours: existing?.productionPhotographerHours || 0,
       productionVideographerHours: existing?.productionVideographerHours || 0,
       productionVideoCost: existing?.productionVideoCost || 0,
       productionManualAdjustment: existing?.productionManualAdjustment || 0,
-      targetologistExpenses: 0,
+      targetologistExpenses,
       targetologistSalaryShare: existing?.targetologistSalaryShare || 0,
       targetologistProjectCount: existing?.targetologistProjectCount || 1,
       fotExpenses,
