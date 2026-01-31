@@ -473,13 +473,13 @@ export const projectExpensesService = {
       }
     }
 
-    const { data: calculatorServices, error: servicesError } = await supabase
-      .from('calculator_services')
-      .select('id, name, price, category')
-      .eq('is_active', true);
+    const { data: salarySchemesByJobTitle, error: schemesError } = await supabase
+      .from('salary_schemes')
+      .select('id, target_id, kpi_rules')
+      .eq('target_type', 'jobTitle');
 
-    if (servicesError) {
-      console.error('Error fetching calculator services:', servicesError);
+    if (schemesError) {
+      console.error('Error fetching salary schemes:', schemesError);
     }
 
     const normalizeServiceName = (name: string): string => {
@@ -491,46 +491,69 @@ export const projectExpensesService = {
         .replace(/ё/g, 'е');
     };
 
-    if (calculatorServices && fullProject.contentMetrics) {
+    const findKpiRule = (metricName: string) => {
+      const normalizedMetric = normalizeServiceName(metricName);
+
+      if (!salarySchemesByJobTitle) return null;
+
+      for (const scheme of salarySchemesByJobTitle) {
+        if (!scheme.kpi_rules || !Array.isArray(scheme.kpi_rules)) continue;
+
+        for (const rule of scheme.kpi_rules as any[]) {
+          const normalizedTaskType = normalizeServiceName(rule.taskType || '');
+
+          if (normalizedTaskType === normalizedMetric) {
+            return {
+              taskType: rule.taskType,
+              value: rule.value,
+              jobTitle: scheme.target_id
+            };
+          }
+        }
+      }
+
+      return null;
+    };
+
+    if (fullProject.contentMetrics) {
       const contentMetrics = fullProject.contentMetrics as Record<string, { fact?: number; plan?: number }>;
 
       for (const [metricKey, metricValue] of Object.entries(contentMetrics)) {
         const fact = metricValue?.fact || 0;
         if (fact === 0) continue;
 
-        const normalizedMetricName = normalizeServiceName(metricKey);
+        const kpiRule = findKpiRule(metricKey);
 
-        const matchingService = calculatorServices.find(service => {
-          const normalizedServiceName = normalizeServiceName(service.name);
-          return normalizedServiceName === normalizedMetricName;
-        });
-
-        if (matchingService) {
-          const serviceKey = `calc_${matchingService.id}`;
-          const cost = fact * parseFloat(matchingService.price);
+        if (kpiRule && kpiRule.value > 0) {
+          const serviceKey = `kpi_${metricKey}`;
+          const cost = fact * kpiRule.value;
 
           let category = 'smm';
-          const categoryLower = (matchingService.category || '').toLowerCase();
-          if (categoryLower.includes('video') || categoryLower === 'video') {
+          const jobTitleLower = (kpiRule.jobTitle || '').toLowerCase();
+          if (jobTitleLower.includes('smm') || jobTitleLower.includes('контент')) {
+            category = 'smm';
+          } else if (jobTitleLower.includes('mobilograph') || jobTitleLower.includes('мобилограф')) {
             category = 'video';
-          } else if (categoryLower.includes('target') || categoryLower === 'target') {
+          } else if (jobTitleLower.includes('photographer') || jobTitleLower.includes('фотограф')) {
+            category = 'video';
+          } else if (jobTitleLower.includes('videographer') || jobTitleLower.includes('видеограф')) {
+            category = 'video';
+          } else if (jobTitleLower.includes('target') || jobTitleLower.includes('таргет')) {
             category = 'target';
-          } else if (categoryLower.includes('site') || categoryLower === 'sites') {
-            category = 'sites';
           }
 
           dynamicExpenses[serviceKey] = {
-            serviceName: matchingService.name,
+            serviceName: kpiRule.taskType,
             count: fact,
-            rate: parseFloat(matchingService.price),
+            rate: kpiRule.value,
             cost,
             category,
             syncedAt: now
           };
 
-          console.log(`[ProjectExpenses] Added calculator service: ${matchingService.name} x ${fact} = ${cost} ₸ (${category})`);
+          console.log(`[ProjectExpenses] Added KPI service: ${kpiRule.taskType} x ${fact} = ${cost} ₸ (${kpiRule.jobTitle}, ${category})`);
         } else {
-          console.warn(`[ProjectExpenses] No matching calculator service found for: ${metricKey}`);
+          console.warn(`[ProjectExpenses] No KPI rule found for metric: ${metricKey}`);
         }
       }
     }
