@@ -15,6 +15,7 @@ export interface ServiceItem {
     id: string;
     name: string;
     price: number;
+    costPrice?: number;
     type: ServiceType;
     icon: string;
     max?: number;

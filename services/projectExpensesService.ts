@@ -274,19 +274,21 @@ export const calculateProductionExpensesFromTasks = async (
 
   const { data: calculatorServices } = await supabase
     .from('calculator_services')
-    .select('*')
+    .select('id, name, price, cost_price')
     .eq('organization_id', organizationId)
     .eq('category', 'video')
-    .eq('is_active', true);
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true });
 
   const calculatorServicesMap: Record<string, DynamicExpenseItem> = {};
 
   if (calculatorServices && calculatorServices.length > 0) {
     for (const service of calculatorServices) {
+      const costPrice = service.cost_price ? Number(service.cost_price) : Number(service.price) * 0.6;
       calculatorServicesMap[service.id] = {
         serviceName: service.name,
         count: 0,
-        rate: Number(service.price),
+        rate: costPrice,
         cost: 0,
         category: 'video',
         syncedAt: new Date().toISOString(),

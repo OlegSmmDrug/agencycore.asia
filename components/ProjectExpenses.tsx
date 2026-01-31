@@ -781,20 +781,13 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                     const { calculateProductionExpensesFromTasks } = await import('../services/projectExpensesService');
                     const result = await calculateProductionExpensesFromTasks(project.id, selectedMonth);
 
-                    setProductionDetails(result.details);
-
                     const updatedDynamicExpenses = {
                       ...(currentExpense.dynamicExpenses || {}),
                       ...result.calculatorServices,
                     };
 
-                    const productionExpenses = result.totalCost +
-                      (currentExpense.productionVideoCost || 0) +
-                      (currentExpense.productionManualAdjustment || 0);
-
                     const totalExpenses = calculateTotalExpenses({
                       ...currentExpense,
-                      productionExpenses,
                       dynamicExpenses: updatedDynamicExpenses,
                     });
 
@@ -802,10 +795,6 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                       ...currentExpense,
                       projectId: project.id,
                       month: selectedMonth,
-                      productionMobilographHours: result.mobilographHours,
-                      productionPhotographerHours: result.photographerHours,
-                      productionVideographerHours: result.videographerHours,
-                      productionExpenses,
                       dynamicExpenses: updatedDynamicExpenses,
                       totalExpenses,
                       marginPercent: calculateMargin(currentExpense.revenue || 0, totalExpenses),
@@ -820,7 +809,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                       setCurrentExpense(updatedExp);
                     }
                   } catch (error) {
-                    console.error('Error calculating production expenses:', error);
+                    console.error('Error syncing production services:', error);
                   } finally {
                     setSaving(false);
                   }
@@ -828,233 +817,99 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                 disabled={!canEdit || isMonthFrozen || saving}
                 className="px-3 py-1 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 transition-colors"
               >
-                🔄 Пересчитать из задач
+                🔄 Синхронизировать услуги
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="bg-white p-4 rounded-lg border border-orange-200">
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Мобилограф (часы)
-                </label>
-                <input
-                  type="number"
-                  value={currentExpense?.productionMobilographHours || 0}
-                  onChange={(e) => setCurrentExpense(prev => ({
-                    ...prev!,
-                    productionMobilographHours: Number(e.target.value)
-                  }))}
-                  disabled={!canEdit || isMonthFrozen}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-slate-50"
-                  placeholder="0"
-                  step="0.5"
-                />
-                <div className="mt-2 text-xs text-slate-500">
-                  Автоподсчет из задач
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-lg border border-orange-200">
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Фотограф (часы)
-                </label>
-                <input
-                  type="number"
-                  value={currentExpense?.productionPhotographerHours || 0}
-                  onChange={(e) => setCurrentExpense(prev => ({
-                    ...prev!,
-                    productionPhotographerHours: Number(e.target.value)
-                  }))}
-                  disabled={!canEdit || isMonthFrozen}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-slate-50"
-                  placeholder="0"
-                  step="0.5"
-                />
-                <div className="mt-2 text-xs text-slate-500">
-                  Автоподсчет из задач
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-lg border border-orange-200">
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Видеограф (часы)
-                </label>
-                <input
-                  type="number"
-                  value={currentExpense?.productionVideographerHours || 0}
-                  onChange={(e) => setCurrentExpense(prev => ({
-                    ...prev!,
-                    productionVideographerHours: Number(e.target.value)
-                  }))}
-                  disabled={!canEdit || isMonthFrozen}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-slate-50"
-                  placeholder="0"
-                  step="0.5"
-                />
-                <div className="mt-2 text-xs text-slate-500">
-                  Автоподсчет из задач
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              <div className="bg-white p-4 rounded-lg border border-orange-200">
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Фиксированная оплата за видео (₸)
-                </label>
-                <input
-                  type="number"
-                  value={currentExpense?.productionVideoCost || 0}
-                  onChange={(e) => {
-                    const videoCost = Number(e.target.value);
-                    setCurrentExpense(prev => {
-                      const updated = {
-                        ...prev!,
-                        productionVideoCost: videoCost,
-                      };
-                      updated.productionExpenses = calculateProductionExpenses(updated);
-                      return updated;
-                    });
-                  }}
-                  disabled={!canEdit || isMonthFrozen}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-slate-50"
-                  placeholder="0"
-                  step="1000"
-                />
-                <div className="mt-2 text-xs text-slate-500">
-                  Ручной ввод для фиксированных договоренностей
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-lg border border-orange-200">
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Ручная корректировка (₸)
-                </label>
-                <input
-                  type="number"
-                  value={currentExpense?.productionManualAdjustment || 0}
-                  onChange={(e) => {
-                    const adjustment = Number(e.target.value);
-                    setCurrentExpense(prev => {
-                      const updated = {
-                        ...prev!,
-                        productionManualAdjustment: adjustment,
-                      };
-                      updated.productionExpenses = calculateProductionExpenses(updated);
-                      return updated;
-                    });
-                  }}
-                  disabled={!canEdit || isMonthFrozen}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-slate-50"
-                  placeholder="0"
-                  step="1000"
-                />
-                <div className="mt-2 text-xs text-slate-500">
-                  Дополнительные расходы или корректировки
-                </div>
-              </div>
-            </div>
-
-            {productionDetails.length > 0 && (
-              <div className="mb-6 bg-white rounded-lg border border-orange-200 p-4">
-                <h4 className="text-sm font-semibold text-slate-800 mb-3">Детализация съемок</h4>
-                <div className="space-y-2">
-                  {productionDetails.map((detail) => (
-                    <div key={detail.taskId} className="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-lg hover:bg-orange-50 transition-colors">
-                      <div className="flex-1">
-                        <div className="font-medium text-slate-800 text-sm">{detail.taskTitle}</div>
-                        <div className="text-xs text-slate-600 mt-1">
-                          <span className="font-medium">{detail.assigneeName}</span> • {detail.jobTitle}
-                        </div>
-                        <div className="text-xs text-slate-500 mt-1">
-                          📅 {detail.shootingDate} • ⏱️ {detail.hours} ч. × {detail.rate.toLocaleString()} ₸/ч
-                        </div>
-                      </div>
-                      <div className="text-right ml-4">
-                        <div className="font-bold text-orange-700">{detail.cost.toLocaleString()} ₸</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {currentExpense?.dynamicExpenses && Object.entries(currentExpense.dynamicExpenses).filter(
               ([_, item]) => item.category === 'video'
-            ).length > 0 && (
-              <div className="mb-6 bg-white rounded-lg border border-orange-200 p-4">
-                <h4 className="text-sm font-semibold text-slate-800 mb-3">Услуги продакшна из калькулятора</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {Object.entries(currentExpense.dynamicExpenses)
-                    .filter(([_, item]) => item.category === 'video')
-                    .map(([serviceId, item]) => (
-                      <div key={serviceId} className="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-lg hover:bg-orange-50 transition-colors">
-                        <div className="flex-1">
-                          <div className="font-medium text-slate-800 text-sm">{item.serviceName}</div>
-                          <div className="text-xs text-slate-500 mt-1">
-                            Количество: {item.count} × {item.rate.toLocaleString()} ₸
+            ).length > 0 ? (
+              <>
+                {(() => {
+                  const videoServices = Object.entries(currentExpense.dynamicExpenses || {}).filter(
+                    ([_, item]) => item.category === 'video'
+                  );
+                  const productionTotal = videoServices.reduce((sum, [_, item]) => sum + item.cost, 0);
+                  const productionPercent = totalExpenses > 0 ? (productionTotal / totalExpenses * 100).toFixed(1) : '0.0';
+
+                  return (
+                    <>
+                      <div className="bg-white rounded-lg p-4 mb-4 border border-orange-300">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-2xl">🎬</span>
+                            <span className="text-lg font-bold text-slate-800">Продакшн</span>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xl font-bold text-orange-700">{productionTotal.toLocaleString()} ₸</div>
+                            <div className="text-xs text-slate-500">{productionPercent}% от общих расходов</div>
                           </div>
                         </div>
-                        <div className="text-right ml-4">
-                          <input
-                            type="number"
-                            value={item.count}
-                            onChange={(e) => {
-                              const newCount = Number(e.target.value);
-                              setCurrentExpense(prev => {
-                                if (!prev) return prev;
-                                const updated = {
-                                  ...prev,
-                                  dynamicExpenses: {
-                                    ...prev.dynamicExpenses,
-                                    [serviceId]: {
-                                      ...item,
-                                      count: newCount,
-                                      cost: newCount * item.rate,
-                                    },
-                                  },
-                                };
-                                updated.totalExpenses = calculateTotalExpenses(updated);
-                                updated.marginPercent = calculateMargin(updated.revenue || 0, updated.totalExpenses);
-                                return updated;
-                              });
-                            }}
-                            disabled={!canEdit || isMonthFrozen}
-                            className="w-16 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-slate-50 text-right"
-                            min="0"
+                        <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-orange-500 to-amber-600 rounded-full transition-all duration-500"
+                            style={{ width: `${Math.min(Number(productionPercent), 100)}%` }}
                           />
-                          <div className="text-xs font-bold text-orange-700 mt-1">{item.cost.toLocaleString()} ₸</div>
                         </div>
                       </div>
-                    ))}
-                </div>
-                <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-2 text-xs text-blue-800">
-                  💡 Услуги синхронизированы из калькулятора. Укажите количество для каждой услуги.
-                </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {videoServices.map(([serviceId, item]) => (
+                          <div key={serviceId} className="bg-white p-4 rounded-lg border border-slate-200 hover:border-orange-300 transition-colors">
+                            <div className="flex justify-between items-start mb-2">
+                              <span className="text-sm text-slate-700 font-medium">{item.serviceName}</span>
+                              <span className="text-lg font-bold text-slate-900">{item.cost.toLocaleString()} ₸</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs text-slate-500 mb-2">
+                              <span>Количество:</span>
+                              <input
+                                type="number"
+                                value={item.count}
+                                onChange={(e) => {
+                                  const newCount = Number(e.target.value);
+                                  setCurrentExpense(prev => {
+                                    if (!prev) return prev;
+                                    const updated = {
+                                      ...prev,
+                                      dynamicExpenses: {
+                                        ...prev.dynamicExpenses,
+                                        [serviceId]: {
+                                          ...item,
+                                          count: newCount,
+                                          cost: newCount * item.rate,
+                                        },
+                                      },
+                                    };
+                                    updated.totalExpenses = calculateTotalExpenses(updated);
+                                    updated.marginPercent = calculateMargin(updated.revenue || 0, updated.totalExpenses);
+                                    return updated;
+                                  });
+                                }}
+                                disabled={!canEdit || isMonthFrozen}
+                                className="w-16 px-2 py-1 text-sm border border-slate-300 rounded text-right focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-slate-50"
+                                min="0"
+                              />
+                              <span>Ставка: {item.rate.toLocaleString()} ₸</span>
+                            </div>
+                            <div className="mt-2 pt-2 border-t border-slate-100">
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-600">Итого:</span>
+                                <span className="font-semibold text-slate-700">{item.count} × {item.rate.toLocaleString()} = {item.cost.toLocaleString()} ₸</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
+              </>
+            ) : (
+              <div className="bg-white rounded-lg p-6 text-center border border-orange-200">
+                <div className="text-slate-500 mb-2">Нет услуг продакшна</div>
+                <div className="text-sm text-slate-400">Нажмите "Синхронизировать услуги" чтобы загрузить услуги из калькулятора</div>
               </div>
             )}
-
-            <div className="bg-white rounded-lg p-4 border-2 border-orange-300">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-slate-700">Итого расходы на продакшн:</span>
-                <span className="text-2xl font-bold text-orange-700">
-                  {(
-                    (currentExpense?.productionExpenses || 0)
-                  ).toLocaleString()} ₸
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <div className="flex items-start gap-2 text-sm text-blue-800">
-                <span className="text-lg">ℹ️</span>
-                <div>
-                  <strong>Автоподсчет:</strong> Часы автоматически считаются из задач, где исполнитель - мобилограф/фотограф/видеограф.
-                  <br />
-                  Расчет: (Время окончания - Время начала) × Часовая ставка из зарплатной схемы.
-                </div>
-              </div>
-            </div>
           </div>
 
           {currentExpense?.salaryCalculations && Object.keys(currentExpense.salaryCalculations).length > 0 && (

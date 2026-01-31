@@ -6,6 +6,7 @@ const mapRowToServiceItem = (row: any): ServiceItem => ({
   id: row.id,
   name: row.name,
   price: Number(row.price),
+  costPrice: row.cost_price ? Number(row.cost_price) : undefined,
   type: row.type as 'checkbox' | 'counter' | 'range',
   icon: row.icon,
   category: row.category,
