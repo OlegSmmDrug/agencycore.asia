@@ -783,6 +783,11 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
 
                     setProductionDetails(result.details);
 
+                    const updatedDynamicExpenses = {
+                      ...(currentExpense.dynamicExpenses || {}),
+                      ...result.calculatorServices,
+                    };
+
                     const productionExpenses = result.totalCost +
                       (currentExpense.productionVideoCost || 0) +
                       (currentExpense.productionManualAdjustment || 0);
@@ -790,6 +795,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                     const totalExpenses = calculateTotalExpenses({
                       ...currentExpense,
                       productionExpenses,
+                      dynamicExpenses: updatedDynamicExpenses,
                     });
 
                     const updated: Partial<ProjectExpense> & { projectId: string; month: string } = {
@@ -800,6 +806,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                       productionPhotographerHours: result.photographerHours,
                       productionVideographerHours: result.videographerHours,
                       productionExpenses,
+                      dynamicExpenses: updatedDynamicExpenses,
                       totalExpenses,
                       marginPercent: calculateMargin(currentExpense.revenue || 0, totalExpenses),
                     };
@@ -968,6 +975,61 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {currentExpense?.dynamicExpenses && Object.entries(currentExpense.dynamicExpenses).filter(
+              ([_, item]) => item.category === 'video'
+            ).length > 0 && (
+              <div className="mb-6 bg-white rounded-lg border border-orange-200 p-4">
+                <h4 className="text-sm font-semibold text-slate-800 mb-3">Услуги продакшна из калькулятора</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {Object.entries(currentExpense.dynamicExpenses)
+                    .filter(([_, item]) => item.category === 'video')
+                    .map(([serviceId, item]) => (
+                      <div key={serviceId} className="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-lg hover:bg-orange-50 transition-colors">
+                        <div className="flex-1">
+                          <div className="font-medium text-slate-800 text-sm">{item.serviceName}</div>
+                          <div className="text-xs text-slate-500 mt-1">
+                            Количество: {item.count} × {item.rate.toLocaleString()} ₸
+                          </div>
+                        </div>
+                        <div className="text-right ml-4">
+                          <input
+                            type="number"
+                            value={item.count}
+                            onChange={(e) => {
+                              const newCount = Number(e.target.value);
+                              setCurrentExpense(prev => {
+                                if (!prev) return prev;
+                                const updated = {
+                                  ...prev,
+                                  dynamicExpenses: {
+                                    ...prev.dynamicExpenses,
+                                    [serviceId]: {
+                                      ...item,
+                                      count: newCount,
+                                      cost: newCount * item.rate,
+                                    },
+                                  },
+                                };
+                                updated.totalExpenses = calculateTotalExpenses(updated);
+                                updated.marginPercent = calculateMargin(updated.revenue || 0, updated.totalExpenses);
+                                return updated;
+                              });
+                            }}
+                            disabled={!canEdit || isMonthFrozen}
+                            className="w-16 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-slate-50 text-right"
+                            min="0"
+                          />
+                          <div className="text-xs font-bold text-orange-700 mt-1">{item.cost.toLocaleString()} ₸</div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+                <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-2 text-xs text-blue-800">
+                  💡 Услуги синхронизированы из калькулятора. Укажите количество для каждой услуги.
                 </div>
               </div>
             )}

@@ -84,17 +84,24 @@ export const calculateProductionExpenses = (expense: Partial<ProjectExpense>): n
 
 export const calculateTotalExpenses = (expense: Partial<ProjectExpense>): number => {
   let dynamicTotal = 0;
+  let dynamicProductionTotal = 0;
+
   if (expense.dynamicExpenses && typeof expense.dynamicExpenses === 'object') {
     for (const key in expense.dynamicExpenses) {
       const item = expense.dynamicExpenses[key];
       if (item && typeof item === 'object' && 'cost' in item) {
-        dynamicTotal += Number(item.cost) || 0;
+        const cost = Number(item.cost) || 0;
+        dynamicTotal += cost;
+        if (item.category === 'video') {
+          dynamicProductionTotal += cost;
+        }
       }
     }
   }
 
   if (dynamicTotal > 0) {
-    return dynamicTotal + (expense.modelsExpenses || 0) + (expense.fotExpenses || 0) + (expense.otherExpenses || 0);
+    const prodExpenses = (expense.productionExpenses || 0);
+    return dynamicTotal + (expense.modelsExpenses || 0) + (expense.fotExpenses || 0) + (expense.otherExpenses || 0) + prodExpenses;
   }
 
   const smmExp = expense.smmExpenses || 0;
@@ -215,6 +222,7 @@ interface ProductionExpensesResult {
   photographerCost: number;
   videographerCost: number;
   totalCost: number;
+  calculatorServices: Record<string, DynamicExpenseItem>;
   details: Array<{
     taskId: string;
     taskTitle: string;
@@ -256,6 +264,36 @@ export const calculateProductionExpensesFromTasks = async (
     .not('started_at', 'is', null)
     .not('end_time', 'is', null);
 
+  const { data: project } = await supabase
+    .from('projects')
+    .select('organization_id')
+    .eq('id', projectId)
+    .single();
+
+  const organizationId = project?.organization_id;
+
+  const { data: calculatorServices } = await supabase
+    .from('calculator_services')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .eq('category', 'video')
+    .eq('is_active', true);
+
+  const calculatorServicesMap: Record<string, DynamicExpenseItem> = {};
+
+  if (calculatorServices && calculatorServices.length > 0) {
+    for (const service of calculatorServices) {
+      calculatorServicesMap[service.id] = {
+        serviceName: service.name,
+        count: 0,
+        rate: Number(service.price),
+        cost: 0,
+        category: 'video',
+        syncedAt: new Date().toISOString(),
+      };
+    }
+  }
+
   if (!tasks || tasks.length === 0) {
     return {
       mobilographHours: 0,
@@ -265,6 +303,7 @@ export const calculateProductionExpensesFromTasks = async (
       photographerCost: 0,
       videographerCost: 0,
       totalCost: 0,
+      calculatorServices: calculatorServicesMap,
       details: [],
     };
   }
@@ -340,6 +379,7 @@ export const calculateProductionExpensesFromTasks = async (
     photographerCost: Math.round(photographerCost),
     videographerCost: Math.round(videographerCost),
     totalCost: Math.round(mobilographCost + photographerCost + videographerCost),
+    calculatorServices: calculatorServicesMap,
     details,
   };
 };
