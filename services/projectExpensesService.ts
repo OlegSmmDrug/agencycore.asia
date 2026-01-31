@@ -633,6 +633,8 @@ export const projectExpensesService = {
     const dynamicExpenses: DynamicExpenses = {};
     const now = new Date().toISOString();
 
+    await calculatorCategoryHelper.getAllCategories();
+
     const { data: completedTasks, error: tasksError } = await supabase
       .from('tasks')
       .select('id, assignee_id, type, completed_at, estimated_hours')
@@ -691,8 +693,13 @@ export const projectExpensesService = {
         const kpiRule = scheme.kpiRules.find(rule => rule.taskType === taskType);
 
         if (kpiRule && kpiRule.value > 0) {
-          const serviceKey = `${executorId}_${taskType}`;
           const category = await calculatorCategoryHelper.getCategoryByJobTitleAndTaskType(user.job_title, taskType);
+
+          if (category === 'video') {
+            continue;
+          }
+
+          const serviceKey = `${executorId}_${taskType}`;
 
           dynamicExpenses[serviceKey] = {
             serviceName: `${user.name} - ${taskType}`,
@@ -847,27 +854,10 @@ export const projectExpensesService = {
     const { fotExpenses, fotCalculations } = await calculateFotExpenses(projectId, month);
     const productionResult = await calculateProductionExpensesFromTasks(projectId, month);
 
-    for (const serviceId in productionResult.calculatorServices) {
-      const service = productionResult.calculatorServices[serviceId];
-      if (service.count > 0 && service.cost > 0) {
-        dynamicExpenses[serviceId] = service;
-        totalDynamicCost += service.cost;
-      }
-    }
-
     for (const detail of productionResult.details) {
       const taskKey = `task_${detail.taskId}`;
       const serviceName = `${detail.assigneeName} - ${detail.taskTitle}`;
-
-      let category = 'video';
-      const jobTitleLower = detail.jobTitle.toLowerCase();
-      if (jobTitleLower.includes('photographer') || jobTitleLower.includes('фотограф')) {
-        category = 'video';
-      } else if (jobTitleLower.includes('videographer') || jobTitleLower.includes('видеограф')) {
-        category = 'video';
-      } else if (jobTitleLower.includes('mobilograph') || jobTitleLower.includes('мобилограф')) {
-        category = 'video';
-      }
+      const category = await calculatorCategoryHelper.getCategoryByJobTitleAndTaskType(detail.jobTitle, detail.taskTitle);
 
       dynamicExpenses[taskKey] = {
         serviceName,
