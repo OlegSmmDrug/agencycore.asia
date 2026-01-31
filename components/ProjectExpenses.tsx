@@ -949,6 +949,102 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
             </div>
           )}
 
+          <div className="bg-gradient-to-br from-pink-50 to-rose-50 border-2 border-pink-200 rounded-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <span className="text-2xl">👤</span>
+                Модели
+              </h3>
+            </div>
+
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+              <div className="flex items-start gap-2">
+                <span className="text-lg">💡</span>
+                <div className="text-xs text-slate-600">
+                  Разовые расходы на моделей, оплата наличными, работа с разными людьми
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg p-4 border border-pink-300">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-slate-700">Расходы на моделей</span>
+                {isEditing && canEdit ? (
+                  <input
+                    type="number"
+                    value={currentExpense?.modelsExpenses || ''}
+                    onChange={(e) => updateField('modelsExpenses', Number(e.target.value))}
+                    onFocus={(e) => e.target.select()}
+                    className="w-48 px-3 py-2 border border-pink-300 rounded-lg text-sm font-semibold text-right"
+                    placeholder="0"
+                  />
+                ) : (
+                  <div className="text-xl font-bold text-pink-700">
+                    {(currentExpense?.modelsExpenses || 0).toLocaleString()} ₸
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-slate-50 to-gray-50 border-2 border-slate-200 rounded-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <span className="text-2xl">📝</span>
+                Прочие расходы
+              </h3>
+            </div>
+
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+              <div className="flex items-start gap-2">
+                <span className="text-lg">💡</span>
+                <div className="text-xs text-slate-600">
+                  Дополнительные разовые расходы, не входящие в другие категории
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="bg-white rounded-lg p-4 border border-slate-300">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-slate-700">Сумма</span>
+                  {isEditing && canEdit ? (
+                    <input
+                      type="number"
+                      value={currentExpense?.otherExpenses || ''}
+                      onChange={(e) => updateField('otherExpenses', Number(e.target.value))}
+                      onFocus={(e) => e.target.select()}
+                      className="w-48 px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-right"
+                      placeholder="0"
+                    />
+                  ) : (
+                    <div className="text-xl font-bold text-slate-700">
+                      {(currentExpense?.otherExpenses || 0).toLocaleString()} ₸
+                    </div>
+                  )}
+                </div>
+                {isEditing && canEdit && (
+                  <div className="mt-3 pt-3 border-t border-slate-200">
+                    <label className="text-xs text-slate-600 mb-1 block">Описание расходов</label>
+                    <textarea
+                      value={currentExpense?.otherExpensesDescription || ''}
+                      onChange={(e) => updateField('otherExpensesDescription', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none"
+                      placeholder="Укажите на что были потрачены средства..."
+                      rows={2}
+                    />
+                  </div>
+                )}
+                {!isEditing && currentExpense?.otherExpensesDescription && (
+                  <div className="mt-3 pt-3 border-t border-slate-200">
+                    <div className="text-xs text-slate-600 mb-1">Описание:</div>
+                    <div className="text-sm text-slate-700">{currentExpense.otherExpensesDescription}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           {costAnalysis && currentExpense && (
             <CostBreakdown analysis={costAnalysis} />
           )}
