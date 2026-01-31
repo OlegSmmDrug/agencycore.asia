@@ -86,16 +86,16 @@ export const calculatorCategoryHelper = {
       return smmCat?.id || 'smm';
     }
     if (jobTitleLower.includes('mobilograph') || jobTitleLower.includes('мобилограф')) {
-      const videoCat = categories.find(c => c.name === 'Продакшн' || c.name === 'Видеосъемка');
-      return videoCat?.id || 'video';
+      const productionCat = categories.find(c => c.name === 'Продакшн');
+      return productionCat?.id || 'video';
     }
     if (jobTitleLower.includes('photographer') || jobTitleLower.includes('фотограф')) {
-      const photoCat = categories.find(c => c.name === 'Фотосъемка');
-      return photoCat?.id || 'photo';
+      const productionCat = categories.find(c => c.name === 'Продакшн');
+      return productionCat?.id || 'video';
     }
     if (jobTitleLower.includes('videographer') || jobTitleLower.includes('видеограф')) {
-      const videoCat = categories.find(c => c.name === 'Видеосъемка');
-      return videoCat?.id || 'video';
+      const productionCat = categories.find(c => c.name === 'Продакшн');
+      return productionCat?.id || 'video';
     }
     if (jobTitleLower.includes('target') || jobTitleLower.includes('таргет')) {
       const targetCat = categories.find(c => c.name === 'Таргет');
@@ -105,15 +105,25 @@ export const calculatorCategoryHelper = {
       const aiCat = categories.find(c => c.name === 'ИИ' || c.name === 'AI');
       return aiCat?.id || 'ai';
     }
+    if (jobTitleLower.includes('разработчик') || jobTitleLower.includes('developer') ||
+        jobTitleLower.includes('сайт') || jobTitleLower.includes('web')) {
+      const sitesCat = categories.find(c => c.name === 'Сайты');
+      return sitesCat?.id || 'sites';
+    }
 
     if (taskTypeLower.includes('post') || taskTypeLower.includes('пост') ||
         taskTypeLower.includes('reel') || taskTypeLower.includes('stor')) {
       const smmCat = categories.find(c => c.name === 'SMM');
       return smmCat?.id || 'smm';
     }
-    if (taskTypeLower.includes('shoot') || taskTypeLower.includes('съемка')) {
-      const videoCat = categories.find(c => c.name === 'Продакшн' || c.name === 'Видеосъемка');
-      return videoCat?.id || 'video';
+    if (taskTypeLower.includes('shoot') || taskTypeLower.includes('съемка') ||
+        taskTypeLower.includes('фото') || taskTypeLower.includes('видео')) {
+      const productionCat = categories.find(c => c.name === 'Продакшн');
+      return productionCat?.id || 'video';
+    }
+    if (taskTypeLower.includes('landing') || taskTypeLower.includes('сайт') || taskTypeLower.includes('site')) {
+      const sitesCat = categories.find(c => c.name === 'Сайты');
+      return sitesCat?.id || 'sites';
     }
     if (taskTypeLower.includes('ai') || taskTypeLower.includes('ии') || taskTypeLower.includes('gpt')) {
       const aiCat = categories.find(c => c.name === 'ИИ' || c.name === 'AI');
