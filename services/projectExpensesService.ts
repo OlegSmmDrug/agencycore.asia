@@ -118,8 +118,7 @@ export const getActiveProjectsCountForUser = async (userId: string): Promise<num
     .from('projects')
     .select('id')
     .contains('team_ids', [userId])
-    .eq('is_archived', false)
-    .in('status', ['В работе', 'Продакшн']);
+    .eq('is_archived', false);
 
   if (error) {
     console.error('Error getting active projects count:', error);
