@@ -80,6 +80,20 @@ export const calculateProductionExpenses = (expense: Partial<ProjectExpense>): n
 };
 
 export const calculateTotalExpenses = (expense: Partial<ProjectExpense>): number => {
+  let dynamicTotal = 0;
+  if (expense.dynamicExpenses && typeof expense.dynamicExpenses === 'object') {
+    for (const key in expense.dynamicExpenses) {
+      const item = expense.dynamicExpenses[key];
+      if (item && typeof item === 'object' && 'cost' in item) {
+        dynamicTotal += Number(item.cost) || 0;
+      }
+    }
+  }
+
+  if (dynamicTotal > 0) {
+    return dynamicTotal + (expense.modelsExpenses || 0) + (expense.otherExpenses || 0);
+  }
+
   const smmExp = expense.smmExpenses || 0;
   const pmExp = expense.pmExpenses || 0;
   const prodExp = expense.productionExpenses || 0;
@@ -146,15 +160,38 @@ export const projectExpensesService = {
       .maybeSingle();
 
     if (error) throw error;
-    return data ? mapRowToExpense(data) : null;
+    if (!data) return null;
+
+    const expense = mapRowToExpense(data);
+
+    if (expense.revenue === 0 || !expense.revenue) {
+      const { data: project } = await supabase
+        .from('projects')
+        .select('budget')
+        .eq('id', projectId)
+        .maybeSingle();
+
+      if (project?.budget) {
+        await supabase
+          .from('project_expenses')
+          .update({ revenue: project.budget })
+          .eq('id', expense.id);
+
+        expense.revenue = Number(project.budget);
+      }
+    }
+
+    return expense;
   },
 
   async createOrUpdateExpense(
     expense: Partial<ProjectExpense> & { projectId: string; month: string },
     userId: string
   ): Promise<ProjectExpense> {
-    const smmExpenses = calculateSmmExpenses(expense);
-    const productionExpenses = calculateProductionExpenses(expense);
+    const hasDynamicExpenses = expense.dynamicExpenses && Object.keys(expense.dynamicExpenses).length > 0;
+
+    const smmExpenses = hasDynamicExpenses ? (expense.smmExpenses || 0) : calculateSmmExpenses(expense);
+    const productionExpenses = hasDynamicExpenses ? (expense.productionExpenses || 0) : calculateProductionExpenses(expense);
     const totalExpenses = calculateTotalExpenses({
       ...expense,
       smmExpenses,
