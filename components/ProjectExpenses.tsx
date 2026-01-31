@@ -133,6 +133,35 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     }
   };
 
+  const updateDynamicExpense = (serviceId: string, field: 'count' | 'rate', value: number) => {
+    if (!currentExpense) return;
+
+    const updatedDynamicExpenses = { ...currentExpense.dynamicExpenses };
+    if (!updatedDynamicExpenses[serviceId]) {
+      updatedDynamicExpenses[serviceId] = {
+        serviceName: serviceId,
+        category: 'smm',
+        count: 0,
+        rate: 0,
+        cost: 0,
+        syncedAt: new Date().toISOString()
+      };
+    }
+
+    updatedDynamicExpenses[serviceId] = {
+      ...updatedDynamicExpenses[serviceId],
+      [field]: value,
+      cost: field === 'count'
+        ? value * updatedDynamicExpenses[serviceId].rate
+        : updatedDynamicExpenses[serviceId].count * value
+    };
+
+    setCurrentExpense({
+      ...currentExpense,
+      dynamicExpenses: updatedDynamicExpenses
+    });
+  };
+
   useEffect(() => {
     loadExpenses();
     loadCategories();
@@ -649,10 +678,37 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                                   <span className="text-sm text-slate-700 font-medium">{item.serviceName}</span>
                                   <span className="text-lg font-bold text-slate-900">{item.cost.toLocaleString()} ₸</span>
                                 </div>
-                                <div className="flex justify-between items-center text-xs text-slate-500">
-                                  <span>{countLabel}: {item.count}</span>
-                                  <span>Ставка: {item.rate.toLocaleString()} ₸</span>
-                                </div>
+                                {isEditing && canEdit && !isMonthFrozen ? (
+                                  <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <label className="text-xs text-slate-600 w-20">{countLabel}:</label>
+                                      <input
+                                        type="number"
+                                        value={item.count}
+                                        onChange={(e) => updateDynamicExpense(serviceId, 'count', Number(e.target.value))}
+                                        className="flex-1 px-2 py-1 border border-slate-300 rounded text-sm focus:border-blue-500 focus:outline-none"
+                                        min="0"
+                                        step="1"
+                                      />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <label className="text-xs text-slate-600 w-20">Ставка (₸):</label>
+                                      <input
+                                        type="number"
+                                        value={item.rate}
+                                        onChange={(e) => updateDynamicExpense(serviceId, 'rate', Number(e.target.value))}
+                                        className="flex-1 px-2 py-1 border border-slate-300 rounded text-sm focus:border-blue-500 focus:outline-none"
+                                        min="0"
+                                        step="1000"
+                                      />
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex justify-between items-center text-xs text-slate-500">
+                                    <span>{countLabel}: {item.count}</span>
+                                    <span>Ставка: {item.rate.toLocaleString()} ₸</span>
+                                  </div>
+                                )}
                                 <div className="mt-2 pt-2 border-t border-slate-100">
                                   <div className="flex justify-between text-xs">
                                     <span className="text-slate-600">Итого:</span>
@@ -709,10 +765,37 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                                 <span className="text-sm text-slate-700 font-medium">{item.serviceName}</span>
                                 <span className="text-lg font-bold text-slate-900">{item.cost.toLocaleString()} ₸</span>
                               </div>
-                              <div className="flex justify-between items-center text-xs text-slate-500">
-                                <span>{countLabel}: {item.count}</span>
-                                <span>Ставка: {item.rate.toLocaleString()} ₸</span>
-                              </div>
+                              {isEditing && canEdit && !isMonthFrozen ? (
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-xs text-slate-600 w-20">{countLabel}:</label>
+                                    <input
+                                      type="number"
+                                      value={item.count}
+                                      onChange={(e) => updateDynamicExpense(serviceId, 'count', Number(e.target.value))}
+                                      className="flex-1 px-2 py-1 border border-slate-300 rounded text-sm focus:border-blue-500 focus:outline-none"
+                                      min="0"
+                                      step="1"
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-xs text-slate-600 w-20">Ставка (₸):</label>
+                                    <input
+                                      type="number"
+                                      value={item.rate}
+                                      onChange={(e) => updateDynamicExpense(serviceId, 'rate', Number(e.target.value))}
+                                      className="flex-1 px-2 py-1 border border-slate-300 rounded text-sm focus:border-blue-500 focus:outline-none"
+                                      min="0"
+                                      step="1000"
+                                    />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex justify-between items-center text-xs text-slate-500">
+                                  <span>{countLabel}: {item.count}</span>
+                                  <span>Ставка: {item.rate.toLocaleString()} ₸</span>
+                                </div>
+                              )}
                               <div className="mt-2 pt-2 border-t border-slate-100">
                                 <div className="flex justify-between text-xs">
                                   <span className="text-slate-600">Итого:</span>
