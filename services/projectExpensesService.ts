@@ -96,7 +96,7 @@ export const calculateTotalExpenses = (expense: Partial<ProjectExpense>): number
   }
 
   if (dynamicTotal > 0) {
-    const prodExpenses = (expense.productionExpenses || 0);
+    const prodExpenses = dynamicProductionTotal > 0 ? 0 : (expense.productionExpenses || 0);
     return dynamicTotal + (expense.modelsExpenses || 0) + (expense.fotExpenses || 0) + (expense.otherExpenses || 0) + prodExpenses;
   }
 
@@ -853,6 +853,31 @@ export const projectExpensesService = {
         dynamicExpenses[serviceId] = service;
         totalDynamicCost += service.cost;
       }
+    }
+
+    for (const detail of productionResult.details) {
+      const taskKey = `task_${detail.taskId}`;
+      const serviceName = `${detail.assigneeName} - ${detail.taskTitle}`;
+
+      let category = 'video';
+      const jobTitleLower = detail.jobTitle.toLowerCase();
+      if (jobTitleLower.includes('photographer') || jobTitleLower.includes('фотограф')) {
+        category = 'video';
+      } else if (jobTitleLower.includes('videographer') || jobTitleLower.includes('видеограф')) {
+        category = 'video';
+      } else if (jobTitleLower.includes('mobilograph') || jobTitleLower.includes('мобилограф')) {
+        category = 'video';
+      }
+
+      dynamicExpenses[taskKey] = {
+        serviceName,
+        count: detail.hours,
+        rate: detail.rate,
+        cost: detail.cost,
+        category,
+        syncedAt: now,
+      };
+      totalDynamicCost += detail.cost;
     }
 
     const projectRevenue = fullProject.budget || existing?.revenue || 0;
