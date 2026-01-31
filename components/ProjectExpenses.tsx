@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ProjectExpense, User, Project, DynamicExpenseItem } from '../types';
-import { projectExpensesService, calculateSmmExpenses, calculateProductionExpenses, calculateTotalExpenses, calculateMargin } from '../services/projectExpensesService';
+import { projectExpensesService, calculateSmmExpenses, calculateProductionExpenses, calculateTotalExpenses, calculateMargin, calculateProjectPeriodDates, getProjectMonthsCount } from '../services/projectExpensesService';
 import { GLOBAL_RATES } from '../services/projectAnalytics';
 import { projectService } from '../services/projectService';
 import { costAnalysisService } from '../services/costAnalysisService';
@@ -12,6 +12,13 @@ import ProjectFinancialSummary from './ProjectFinancialSummary';
 import { SyncPreviewModal } from './SyncPreviewModal';
 import { ExpenseValidation } from './ExpenseValidation';
 import { ChevronLeft, ChevronRight, Lock, Unlock, Copy } from 'lucide-react';
+
+interface ProjectPeriod {
+  monthNumber: number;
+  startDate: string;
+  endDate: string;
+  displayName: string;
+}
 
 interface ProjectExpensesProps {
   projectId: string;
@@ -509,9 +516,29 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
 
                 <div>
                   <h2 className="text-2xl font-bold text-slate-800">
-                    {new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+                    {currentExpense?.projectMonthNumber ? (
+                      <>
+                        {currentExpense.projectMonthNumber === 1 ? 'Первый' :
+                         currentExpense.projectMonthNumber === 2 ? 'Второй' :
+                         currentExpense.projectMonthNumber === 3 ? 'Третий' :
+                         currentExpense.projectMonthNumber === 4 ? 'Четвертый' :
+                         currentExpense.projectMonthNumber === 5 ? 'Пятый' :
+                         currentExpense.projectMonthNumber === 6 ? 'Шестой' :
+                         `${currentExpense.projectMonthNumber}-й`} месяц работы
+                      </>
+                    ) : (
+                      new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })
+                    )}
                   </h2>
-                  <p className="text-sm text-slate-500">Управление расходами проекта</p>
+                  <p className="text-sm text-slate-500">
+                    {currentExpense?.periodStartDate && currentExpense?.periodEndDate ? (
+                      <>
+                        {new Date(currentExpense.periodStartDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })} - {new Date(currentExpense.periodEndDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      </>
+                    ) : (
+                      'Управление расходами проекта'
+                    )}
+                  </p>
                 </div>
 
                 <button
@@ -1088,7 +1115,28 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                         }`}
                         onClick={() => setSelectedMonth(exp.month)}
                       >
-                        <td className="py-3 px-4 text-sm font-medium">{exp.month}</td>
+                        <td className="py-3 px-4 text-sm font-medium">
+                          {exp.projectMonthNumber ? (
+                            <div>
+                              <div className="font-semibold">
+                                {exp.projectMonthNumber === 1 ? 'Первый' :
+                                 exp.projectMonthNumber === 2 ? 'Второй' :
+                                 exp.projectMonthNumber === 3 ? 'Третий' :
+                                 exp.projectMonthNumber === 4 ? 'Четвертый' :
+                                 exp.projectMonthNumber === 5 ? 'Пятый' :
+                                 exp.projectMonthNumber === 6 ? 'Шестой' :
+                                 `${exp.projectMonthNumber}-й`} месяц
+                              </div>
+                              {exp.periodStartDate && exp.periodEndDate && (
+                                <div className="text-xs text-slate-500">
+                                  {new Date(exp.periodStartDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })} - {new Date(exp.periodEndDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            exp.month
+                          )}
+                        </td>
                         <td className="py-3 px-4 text-sm text-right">{exp.smmExpenses.toLocaleString()} ₸</td>
                         <td className="py-3 px-4 text-sm text-right">{exp.productionExpenses.toLocaleString()} ₸</td>
                         <td className="py-3 px-4 text-sm text-right">

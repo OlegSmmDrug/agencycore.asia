@@ -11,6 +11,9 @@ const mapRowToExpense = (row: any): ProjectExpense => ({
   id: row.id,
   projectId: row.project_id,
   month: row.month,
+  projectMonthNumber: row.project_month_number,
+  periodStartDate: row.period_start_date,
+  periodEndDate: row.period_end_date,
 
   smmExpenses: Number(row.smm_expenses) || 0,
   smmPostsCount: row.smm_posts_count || 0,
@@ -114,6 +117,30 @@ export const calculateTotalExpenses = (expense: Partial<ProjectExpense>): number
 export const calculateMargin = (revenue: number, totalExpenses: number): number => {
   if (revenue === 0) return 0;
   return ((revenue - totalExpenses) / revenue) * 100;
+};
+
+export const calculateProjectPeriodDates = (projectStartDate: string, monthNumber: number): { startDate: string; endDate: string } => {
+  const startDate = new Date(projectStartDate);
+  const periodStart = new Date(startDate);
+  periodStart.setDate(periodStart.getDate() + (monthNumber - 1) * 30);
+
+  const periodEnd = new Date(periodStart);
+  periodEnd.setDate(periodEnd.getDate() + 29);
+
+  return {
+    startDate: periodStart.toISOString().split('T')[0],
+    endDate: periodEnd.toISOString().split('T')[0]
+  };
+};
+
+export const getProjectMonthsCount = (projectStartDate: string, projectDeadline?: string): number => {
+  const start = new Date(projectStartDate);
+  const end = projectDeadline ? new Date(projectDeadline) : new Date();
+
+  const diffTime = Math.abs(end.getTime() - start.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  return Math.max(1, Math.ceil(diffDays / 30));
 };
 
 export const getActiveProjectsCountForUser = async (userId: string): Promise<number> => {
@@ -410,6 +437,37 @@ export const projectExpensesService = {
     expense: Partial<ProjectExpense> & { projectId: string; month: string },
     userId: string
   ): Promise<ProjectExpense> {
+    const { data: project } = await supabase
+      .from('projects')
+      .select('start_date, deadline')
+      .eq('id', expense.projectId)
+      .maybeSingle();
+
+    let projectMonthNumber = expense.projectMonthNumber;
+    let periodStartDate = expense.periodStartDate;
+    let periodEndDate = expense.periodEndDate;
+
+    if (project?.start_date && !projectMonthNumber) {
+      const totalMonths = getProjectMonthsCount(project.start_date, project.deadline);
+      const months = Array.from({ length: totalMonths }, (_, i) => {
+        const dates = calculateProjectPeriodDates(project.start_date, i + 1);
+        return { monthNumber: i + 1, ...dates };
+      });
+
+      const monthDate = new Date(expense.month + '-15');
+      const matchingMonth = months.find(m => {
+        const start = new Date(m.startDate);
+        const end = new Date(m.endDate);
+        return monthDate >= start && monthDate <= end;
+      });
+
+      if (matchingMonth) {
+        projectMonthNumber = matchingMonth.monthNumber;
+        periodStartDate = matchingMonth.startDate;
+        periodEndDate = matchingMonth.endDate;
+      }
+    }
+
     const hasDynamicExpenses = expense.dynamicExpenses && Object.keys(expense.dynamicExpenses).length > 0;
 
     const smmExpenses = hasDynamicExpenses ? (expense.smmExpenses || 0) : calculateSmmExpenses(expense);
@@ -424,6 +482,9 @@ export const projectExpensesService = {
     const expenseData = {
       project_id: expense.projectId,
       month: expense.month,
+      project_month_number: projectMonthNumber,
+      period_start_date: periodStartDate,
+      period_end_date: periodEndDate,
 
       smm_expenses: smmExpenses,
       smm_posts_count: expense.smmPostsCount || 0,

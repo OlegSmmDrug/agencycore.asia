@@ -933,6 +933,9 @@ export interface ProjectExpense {
   id: string;
   projectId: string;
   month: string;
+  projectMonthNumber?: number;
+  periodStartDate?: string;
+  periodEndDate?: string;
 
   smmExpenses: number;
   smmPostsCount: number;
