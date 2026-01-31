@@ -74,12 +74,7 @@ export const calculateSmmExpenses = (expense: Partial<ProjectExpense>): number =
 };
 
 export const calculateProductionExpenses = (expense: Partial<ProjectExpense>): number => {
-  const hourlyExpenses =
-    ((expense.productionMobilographHours || 0) +
-     (expense.productionPhotographerHours || 0) +
-     (expense.productionVideographerHours || 0)) * GLOBAL_RATES.PRODUCTION.hourly;
-
-  return hourlyExpenses + (expense.productionVideoCost || 0) + (expense.productionManualAdjustment || 0);
+  return expense.productionExpenses || 0;
 };
 
 export const calculateTotalExpenses = (expense: Partial<ProjectExpense>): number => {
@@ -239,6 +234,11 @@ export const calculateProductionExpensesFromTasks = async (
   projectId: string,
   month: string
 ): Promise<ProductionExpensesResult> => {
+  const monthStart = `${month}-01`;
+  const monthEnd = new Date(new Date(monthStart).getFullYear(), new Date(monthStart).getMonth() + 1, 0)
+    .toISOString()
+    .slice(0, 10);
+
   const { data: project } = await supabase
     .from('projects')
     .select('organization_id')
@@ -271,6 +271,82 @@ export const calculateProductionExpensesFromTasks = async (
     }
   }
 
+  const { data: tasks } = await supabase
+    .from('tasks')
+    .select(`
+      id,
+      title,
+      type,
+      started_at,
+      estimated_hours,
+      assignee_id,
+      users:assignee_id (
+        id,
+        name,
+        job_title
+      )
+    `)
+    .eq('project_id', projectId)
+    .eq('status', 'Done')
+    .gte('started_at', monthStart)
+    .lte('started_at', monthEnd)
+    .not('started_at', 'is', null);
+
+  if (!tasks || tasks.length === 0) {
+    return {
+      mobilographHours: 0,
+      photographerHours: 0,
+      videographerHours: 0,
+      mobilographCost: 0,
+      photographerCost: 0,
+      videographerCost: 0,
+      totalCost: 0,
+      calculatorServices: calculatorServicesMap,
+      details: [],
+    };
+  }
+
+  const details: ProductionExpensesResult['details'] = [];
+  let totalCost = 0;
+
+  for (const task of tasks) {
+    const user = Array.isArray(task.users) ? task.users[0] : task.users;
+    if (!user || !user.job_title || !task.type) continue;
+
+    const { data: scheme } = await supabase
+      .from('salary_schemes')
+      .select('kpi_rules')
+      .eq('target_type', 'user')
+      .eq('target_id', user.id)
+      .maybeSingle();
+
+    let taskRate = 0;
+
+    if (scheme?.kpi_rules && Array.isArray(scheme.kpi_rules)) {
+      const rule = scheme.kpi_rules.find((r: any) => r.taskType === task.type);
+      if (rule && rule.value) {
+        taskRate = Number(rule.value);
+      }
+    }
+
+    if (taskRate === 0) continue;
+
+    const hours = Number(task.estimated_hours) || 1;
+    const cost = taskRate * hours;
+    totalCost += cost;
+
+    details.push({
+      taskId: task.id,
+      taskTitle: task.title,
+      assigneeName: user.name,
+      jobTitle: user.job_title,
+      hours: hours,
+      rate: taskRate,
+      cost: Math.round(cost),
+      shootingDate: task.started_at.slice(0, 10),
+    });
+  }
+
   return {
     mobilographHours: 0,
     photographerHours: 0,
@@ -278,9 +354,9 @@ export const calculateProductionExpensesFromTasks = async (
     mobilographCost: 0,
     photographerCost: 0,
     videographerCost: 0,
-    totalCost: 0,
+    totalCost: Math.round(totalCost),
     calculatorServices: calculatorServicesMap,
-    details: [],
+    details,
   };
 };
 
