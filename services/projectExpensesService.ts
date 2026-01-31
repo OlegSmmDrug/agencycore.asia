@@ -234,12 +234,12 @@ export const calculateProductionExpensesFromTasks = async (
   projectId: string,
   month: string
 ): Promise<ProductionExpensesResult> => {
+  const [year, monthNum] = month.split('-').map(Number);
   const monthStart = `${month}-01`;
-  const monthEnd = new Date(new Date(monthStart).getFullYear(), new Date(monthStart).getMonth() + 1, 0)
-    .toISOString()
-    .slice(0, 10);
+  const nextMonthDate = new Date(year, monthNum, 1);
+  const nextMonth = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, '0')}-01`;
 
-  console.log('🔍 Production Expenses Sync:', { projectId, month, monthStart, monthEnd });
+  console.log('🔍 Production Expenses Sync:', { projectId, month, monthStart, nextMonth });
 
   const { data: project } = await supabase
     .from('projects')
@@ -291,7 +291,7 @@ export const calculateProductionExpensesFromTasks = async (
     .eq('project_id', projectId)
     .eq('status', 'Done')
     .gte('started_at', monthStart)
-    .lte('started_at', monthEnd)
+    .lt('started_at', nextMonth)
     .not('started_at', 'is', null);
 
   console.log('📋 Tasks found:', { count: tasks?.length || 0, tasks, error: tasksError });
