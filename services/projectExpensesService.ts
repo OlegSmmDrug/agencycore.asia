@@ -351,7 +351,7 @@ export const projectExpensesService = {
   ): Promise<ProjectExpense> {
     const { data: project, error: projectError } = await supabase
       .from('projects')
-      .select('id, name, team_ids, livedune_access_token, livedune_account_id, start_date, end_date, content_metrics')
+      .select('id, name, team_ids, budget, livedune_access_token, livedune_account_id, start_date, end_date, content_metrics')
       .eq('id', projectId)
       .single();
 
@@ -360,6 +360,7 @@ export const projectExpensesService = {
     const fullProject: Project = {
       id: project.id,
       name: project.name,
+      budget: project.budget || 0,
       liveduneAccessToken: project.livedune_access_token,
       liveduneAccountId: project.livedune_account_id,
       startDate: project.start_date,
@@ -623,8 +624,9 @@ export const projectExpensesService = {
       totalDynamicCost += dynamicExpenses[serviceId].cost;
     }
 
+    const projectRevenue = fullProject.budget || existing?.revenue || 0;
     const totalExpenses = totalDynamicCost + modelsExpenses + (existing?.otherExpenses || 0);
-    const marginPercent = calculateMargin(existing?.revenue || 0, totalExpenses);
+    const marginPercent = calculateMargin(projectRevenue, totalExpenses);
 
     const expenseData: Partial<ProjectExpense> & { projectId: string; month: string } = {
       projectId,
@@ -659,7 +661,7 @@ export const projectExpensesService = {
       targetologistProjectCount: existing?.targetologistProjectCount || 1,
       otherExpenses: existing?.otherExpenses || 0,
       otherExpensesDescription: existing?.otherExpensesDescription || '',
-      revenue: existing?.revenue || 0,
+      revenue: projectRevenue,
       notes: existing?.notes || '',
     };
 
