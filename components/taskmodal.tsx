@@ -276,7 +276,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
     const setDurationHours = (hours: number) => {
         const start = new Date(task.startedAt || new Date());
         const end = new Date(start.getTime() + hours * 60 * 60 * 1000);
-        setTask({ ...task, deadline: end.toISOString() });
+        setTask({ ...task, deadline: end.toISOString(), estimatedHours: hours });
     };
 
     const getDurationHoursText = () => {

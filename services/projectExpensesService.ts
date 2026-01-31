@@ -239,8 +239,6 @@ export const calculateProductionExpensesFromTasks = async (
   const nextMonthDate = new Date(year, monthNum, 1);
   const nextMonth = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, '0')}-01`;
 
-  console.log('🔍 Production Expenses Sync:', { projectId, month, monthStart, nextMonth });
-
   const { data: project } = await supabase
     .from('projects')
     .select('organization_id')
@@ -273,7 +271,7 @@ export const calculateProductionExpensesFromTasks = async (
     }
   }
 
-  const { data: tasks, error: tasksError } = await supabase
+  const { data: tasks } = await supabase
     .from('tasks')
     .select(`
       id,
@@ -294,10 +292,7 @@ export const calculateProductionExpensesFromTasks = async (
     .lt('started_at', nextMonth)
     .not('started_at', 'is', null);
 
-  console.log('📋 Tasks found:', { count: tasks?.length || 0, tasks, error: tasksError });
-
   if (!tasks || tasks.length === 0) {
-    console.log('⚠️ No tasks found for the period');
     return {
       mobilographHours: 0,
       photographerHours: 0,
@@ -315,43 +310,30 @@ export const calculateProductionExpensesFromTasks = async (
   let totalCost = 0;
 
   for (const task of tasks) {
-    console.log('🎯 Processing task:', { id: task.id, title: task.title, type: task.type });
-
     const user = Array.isArray(task.users) ? task.users[0] : task.users;
-    if (!user || !user.job_title || !task.type) {
-      console.log('⚠️ Skipping task - missing user or job_title or type:', { user, type: task.type });
-      continue;
-    }
+    if (!user || !user.job_title || !task.type) continue;
 
-    const { data: scheme, error: schemeError } = await supabase
+    const { data: scheme } = await supabase
       .from('salary_schemes')
       .select('kpi_rules')
       .eq('target_type', 'user')
       .eq('target_id', user.id)
       .maybeSingle();
 
-    console.log('💰 Salary scheme:', { userId: user.id, scheme, error: schemeError });
-
     let taskRate = 0;
 
     if (scheme?.kpi_rules && Array.isArray(scheme.kpi_rules)) {
       const rule = scheme.kpi_rules.find((r: any) => r.taskType === task.type);
-      console.log('🔍 Looking for rule:', { taskType: task.type, found: rule, allRules: scheme.kpi_rules });
       if (rule && rule.value) {
         taskRate = Number(rule.value);
       }
     }
 
-    if (taskRate === 0) {
-      console.log('⚠️ Skipping task - rate is 0');
-      continue;
-    }
+    if (taskRate === 0) continue;
 
     const hours = Number(task.estimated_hours) || 1;
     const cost = taskRate * hours;
     totalCost += cost;
-
-    console.log('✅ Task calculated:', { taskRate, hours, cost });
 
     details.push({
       taskId: task.id,
@@ -364,8 +346,6 @@ export const calculateProductionExpensesFromTasks = async (
       shootingDate: task.started_at.slice(0, 10),
     });
   }
-
-  console.log('✅ Final result:', { totalCost, detailsCount: details.length });
 
   return {
     mobilographHours: 0,
