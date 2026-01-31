@@ -19,25 +19,35 @@ interface ComparisonItem {
 const PlanFactComparison: React.FC<PlanFactComparisonProps> = ({ project, expense }) => {
   const comparisons: ComparisonItem[] = [];
 
+  const normalize = (str: string): string => {
+    return str
+      .toLowerCase()
+      .replace(/[_\s]+/g, '')
+      .replace(/[^a-zа-я0-9]/g, '')
+      .trim();
+  };
+
   if (project.contentMetrics && expense.dynamicExpenses) {
     const metricsByService: Record<string, { plan: number; fact: number; items: any[] }> = {};
 
     Object.entries(project.contentMetrics).forEach(([label, metric]: [string, any]) => {
       const plan = metric.plan || 0;
       const fact = metric.fact || 0;
-      const labelLower = label.toLowerCase().trim();
+      const labelNormalized = normalize(label);
 
       const matchingItems = Object.values(expense.dynamicExpenses || {}).filter(item => {
-        const serviceName = item.serviceName.toLowerCase();
+        const serviceName = item.serviceName;
+        const serviceNameNormalized = normalize(serviceName);
 
         const serviceNameParts = serviceName.split(' - ');
-        const serviceType = serviceNameParts.length > 1 ? serviceNameParts[1].toLowerCase().trim() : serviceName;
+        const serviceType = serviceNameParts.length > 1 ? serviceNameParts[1] : serviceName;
+        const serviceTypeNormalized = normalize(serviceType);
 
-        return serviceName === labelLower ||
-               serviceName.includes(labelLower) ||
-               labelLower.includes(serviceName) ||
-               serviceType === labelLower ||
-               labelLower.includes(serviceType);
+        return serviceNameNormalized === labelNormalized ||
+               serviceNameNormalized.includes(labelNormalized) ||
+               labelNormalized.includes(serviceNameNormalized) ||
+               serviceTypeNormalized === labelNormalized ||
+               labelNormalized.includes(serviceTypeNormalized);
       });
 
       if (matchingItems.length > 0) {
