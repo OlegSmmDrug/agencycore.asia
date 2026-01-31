@@ -54,6 +54,17 @@ export const getCurrentPeriodNumber = (projectStartDate: string): number => {
   return Math.floor(diffDays / 30) + 1;
 };
 
+export const getMonthName = (monthNumber: number): string => {
+  const monthNames = [
+    'Первый', 'Второй', 'Третий', 'Четвертый', 'Пятый', 'Шестой',
+    'Седьмой', 'Восьмой', 'Девятый', 'Десятый', 'Одиннадцатый', 'Двенадцатый'
+  ];
+
+  return monthNumber <= 12
+    ? `${monthNames[monthNumber - 1]} месяц работы`
+    : `${monthNumber}-й месяц работы`;
+};
+
 export const formatPeriodDateRange = (startDate: string, endDate: string): string => {
   const start = new Date(startDate);
   const end = new Date(endDate);

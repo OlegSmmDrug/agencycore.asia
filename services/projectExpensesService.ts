@@ -394,10 +394,38 @@ export const projectExpensesService = {
       .from('project_expenses')
       .select('*')
       .eq('project_id', projectId)
-      .order('month', { ascending: false });
+      .order('project_month_number', { ascending: false });
 
     if (error) throw error;
     return (data || []).map(mapRowToExpense);
+  },
+
+  async getExpenseByProjectAndPeriod(projectId: string, periodNumber: number): Promise<ProjectExpense | null> {
+    const { data, error } = await supabase
+      .from('project_expenses')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('project_month_number', periodNumber)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return null;
+
+    const expense = mapRowToExpense(data);
+
+    if (expense.revenue === 0 || !expense.revenue) {
+      const { data: project } = await supabase
+        .from('projects')
+        .select('budget')
+        .eq('id', projectId)
+        .maybeSingle();
+
+      if (project) {
+        expense.revenue = project.budget || 0;
+      }
+    }
+
+    return expense;
   },
 
   async getExpenseByProjectAndMonth(projectId: string, month: string): Promise<ProjectExpense | null> {
