@@ -326,14 +326,6 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     setCurrentExpense(updated);
   };
 
-  if (loading && !currentExpense) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-slate-500">Загрузка...</div>
-      </div>
-    );
-  }
-
   const totalExpenses = currentExpense?.totalExpenses || 0;
   const revenue = currentExpense?.revenue || 0;
   const expenseMargin = currentExpense?.marginPercent || 0;
@@ -470,6 +462,14 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   const expensePercent = mediaBudget > 0 ? (adsSpendInKZT / mediaBudget) * 100 : 0;
   const netProfitWithAds = revenue - adsSpendInKZT;
   const profitMarginPercent = revenue > 0 ? ((netProfitWithAds / revenue) * 100).toFixed(1) : '0.0';
+
+  if (loading && !currentExpense) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-slate-500">Загрузка...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
