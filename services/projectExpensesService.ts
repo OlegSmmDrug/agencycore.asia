@@ -623,20 +623,7 @@ export const projectExpensesService = {
       totalDynamicCost += dynamicExpenses[serviceId].cost;
     }
 
-    const tempSmmData = {
-      smmPostsCount: liveduneContent.posts,
-      smmReelsCount: liveduneContent.reels,
-      smmStoriesCount: liveduneContent.stories,
-      smmSpecDesignCount: existing?.smmSpecDesignCount || 0,
-      smmMonitoring: existing?.smmMonitoring || false,
-      smmDubbingCount: existing?.smmDubbingCount || 0,
-      smmScenariosCount: existing?.smmScenariosCount || 0,
-      smmManualAdjustment: existing?.smmManualAdjustment || 0,
-    };
-
-    const calculatedSmmExpenses = calculateSmmExpenses(tempSmmData);
-
-    const totalExpenses = calculatedSmmExpenses + totalDynamicCost + modelsExpenses + (existing?.otherExpenses || 0);
+    const totalExpenses = totalDynamicCost + modelsExpenses + (existing?.otherExpenses || 0);
     const marginPercent = calculateMargin(existing?.revenue || 0, totalExpenses);
 
     const expenseData: Partial<ProjectExpense> & { projectId: string; month: string } = {
@@ -649,7 +636,7 @@ export const projectExpensesService = {
       modelsExpenses,
       totalExpenses,
       marginPercent,
-      smmExpenses: calculatedSmmExpenses,
+      smmExpenses: 0,
       smmPostsCount: liveduneContent.posts,
       smmReelsCount: liveduneContent.reels,
       smmStoriesCount: liveduneContent.stories,
@@ -658,16 +645,16 @@ export const projectExpensesService = {
       smmDubbingCount: existing?.smmDubbingCount || 0,
       smmScenariosCount: existing?.smmScenariosCount || 0,
       smmManualAdjustment: existing?.smmManualAdjustment || 0,
-      pmExpenses: existing?.pmExpenses || 0,
+      pmExpenses: 0,
       pmSalaryShare: existing?.pmSalaryShare || 0,
       pmProjectCount: existing?.pmProjectCount || 1,
-      productionExpenses: existing?.productionExpenses || 0,
+      productionExpenses: 0,
       productionMobilographHours: existing?.productionMobilographHours || 0,
       productionPhotographerHours: existing?.productionPhotographerHours || 0,
       productionVideographerHours: existing?.productionVideographerHours || 0,
       productionVideoCost: existing?.productionVideoCost || 0,
       productionManualAdjustment: existing?.productionManualAdjustment || 0,
-      targetologistExpenses: existing?.targetologistExpenses || 0,
+      targetologistExpenses: 0,
       targetologistSalaryShare: existing?.targetologistSalaryShare || 0,
       targetologistProjectCount: existing?.targetologistProjectCount || 1,
       otherExpenses: existing?.otherExpenses || 0,

@@ -69,7 +69,7 @@ export const costAnalysisService = {
       });
     }
 
-    const totalCost = items.reduce((sum, item) => sum + item.cost, 0) + (expense.smmExpenses || 0);
+    const totalCost = items.reduce((sum, item) => sum + item.cost, 0);
 
     return {
       category: 'smm',
@@ -96,7 +96,7 @@ export const costAnalysisService = {
       });
     }
 
-    const totalCost = items.reduce((sum, item) => sum + item.cost, 0) + (expense.productionExpenses || 0);
+    const totalCost = items.reduce((sum, item) => sum + item.cost, 0);
 
     return {
       category: 'video',
@@ -123,7 +123,7 @@ export const costAnalysisService = {
       });
     }
 
-    const totalCost = items.reduce((sum, item) => sum + item.cost, 0) + (expense.targetologistExpenses || 0);
+    const totalCost = items.reduce((sum, item) => sum + item.cost, 0);
 
     return {
       category: 'target',
