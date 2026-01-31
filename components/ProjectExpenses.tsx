@@ -12,6 +12,17 @@ import { SyncPreviewModal } from './SyncPreviewModal';
 import { ExpenseValidation } from './ExpenseValidation';
 import { ChevronLeft, ChevronRight, Lock, Unlock, Copy } from 'lucide-react';
 
+interface ProductionTaskDetail {
+  taskId: string;
+  taskTitle: string;
+  assigneeName: string;
+  jobTitle: string;
+  hours: number;
+  rate: number;
+  cost: number;
+  shootingDate: string;
+}
+
 interface ProjectExpensesProps {
   projectId: string;
   projectBudget: number;
@@ -45,6 +56,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   const [saving, setSaving] = useState(false);
   const [isEditingDates, setIsEditingDates] = useState(false);
   const [tempStartDate, setTempStartDate] = useState(project.startDate || '');
+  const [productionDetails, setProductionDetails] = useState<ProductionTaskDetail[]>([]);
   const [tempDuration, setTempDuration] = useState(project.duration || 30);
   const [lastAutoSync, setLastAutoSync] = useState<Date | null>(null);
   const [nextSyncIn, setNextSyncIn] = useState<number>(180);
@@ -753,6 +765,234 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                 </div>
               </div>
             )}
+          </div>
+
+          <div className="bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-orange-200 rounded-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <span className="text-2xl">🎬</span>
+                Продакшн
+              </h3>
+              <button
+                onClick={async () => {
+                  if (!currentExpense || saving) return;
+                  setSaving(true);
+                  try {
+                    const { calculateProductionExpensesFromTasks } = await import('../services/projectExpensesService');
+                    const result = await calculateProductionExpensesFromTasks(project.id, selectedMonth);
+
+                    setProductionDetails(result.details);
+
+                    const productionExpenses = result.totalCost +
+                      (currentExpense.productionVideoCost || 0) +
+                      (currentExpense.productionManualAdjustment || 0);
+
+                    const totalExpenses = calculateTotalExpenses({
+                      ...currentExpense,
+                      productionExpenses,
+                    });
+
+                    const updated: Partial<ProjectExpense> & { projectId: string; month: string } = {
+                      ...currentExpense,
+                      projectId: project.id,
+                      month: selectedMonth,
+                      productionMobilographHours: result.mobilographHours,
+                      productionPhotographerHours: result.photographerHours,
+                      productionVideographerHours: result.videographerHours,
+                      productionExpenses,
+                      totalExpenses,
+                      marginPercent: calculateMargin(currentExpense.revenue || 0, totalExpenses),
+                    };
+
+                    await projectExpensesService.createOrUpdateExpense(updated, currentUser.id);
+                    const updatedExpenses = await projectExpensesService.getExpensesByProject(project.id);
+                    setExpenses(updatedExpenses);
+
+                    const updatedExp = updatedExpenses.find(e => e.month === selectedMonth);
+                    if (updatedExp) {
+                      setCurrentExpense(updatedExp);
+                    }
+                  } catch (error) {
+                    console.error('Error calculating production expenses:', error);
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                disabled={!canEdit || isMonthFrozen || saving}
+                className="px-3 py-1 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 transition-colors"
+              >
+                🔄 Пересчитать из задач
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="bg-white p-4 rounded-lg border border-orange-200">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Мобилограф (часы)
+                </label>
+                <input
+                  type="number"
+                  value={currentExpense?.productionMobilographHours || 0}
+                  onChange={(e) => setCurrentExpense(prev => ({
+                    ...prev!,
+                    productionMobilographHours: Number(e.target.value)
+                  }))}
+                  disabled={!canEdit || isMonthFrozen}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-slate-50"
+                  placeholder="0"
+                  step="0.5"
+                />
+                <div className="mt-2 text-xs text-slate-500">
+                  Автоподсчет из задач
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-lg border border-orange-200">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Фотограф (часы)
+                </label>
+                <input
+                  type="number"
+                  value={currentExpense?.productionPhotographerHours || 0}
+                  onChange={(e) => setCurrentExpense(prev => ({
+                    ...prev!,
+                    productionPhotographerHours: Number(e.target.value)
+                  }))}
+                  disabled={!canEdit || isMonthFrozen}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-slate-50"
+                  placeholder="0"
+                  step="0.5"
+                />
+                <div className="mt-2 text-xs text-slate-500">
+                  Автоподсчет из задач
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-lg border border-orange-200">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Видеограф (часы)
+                </label>
+                <input
+                  type="number"
+                  value={currentExpense?.productionVideographerHours || 0}
+                  onChange={(e) => setCurrentExpense(prev => ({
+                    ...prev!,
+                    productionVideographerHours: Number(e.target.value)
+                  }))}
+                  disabled={!canEdit || isMonthFrozen}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-slate-50"
+                  placeholder="0"
+                  step="0.5"
+                />
+                <div className="mt-2 text-xs text-slate-500">
+                  Автоподсчет из задач
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div className="bg-white p-4 rounded-lg border border-orange-200">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Фиксированная оплата за видео (₸)
+                </label>
+                <input
+                  type="number"
+                  value={currentExpense?.productionVideoCost || 0}
+                  onChange={(e) => {
+                    const videoCost = Number(e.target.value);
+                    setCurrentExpense(prev => {
+                      const updated = {
+                        ...prev!,
+                        productionVideoCost: videoCost,
+                      };
+                      updated.productionExpenses = calculateProductionExpenses(updated);
+                      return updated;
+                    });
+                  }}
+                  disabled={!canEdit || isMonthFrozen}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-slate-50"
+                  placeholder="0"
+                  step="1000"
+                />
+                <div className="mt-2 text-xs text-slate-500">
+                  Ручной ввод для фиксированных договоренностей
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-lg border border-orange-200">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Ручная корректировка (₸)
+                </label>
+                <input
+                  type="number"
+                  value={currentExpense?.productionManualAdjustment || 0}
+                  onChange={(e) => {
+                    const adjustment = Number(e.target.value);
+                    setCurrentExpense(prev => {
+                      const updated = {
+                        ...prev!,
+                        productionManualAdjustment: adjustment,
+                      };
+                      updated.productionExpenses = calculateProductionExpenses(updated);
+                      return updated;
+                    });
+                  }}
+                  disabled={!canEdit || isMonthFrozen}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-slate-50"
+                  placeholder="0"
+                  step="1000"
+                />
+                <div className="mt-2 text-xs text-slate-500">
+                  Дополнительные расходы или корректировки
+                </div>
+              </div>
+            </div>
+
+            {productionDetails.length > 0 && (
+              <div className="mb-6 bg-white rounded-lg border border-orange-200 p-4">
+                <h4 className="text-sm font-semibold text-slate-800 mb-3">Детализация съемок</h4>
+                <div className="space-y-2">
+                  {productionDetails.map((detail) => (
+                    <div key={detail.taskId} className="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-lg hover:bg-orange-50 transition-colors">
+                      <div className="flex-1">
+                        <div className="font-medium text-slate-800 text-sm">{detail.taskTitle}</div>
+                        <div className="text-xs text-slate-600 mt-1">
+                          <span className="font-medium">{detail.assigneeName}</span> • {detail.jobTitle}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          📅 {detail.shootingDate} • ⏱️ {detail.hours} ч. × {detail.rate.toLocaleString()} ₸/ч
+                        </div>
+                      </div>
+                      <div className="text-right ml-4">
+                        <div className="font-bold text-orange-700">{detail.cost.toLocaleString()} ₸</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white rounded-lg p-4 border-2 border-orange-300">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium text-slate-700">Итого расходы на продакшн:</span>
+                <span className="text-2xl font-bold text-orange-700">
+                  {(
+                    (currentExpense?.productionExpenses || 0)
+                  ).toLocaleString()} ₸
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-start gap-2 text-sm text-blue-800">
+                <span className="text-lg">ℹ️</span>
+                <div>
+                  <strong>Автоподсчет:</strong> Часы автоматически считаются из задач, где исполнитель - мобилограф/фотограф/видеограф.
+                  <br />
+                  Расчет: (Время окончания - Время начала) × Часовая ставка из зарплатной схемы.
+                </div>
+              </div>
+            </div>
           </div>
 
           {currentExpense?.salaryCalculations && Object.keys(currentExpense.salaryCalculations).length > 0 && (

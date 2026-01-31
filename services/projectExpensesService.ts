@@ -207,6 +207,143 @@ export const calculateFotExpenses = async (
   };
 };
 
+interface ProductionExpensesResult {
+  mobilographHours: number;
+  photographerHours: number;
+  videographerHours: number;
+  mobilographCost: number;
+  photographerCost: number;
+  videographerCost: number;
+  totalCost: number;
+  details: Array<{
+    taskId: string;
+    taskTitle: string;
+    assigneeName: string;
+    jobTitle: string;
+    hours: number;
+    rate: number;
+    cost: number;
+    shootingDate: string;
+  }>;
+}
+
+export const calculateProductionExpensesFromTasks = async (
+  projectId: string,
+  month: string
+): Promise<ProductionExpensesResult> => {
+  const monthStart = `${month}-01`;
+  const monthEnd = new Date(new Date(monthStart).getFullYear(), new Date(monthStart).getMonth() + 1, 0)
+    .toISOString()
+    .slice(0, 10);
+
+  const { data: tasks } = await supabase
+    .from('tasks')
+    .select(`
+      id,
+      title,
+      started_at,
+      end_time,
+      assignee_id,
+      users:assignee_id (
+        id,
+        name,
+        job_title
+      )
+    `)
+    .eq('project_id', projectId)
+    .gte('started_at', monthStart)
+    .lte('started_at', monthEnd)
+    .not('started_at', 'is', null)
+    .not('end_time', 'is', null);
+
+  if (!tasks || tasks.length === 0) {
+    return {
+      mobilographHours: 0,
+      photographerHours: 0,
+      videographerHours: 0,
+      mobilographCost: 0,
+      photographerCost: 0,
+      videographerCost: 0,
+      totalCost: 0,
+      details: [],
+    };
+  }
+
+  let mobilographHours = 0;
+  let photographerHours = 0;
+  let videographerHours = 0;
+  let mobilographCost = 0;
+  let photographerCost = 0;
+  let videographerCost = 0;
+  const details: ProductionExpensesResult['details'] = [];
+
+  for (const task of tasks) {
+    const user = Array.isArray(task.users) ? task.users[0] : task.users;
+    if (!user || !user.job_title) continue;
+
+    const jobTitle = user.job_title.toLowerCase();
+    const isMobilograph = jobTitle.includes('mobilograph') || jobTitle.includes('мобилограф');
+    const isPhotographer = jobTitle.includes('photograph') || jobTitle.includes('фотограф');
+    const isVideographer = jobTitle.includes('videograph') || jobTitle.includes('видеограф');
+
+    if (!isMobilograph && !isPhotographer && !isVideographer) continue;
+
+    const startTime = new Date(task.started_at).getTime();
+    const endTime = new Date(task.end_time).getTime();
+    const hours = (endTime - startTime) / (1000 * 60 * 60);
+
+    if (hours <= 0) continue;
+
+    const { data: scheme } = await supabase
+      .from('salary_schemes')
+      .select('base_salary, kpi_rules')
+      .eq('target_type', 'user')
+      .eq('target_id', user.id)
+      .maybeSingle();
+
+    let hourlyRate = GLOBAL_RATES.PRODUCTION.hourly;
+    if (scheme?.base_salary && scheme.base_salary > 0) {
+      const monthlyHours = 160;
+      hourlyRate = scheme.base_salary / monthlyHours;
+    }
+
+    const cost = hours * hourlyRate;
+
+    if (isMobilograph) {
+      mobilographHours += hours;
+      mobilographCost += cost;
+    } else if (isPhotographer) {
+      photographerHours += hours;
+      photographerCost += cost;
+    } else if (isVideographer) {
+      videographerHours += hours;
+      videographerCost += cost;
+    }
+
+    details.push({
+      taskId: task.id,
+      taskTitle: task.title,
+      assigneeName: user.name,
+      jobTitle: user.job_title,
+      hours: Math.round(hours * 10) / 10,
+      rate: Math.round(hourlyRate),
+      cost: Math.round(cost),
+      shootingDate: task.started_at.slice(0, 10),
+    });
+  }
+
+  return {
+    mobilographHours: Math.round(mobilographHours * 10) / 10,
+    photographerHours: Math.round(photographerHours * 10) / 10,
+    videographerHours: Math.round(videographerHours * 10) / 10,
+    mobilographCost: Math.round(mobilographCost),
+    photographerCost: Math.round(photographerCost),
+    videographerCost: Math.round(videographerCost),
+    totalCost: Math.round(mobilographCost + photographerCost + videographerCost),
+    details,
+  };
+};
+
 export const projectExpensesService = {
   async getExpensesByProject(projectId: string): Promise<ProjectExpense[]> {
     const { data, error } = await supabase
