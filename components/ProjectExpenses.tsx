@@ -117,6 +117,8 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     try {
       const updatedProject = await projectService.renewProject(project.id, project, currentUser.id);
       onUpdateProject(updatedProject);
+      const newCurrentPeriod = getCurrentPeriodNumber(updatedProject.startDate || '');
+      setSelectedPeriodNumber(newCurrentPeriod);
     } catch (error) {
       console.error('Error renewing project:', error);
     }
@@ -216,6 +218,13 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
       dynamicExpenses: updatedDynamicExpenses
     });
   };
+
+  useEffect(() => {
+    if (project.startDate) {
+      const current = getCurrentPeriodNumber(project.startDate);
+      setSelectedPeriodNumber(current);
+    }
+  }, [project.startDate, project.endDate]);
 
   useEffect(() => {
     loadExpenses();
@@ -374,11 +383,19 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
 
   const handleSave = async () => {
     if (!currentExpense || !currentExpense.projectId || !currentExpense.month) return;
+    if (!currentPeriod) return;
 
     try {
       setSaving(true);
+      const expenseToSave = {
+        ...currentExpense,
+        projectMonthNumber: selectedPeriodNumber,
+        periodStartDate: currentPeriod.startDate,
+        periodEndDate: currentPeriod.endDate,
+      };
+
       const saved = await projectExpensesService.createOrUpdateExpense(
-        currentExpense as ProjectExpense,
+        expenseToSave as ProjectExpense,
         currentUser.id
       );
       setCurrentExpense(saved);

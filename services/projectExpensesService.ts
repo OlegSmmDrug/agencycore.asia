@@ -560,7 +560,13 @@ export const projectExpensesService = {
       salary_calculations: expense.salaryCalculations || {},
     };
 
-    const existing = await this.getExpenseByProjectAndMonth(expense.projectId, expense.month);
+    let existing = null;
+
+    if (projectMonthNumber) {
+      existing = await this.getExpenseByProjectAndPeriod(expense.projectId, projectMonthNumber);
+    } else {
+      existing = await this.getExpenseByProjectAndMonth(expense.projectId, expense.month);
+    }
 
     if (existing) {
       const { data, error } = await supabase
