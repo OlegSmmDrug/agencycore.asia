@@ -473,6 +473,68 @@ export const projectExpensesService = {
       }
     }
 
+    const { data: calculatorServices, error: servicesError } = await supabase
+      .from('calculator_services')
+      .select('id, name, price, category')
+      .eq('is_active', true);
+
+    if (servicesError) {
+      console.error('Error fetching calculator services:', servicesError);
+    }
+
+    const normalizeServiceName = (name: string): string => {
+      return name
+        .toLowerCase()
+        .replace(/_/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/ё/g, 'е');
+    };
+
+    if (calculatorServices && fullProject.contentMetrics) {
+      const contentMetrics = fullProject.contentMetrics as Record<string, { fact?: number; plan?: number }>;
+
+      for (const [metricKey, metricValue] of Object.entries(contentMetrics)) {
+        const fact = metricValue?.fact || 0;
+        if (fact === 0) continue;
+
+        const normalizedMetricName = normalizeServiceName(metricKey);
+
+        const matchingService = calculatorServices.find(service => {
+          const normalizedServiceName = normalizeServiceName(service.name);
+          return normalizedServiceName === normalizedMetricName;
+        });
+
+        if (matchingService) {
+          const serviceKey = `calc_${matchingService.id}`;
+          const cost = fact * parseFloat(matchingService.price);
+
+          let category = 'smm';
+          const categoryLower = (matchingService.category || '').toLowerCase();
+          if (categoryLower.includes('video') || categoryLower === 'video') {
+            category = 'video';
+          } else if (categoryLower.includes('target') || categoryLower === 'target') {
+            category = 'target';
+          } else if (categoryLower.includes('site') || categoryLower === 'sites') {
+            category = 'sites';
+          }
+
+          dynamicExpenses[serviceKey] = {
+            serviceName: matchingService.name,
+            count: fact,
+            rate: parseFloat(matchingService.price),
+            cost,
+            category,
+            syncedAt: now
+          };
+
+          console.log(`[ProjectExpenses] Added calculator service: ${matchingService.name} x ${fact} = ${cost} ₸ (${category})`);
+        } else {
+          console.warn(`[ProjectExpenses] No matching calculator service found for: ${metricKey}`);
+        }
+      }
+    }
+
     const existing = await this.getExpenseByProjectAndMonth(projectId, month);
     const modelsExpenses = existing?.modelsExpenses || 0;
 
