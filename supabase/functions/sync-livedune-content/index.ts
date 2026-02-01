@@ -84,9 +84,18 @@ Deno.serve(async (req: Request) => {
 
         // Fetch posts
         const postsUrl = `${proxyUrl}?endpoint=/accounts/${accountId}/posts&access_token=${encodeURIComponent(accessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
+        console.log(`[LiveDune Sync] Fetching posts from: ${postsUrl}`);
         const postsResponse = await fetch(postsUrl);
-        const postsData = await postsResponse.json();
+        console.log(`[LiveDune Sync] Posts response status: ${postsResponse.status}`);
+        const postsText = await postsResponse.text();
+        console.log(`[LiveDune Sync] Posts raw response (full): ${postsText}`);
+        const postsData = JSON.parse(postsText);
+        console.log(`[LiveDune Sync] Posts parsed data structure:`, JSON.stringify(postsData, null, 2));
         const posts = postsData.response || [];
+        console.log(`[LiveDune Sync] Found ${posts.length} posts`);
+        if (posts.length > 0) {
+          console.log(`[LiveDune Sync] First post sample:`, JSON.stringify(posts[0], null, 2));
+        }
 
         // Fetch stories
         const storiesUrl = `${proxyUrl}?endpoint=/accounts/${accountId}/stories&access_token=${encodeURIComponent(accessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
@@ -94,19 +103,32 @@ Deno.serve(async (req: Request) => {
         const storiesResponse = await fetch(storiesUrl);
         console.log(`[LiveDune Sync] Stories response status: ${storiesResponse.status}`);
         const storiesText = await storiesResponse.text();
-        console.log(`[LiveDune Sync] Stories raw response: ${storiesText.substring(0, 500)}`);
+        console.log(`[LiveDune Sync] Stories raw response (full): ${storiesText}`);
         const storiesData = JSON.parse(storiesText);
+        console.log(`[LiveDune Sync] Stories parsed data structure:`, JSON.stringify(storiesData, null, 2));
         const stories = storiesData.response || [];
         console.log(`[LiveDune Sync] Found ${stories.length} stories`);
+        if (stories.length > 0) {
+          console.log(`[LiveDune Sync] First story sample:`, JSON.stringify(stories[0], null, 2));
+        }
 
         // Fetch reels
         let reels = [];
         const reelsUrl = `${proxyUrl}?endpoint=/accounts/${accountId}/reels&access_token=${encodeURIComponent(accessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
+        console.log(`[LiveDune Sync] Fetching reels from: ${reelsUrl}`);
         const reelsResponse = await fetch(reelsUrl);
+        console.log(`[LiveDune Sync] Reels response status: ${reelsResponse.status}`);
 
         if (reelsResponse.ok) {
-          const reelsData = await reelsResponse.json();
+          const reelsText = await reelsResponse.text();
+          console.log(`[LiveDune Sync] Reels raw response (full): ${reelsText}`);
+          const reelsData = JSON.parse(reelsText);
+          console.log(`[LiveDune Sync] Reels parsed data structure:`, JSON.stringify(reelsData, null, 2));
           reels = reelsData.response || [];
+          console.log(`[LiveDune Sync] Found ${reels.length} reels`);
+          if (reels.length > 0) {
+            console.log(`[LiveDune Sync] First reel sample:`, JSON.stringify(reels[0], null, 2));
+          }
         }
 
         // If no reels from dedicated endpoint, try to get them from posts
