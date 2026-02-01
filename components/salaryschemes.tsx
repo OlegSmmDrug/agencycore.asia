@@ -120,6 +120,8 @@ const SalarySchemes: React.FC<SalarySchemesProps> = ({ users, schemes, onUpdateS
             }),
             ...updates
         };
+        console.log(`[Salary Scheme] Saving scheme for ${selectedTab}/${activeTarget}:`, schemeToUpdate);
+        console.log(`[Salary Scheme] KPI Rules (${schemeToUpdate.kpiRules.length}):`, schemeToUpdate.kpiRules);
         onUpdateScheme(schemeToUpdate);
     };
 
@@ -135,10 +137,15 @@ const SalarySchemes: React.FC<SalarySchemesProps> = ({ users, schemes, onUpdateS
         const newRules = [...baseRules];
         const idx = newRules.findIndex(r => r.taskType === type);
         if (idx > -1) {
-            newRules[idx].value = sanitizedValue;
-        } else {
+            if (sanitizedValue === 0) {
+                newRules.splice(idx, 1);
+            } else {
+                newRules[idx].value = sanitizedValue;
+            }
+        } else if (sanitizedValue > 0) {
             newRules.push({ taskType: type, value: sanitizedValue });
         }
+        console.log(`[Salary Scheme] Updated rule ${type}: ${sanitizedValue}, total rules: ${newRules.length}`);
         handleUpdate({ kpiRules: newRules });
     };
 

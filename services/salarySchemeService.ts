@@ -21,7 +21,7 @@ export const salarySchemeService = {
       throw error;
     }
 
-    return (data || []).map(row => ({
+    const schemes = (data || []).map(row => ({
       id: row.id,
       targetId: row.target_id,
       targetType: row.target_type as 'jobTitle' | 'user',
@@ -29,6 +29,13 @@ export const salarySchemeService = {
       kpiRules: row.kpi_rules || [],
       pmBonusPercent: Number(row.pm_bonus_percent) || 0
     }));
+
+    console.log(`[Salary Schemes] Loaded ${schemes.length} schemes for organization ${organizationId}`);
+    schemes.forEach(s => {
+      console.log(`[Salary Schemes]   - ${s.targetType}/${s.targetId}: base=${s.baseSalary}, rules=${s.kpiRules.length}`);
+    });
+
+    return schemes;
   },
 
   async getByTarget(targetId: string, targetType: 'jobTitle' | 'user'): Promise<SalaryScheme | null> {
