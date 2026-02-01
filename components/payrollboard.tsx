@@ -22,6 +22,7 @@ interface RowData {
     record: PayrollRecord;
     total: number;
     details: any[];
+    contentDetails: any[];
     bonusDetails: BonusCalculationDetail[];
 }
 
@@ -29,18 +30,20 @@ interface PayrollRowProps {
     user: User;
     record: PayrollRecord;
     details: any[];
+    contentDetails: any[];
     bonusDetails: BonusCalculationDetail[];
     isFrozen: boolean;
     onUpdateField: (userId: string, field: 'manualBonus' | 'manualPenalty' | 'advance', value: number) => void;
     onFreeze: (userId: string, manualBonus: number, manualPenalty: number, advance: number) => void;
     onPay: (record: PayrollRecord) => void;
-    onDrillDown: (user: User, details: any[], bonusDetails: BonusCalculationDetail[]) => void;
+    onDrillDown: (user: User, details: any[], contentDetails: any[], bonusDetails: BonusCalculationDetail[]) => void;
 }
 
 const PayrollRow: React.FC<PayrollRowProps> = React.memo(({
     user,
     record,
     details,
+    contentDetails,
     bonusDetails,
     isFrozen,
     onUpdateField,
@@ -109,7 +112,7 @@ const PayrollRow: React.FC<PayrollRowProps> = React.memo(({
             </td>
             <td className="px-3 md:px-6 py-3 md:py-4 text-right">
                 <button
-                    onClick={() => onDrillDown(user, details, bonusDetails)}
+                    onClick={() => onDrillDown(user, details, contentDetails, bonusDetails)}
                     className="text-xs md:text-sm font-black text-blue-600 hover:underline"
                 >
                     {record.calculatedKpi.toLocaleString()} ₸
@@ -165,6 +168,7 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
     const [drillDownUser, setDrillDownUser] = useState<User | null>(null);
     const [drillDownData, setDrillDownData] = useState<any[]>([]);
+    const [drillDownContentData, setDrillDownContentData] = useState<any[]>([]);
     const [drillDownBonusData, setDrillDownBonusData] = useState<BonusCalculationDetail[]>([]);
     const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('all');
     const [rows, setRows] = useState<RowData[]>([]);
@@ -218,6 +222,7 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
                     record,
                     total,
                     details: stats.details,
+                    contentDetails: stats.contentDetails || [],
                     bonusDetails: stats.bonusDetails
                 });
             }
@@ -288,9 +293,10 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
         });
     }, [onUpdateRecord]);
 
-    const handleDrillDown = useCallback((user: User, details: any[], bonusDetails: BonusCalculationDetail[]) => {
+    const handleDrillDown = useCallback((user: User, details: any[], contentDetails: any[], bonusDetails: BonusCalculationDetail[]) => {
         setDrillDownUser(user);
         setDrillDownData(details);
+        setDrillDownContentData(contentDetails);
         setDrillDownBonusData(bonusDetails);
     }, []);
 
@@ -343,7 +349,7 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
                                 </td>
                             </tr>
                         ) : (
-                            rows.map(({ user, record, details, bonusDetails }) => {
+                            rows.map(({ user, record, details, contentDetails, bonusDetails }) => {
                                 const isFrozen = record.status === 'FROZEN' || record.status === 'PAID';
                                 return (
                                     <PayrollRow
@@ -351,6 +357,7 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
                                         user={user}
                                         record={record}
                                         details={details}
+                                        contentDetails={contentDetails}
                                         bonusDetails={bonusDetails}
                                         isFrozen={isFrozen}
                                         onUpdateField={handleUpdateField}
@@ -366,7 +373,7 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
                 </div>
             </div>
 
-            <Modal isOpen={!!drillDownUser} onClose={() => { setDrillDownUser(null); setDrillDownData([]); setDrillDownBonusData([]); }} title={`Детализация начислений: ${drillDownUser?.name}`}>
+            <Modal isOpen={!!drillDownUser} onClose={() => { setDrillDownUser(null); setDrillDownData([]); setDrillDownContentData([]); setDrillDownBonusData([]); }} title={`Детализация начислений: ${drillDownUser?.name}`}>
                 <div className="space-y-6">
                     {(() => {
                         const record = payrollRecords.find(r => r.userId === drillDownUser?.id && r.month === selectedMonth);
@@ -403,6 +410,22 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
                         </div>
                     )}
 
+                    {drillDownContentData.length > 0 && (
+                        <div className="space-y-3">
+                            <h4 className="font-black text-slate-700 text-sm uppercase tracking-wide">KPI за контент проектов</h4>
+                            {drillDownContentData.map((d, i) => (
+                                <div key={i} className="flex justify-between items-center p-3 bg-purple-50 rounded-xl border border-purple-100">
+                                    <div>
+                                        <p className="font-bold text-slate-700 text-sm">{d.projectName}</p>
+                                        <p className="text-[10px] text-slate-400 uppercase">{d.contentType} • {d.quantity.toFixed(1)} × {d.rate} ₸</p>
+                                        <p className="text-[9px] text-slate-400 mt-0.5">Доля в команде: {d.sharePercentage.toFixed(1)}%</p>
+                                    </div>
+                                    <div className="font-black text-purple-600 text-sm">+{d.total.toLocaleString()} ₸</div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
                     {drillDownBonusData.length > 0 && (
                         <div className="space-y-3">
                             <h4 className="font-black text-slate-700 text-sm uppercase tracking-wide">Бонусы по правилам</h4>
@@ -433,7 +456,7 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
                         </div>
                     )}
 
-                    {drillDownData.length === 0 && drillDownBonusData.length === 0 && (
+                    {drillDownData.length === 0 && drillDownContentData.length === 0 && drillDownBonusData.length === 0 && (
                         <p className="p-10 text-center text-slate-400 italic">Начислений нет</p>
                     )}
                 </div>

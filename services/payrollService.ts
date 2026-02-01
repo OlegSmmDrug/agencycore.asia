@@ -9,11 +9,22 @@ interface KpiDetail {
   total: number;
 }
 
+export interface ContentPayrollDetail {
+  projectId: string;
+  projectName: string;
+  contentType: string;
+  quantity: number;
+  rate: number;
+  total: number;
+  sharePercentage: number;
+}
+
 interface UserStatsResult {
   baseSalary: number;
   kpiEarned: number;
   bonusesEarned: number;
   details: KpiDetail[];
+  contentDetails: ContentPayrollDetail[];
   bonusDetails: BonusCalculationDetail[];
   totalEarnings: number;
 }
@@ -164,6 +175,7 @@ export async function calculateUserStats(
     kpiEarned: totalKpiWithContent,
     bonusesEarned: bonusResult.totalBonus,
     details,
+    contentDetails: projectContentResult.details,
     bonusDetails: bonusResult.details,
     totalEarnings
   };
