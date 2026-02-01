@@ -9,6 +9,8 @@ interface SmartDashboardProps {
   onEditContent?: () => void;
   onSyncKpis?: () => void;
   isSyncingKpis?: boolean;
+  onSyncContent?: () => void;
+  isSyncingContent?: boolean;
 }
 
 const SmartDashboard: React.FC<SmartDashboardProps> = ({
@@ -18,7 +20,9 @@ const SmartDashboard: React.FC<SmartDashboardProps> = ({
   onEditKpi,
   onEditContent,
   onSyncKpis,
-  isSyncingKpis = false
+  isSyncingKpis = false,
+  onSyncContent,
+  isSyncingContent = false
 }) => {
   const stats = useMemo(() => {
     const projectTasks = tasks.filter(t => t.projectId === project.id);
@@ -222,7 +226,24 @@ const SmartDashboard: React.FC<SmartDashboardProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             )}
-            {isSyncingKpis ? 'Обновление...' : 'Обновить'}
+            {isSyncingKpis ? 'Обновление...' : 'Обновить KPI'}
+          </button>
+        )}
+
+        {project.liveduneAccountId && onSyncContent && (
+          <button
+            onClick={onSyncContent}
+            disabled={isSyncingContent}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {isSyncingContent ? (
+              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            )}
+            {isSyncingContent ? 'Синхронизация...' : 'Обновить контент'}
           </button>
         )}
 

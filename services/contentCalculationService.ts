@@ -133,6 +133,55 @@ export const getLiveduneContentCounts = async (
       stories: stories.length
     });
 
+    // Сохраняем полученные данные в content_publications
+    if (posts.length > 0 || reels.length > 0 || stories.length > 0) {
+      console.log(`[Content Calculation] ${project.name}: Saving API data to content_publications`);
+      const publicationsToInsert: any[] = [];
+
+      posts.forEach(post => {
+        publicationsToInsert.push({
+          project_id: project.id,
+          organization_id: project.organizationId,
+          content_type: 'post',
+          published_at: post.created || new Date().toISOString(),
+          description: `Synced from Livedune API: ${post.text?.substring(0, 100) || ''}`
+        });
+      });
+
+      reels.forEach(reel => {
+        publicationsToInsert.push({
+          project_id: project.id,
+          organization_id: project.organizationId,
+          content_type: 'reels',
+          published_at: reel.created || new Date().toISOString(),
+          description: `Synced from Livedune API: ${reel.text?.substring(0, 100) || ''}`
+        });
+      });
+
+      stories.forEach(story => {
+        publicationsToInsert.push({
+          project_id: project.id,
+          organization_id: project.organizationId,
+          content_type: 'story',
+          published_at: story.created || new Date().toISOString(),
+          description: 'Synced from Livedune API'
+        });
+      });
+
+      if (publicationsToInsert.length > 0) {
+        const { error: insertError } = await supabase
+          .from('content_publications')
+          .insert(publicationsToInsert)
+          .select();
+
+        if (insertError) {
+          console.error(`[Content Calculation] ${project.name}: Error saving to content_publications:`, insertError);
+        } else {
+          console.log(`[Content Calculation] ${project.name}: Saved ${publicationsToInsert.length} publications to DB`);
+        }
+      }
+    }
+
     return {
       posts: posts.length,
       reels: reels.length,

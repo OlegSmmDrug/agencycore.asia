@@ -139,6 +139,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
   const [isKpiSuggestionModalOpen, setIsKpiSuggestionModalOpen] = useState(false);
   const [isSyncingKpis, setIsSyncingKpis] = useState(false);
   const [isCalculatingContent, setIsCalculatingContent] = useState(false);
+  const [isSyncingContent, setIsSyncingContent] = useState(false);
   const [hasSyncedFromCalculator, setHasSyncedFromCalculator] = useState(false);
   const [legalDocuments, setLegalDocuments] = useState<ProjectLegalDocument[]>([]);
   const [generatedDocuments, setGeneratedDocuments] = useState<GeneratedDocument[]>([]);
@@ -549,6 +550,23 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
       console.error('Error syncing KPIs:', error);
     } finally {
       setIsSyncingKpis(false);
+    }
+  };
+
+  const handleSyncContent = async () => {
+    setIsSyncingContent(true);
+    try {
+      console.log('[ProjectDetails] Forcing content sync for project:', project.name);
+      const updatedProject = await autoCalculateContentForProject(project, tasks);
+      if (updatedProject && onProjectChangedLocal) {
+        onProjectChangedLocal(updatedProject);
+        console.log('[ProjectDetails] Content synced successfully');
+      }
+    } catch (error) {
+      console.error('[ProjectDetails] Error syncing content:', error);
+      alert('Ошибка при синхронизации контента');
+    } finally {
+      setIsSyncingContent(false);
     }
   };
 
@@ -1221,6 +1239,8 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
           onEditContent={() => setIsEditingContent(true)}
           onSyncKpis={handleSyncKpis}
           isSyncingKpis={isSyncingKpis}
+          onSyncContent={handleSyncContent}
+          isSyncingContent={isSyncingContent}
         />
 
         {isEditMode && (
