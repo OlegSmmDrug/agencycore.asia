@@ -293,17 +293,38 @@ export const liveduneContentSyncService = {
 
     let synced = 0;
     let skipped = 0;
+    let userRotationIndex = 0;
 
     const smmMembers = await this.getSMMTeamMembers(project.team_ids || []);
 
+    if (smmMembers.length === 0) {
+      console.error('[LiveDune API Sync] No SMM team members found, cannot sync');
+      return { synced: 0, skipped: 0, error: 'No SMM team members found' };
+    }
+
+    console.log(`[LiveDune API Sync] Found ${smmMembers.length} SMM team members:`, smmMembers.map(m => m.name));
+
     try {
       const postsUrl = `${LIVEDUNE_PROXY_URL}?endpoint=/accounts/${liveduneAccountId}/posts&access_token=${encodeURIComponent(liveduneAccessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
+      console.log(`[LiveDune API Sync] Fetching posts from ${dateFrom} to ${dateTo}`);
       const postsResponse = await fetch(postsUrl, { headers });
+
+      if (!postsResponse.ok) {
+        console.error(`[LiveDune API Sync] Posts API returned ${postsResponse.status}`);
+      }
 
       if (postsResponse.ok) {
         const postsData = await postsResponse.json();
+
+        if (postsData.error) {
+          console.error(`[LiveDune API Sync] Posts API error:`, postsData.error);
+        }
         const posts = postsData.response || [];
-        console.log(`[LiveDune API Sync] Fetched ${posts.length} posts`);
+        console.log(`[LiveDune API Sync] Fetched ${posts.length} posts from API`);
+
+        if (posts.length > 0) {
+          console.log(`[LiveDune API Sync] Sample post:`, posts[0]);
+        }
 
         for (const post of posts) {
           const publishedAt = new Date(post.created || post.date).toISOString();
@@ -321,13 +342,10 @@ export const liveduneContentSyncService = {
             continue;
           }
 
-          const assignedUserId = smmMembers.length > 0 ? smmMembers[synced % smmMembers.length].id : null;
-          if (!assignedUserId) {
-            skipped++;
-            continue;
-          }
+          const assignedUserId = smmMembers[userRotationIndex % smmMembers.length].id;
+          userRotationIndex++;
 
-          const success = await contentPublicationService.create({
+          const result = await contentPublicationService.create({
             projectId,
             contentType: 'Post',
             publishedAt,
@@ -336,18 +354,36 @@ export const liveduneContentSyncService = {
             description: `From LiveDune API (${post.post_id || post.id})`
           });
 
-          if (success) synced++;
-          else skipped++;
+          if (result) {
+            console.log(`[LiveDune API Sync] Created Post publication for ${publishedAt}`);
+            synced++;
+          } else {
+            console.error(`[LiveDune API Sync] Failed to create Post publication for ${publishedAt}`);
+            skipped++;
+          }
         }
       }
 
       const storiesUrl = `${LIVEDUNE_PROXY_URL}?endpoint=/accounts/${liveduneAccountId}/stories&access_token=${encodeURIComponent(liveduneAccessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
+      console.log(`[LiveDune API Sync] Fetching stories from ${dateFrom} to ${dateTo}`);
       const storiesResponse = await fetch(storiesUrl, { headers });
+
+      if (!storiesResponse.ok) {
+        console.error(`[LiveDune API Sync] Stories API returned ${storiesResponse.status}`);
+      }
 
       if (storiesResponse.ok) {
         const storiesData = await storiesResponse.json();
+
+        if (storiesData.error) {
+          console.error(`[LiveDune API Sync] Stories API error:`, storiesData.error);
+        }
         const stories = storiesData.response || [];
-        console.log(`[LiveDune API Sync] Fetched ${stories.length} stories`);
+        console.log(`[LiveDune API Sync] Fetched ${stories.length} stories from API`);
+
+        if (stories.length > 0) {
+          console.log(`[LiveDune API Sync] Sample story:`, stories[0]);
+        }
 
         for (const story of stories) {
           const publishedAt = new Date(story.created || story.date).toISOString();
@@ -365,13 +401,10 @@ export const liveduneContentSyncService = {
             continue;
           }
 
-          const assignedUserId = smmMembers.length > 0 ? smmMembers[synced % smmMembers.length].id : null;
-          if (!assignedUserId) {
-            skipped++;
-            continue;
-          }
+          const assignedUserId = smmMembers[userRotationIndex % smmMembers.length].id;
+          userRotationIndex++;
 
-          const success = await contentPublicationService.create({
+          const result = await contentPublicationService.create({
             projectId,
             contentType: 'Stories ',
             publishedAt,
@@ -380,18 +413,36 @@ export const liveduneContentSyncService = {
             description: `From LiveDune API (${story.story_id || story.id})`
           });
 
-          if (success) synced++;
-          else skipped++;
+          if (result) {
+            console.log(`[LiveDune API Sync] Created Stories publication for ${publishedAt}`);
+            synced++;
+          } else {
+            console.error(`[LiveDune API Sync] Failed to create Stories publication for ${publishedAt}`);
+            skipped++;
+          }
         }
       }
 
       const reelsUrl = `${LIVEDUNE_PROXY_URL}?endpoint=/accounts/${liveduneAccountId}/reels&access_token=${encodeURIComponent(liveduneAccessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
+      console.log(`[LiveDune API Sync] Fetching reels from ${dateFrom} to ${dateTo}`);
       const reelsResponse = await fetch(reelsUrl, { headers });
+
+      if (!reelsResponse.ok) {
+        console.error(`[LiveDune API Sync] Reels API returned ${reelsResponse.status}`);
+      }
 
       if (reelsResponse.ok) {
         const reelsData = await reelsResponse.json();
+
+        if (reelsData.error) {
+          console.error(`[LiveDune API Sync] Reels API error:`, reelsData.error);
+        }
         const reels = reelsData.response || [];
-        console.log(`[LiveDune API Sync] Fetched ${reels.length} reels`);
+        console.log(`[LiveDune API Sync] Fetched ${reels.length} reels from API`);
+
+        if (reels.length > 0) {
+          console.log(`[LiveDune API Sync] Sample reel:`, reels[0]);
+        }
 
         for (const reel of reels) {
           const publishedAt = new Date(reel.created || reel.date).toISOString();
@@ -409,13 +460,10 @@ export const liveduneContentSyncService = {
             continue;
           }
 
-          const assignedUserId = smmMembers.length > 0 ? smmMembers[synced % smmMembers.length].id : null;
-          if (!assignedUserId) {
-            skipped++;
-            continue;
-          }
+          const assignedUserId = smmMembers[userRotationIndex % smmMembers.length].id;
+          userRotationIndex++;
 
-          const success = await contentPublicationService.create({
+          const result = await contentPublicationService.create({
             projectId,
             contentType: 'Reels Production',
             publishedAt,
@@ -424,8 +472,13 @@ export const liveduneContentSyncService = {
             description: `From LiveDune API (${reel.reel_id || reel.id})`
           });
 
-          if (success) synced++;
-          else skipped++;
+          if (result) {
+            console.log(`[LiveDune API Sync] Created Reels publication for ${publishedAt}`);
+            synced++;
+          } else {
+            console.error(`[LiveDune API Sync] Failed to create Reels publication for ${publishedAt}`);
+            skipped++;
+          }
         }
       }
 

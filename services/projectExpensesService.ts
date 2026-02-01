@@ -892,12 +892,16 @@ export const projectExpensesService = {
       }
     }
 
+    console.log(`[ProjectExpenses] Checking publications for ${month}: ${monthStart.toISOString()} to ${monthEnd.toISOString()}`);
+
     const { count: existingPublicationsCount } = await supabase
       .from('content_publications')
       .select('id', { count: 'exact', head: true })
       .eq('project_id', projectId)
-      .gte('published_at', `${month}-01`)
-      .lt('published_at', `${month}-32`);
+      .gte('published_at', monthStart.toISOString())
+      .lte('published_at', monthEnd.toISOString());
+
+    console.log(`[ProjectExpenses] Found ${existingPublicationsCount || 0} publications for ${month}`);
 
     if ((existingPublicationsCount || 0) === 0 && hasLivedune) {
       console.log(`[ProjectExpenses] No publications found for ${month}, fetching from LiveDune API...`);
@@ -909,6 +913,12 @@ export const projectExpensesService = {
         fullProject.liveduneAccountId!
       );
       console.log(`[ProjectExpenses] LiveDune sync result for ${month}:`, syncResult);
+
+      if (syncResult.synced > 0) {
+        console.log(`[ProjectExpenses] Successfully synced ${syncResult.synced} publications from LiveDune`);
+      } else if (syncResult.error) {
+        console.error(`[ProjectExpenses] LiveDune sync failed:`, syncResult.error);
+      }
     }
 
     const { data: contentMetricsSnapshot, error: metricsError } = await supabase
