@@ -165,7 +165,12 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
     users = [], tasks = [], projects = [], payrollRecords = [],
     salarySchemes = [], availableJobTitles = [], onUpdateRecord, onPay
 }) => {
-    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+    const getDefaultMonth = () => {
+        const now = new Date();
+        now.setMonth(now.getMonth() - 1);
+        return now.toISOString().slice(0, 7);
+    };
+    const [selectedMonth, setSelectedMonth] = useState(getDefaultMonth());
     const [drillDownUser, setDrillDownUser] = useState<User | null>(null);
     const [drillDownData, setDrillDownData] = useState<any[]>([]);
     const [drillDownContentData, setDrillDownContentData] = useState<any[]>([]);
@@ -308,12 +313,19 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Финансовый контроль персонала</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <input 
-                        type="month" 
-                        className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-black text-slate-700 outline-none"
-                        value={selectedMonth}
-                        onChange={(e) => setSelectedMonth(e.target.value)}
-                    />
+                    <div className="flex flex-col items-end gap-1">
+                        <input
+                            type="month"
+                            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-black text-slate-700 outline-none"
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                        />
+                        {rows.length > 0 && (
+                            <p className="text-[10px] text-slate-400 px-2">
+                                {rows.length} сотрудников
+                            </p>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -344,8 +356,13 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
                             </tr>
                         ) : rows.length === 0 ? (
                             <tr>
-                                <td colSpan={8} className="px-6 py-12 text-center text-slate-400 italic">
-                                    Нет данных для отображения
+                                <td colSpan={8} className="px-6 py-12 text-center">
+                                    <div className="flex flex-col items-center gap-2">
+                                        <p className="text-slate-400 italic">Нет данных для отображения</p>
+                                        <p className="text-xs text-slate-300">
+                                            Выбран месяц: {new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+                                        </p>
+                                    </div>
                                 </td>
                             </tr>
                         ) : (
