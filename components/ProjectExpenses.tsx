@@ -692,15 +692,32 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                       const kpiKey = `kpi_${metricKey}`;
                       const serviceName = metricKey.charAt(0).toUpperCase() + metricKey.slice(1).replace(/_/g, ' ');
 
-                      const categoryFromCalculator = getCategoryFromCalculator(serviceName);
-                      const finalCategory = categoryFromCalculator || detectCategory(serviceName);
+                      const normalize = (str: string): string => {
+                        return str
+                          .toLowerCase()
+                          .replace(/[_\s]+/g, '')
+                          .replace(/[^a-zа-я0-9]/g, '')
+                          .trim();
+                      };
+
+                      const normalizedServiceName = normalize(serviceName);
+                      const foundService = calculatorServices.find(s => {
+                        const normalizedCalcName = normalize(s.name);
+                        return normalizedCalcName === normalizedServiceName;
+                      });
+
+                      const finalCategory = foundService?.category || detectCategory(serviceName);
+                      const finalRate = foundService?.costPrice ? Number(foundService.costPrice) : 0;
+                      const contentMetrics = project.contentMetrics as Record<string, { fact?: number; plan?: number }>;
+                      const metricData = contentMetrics[metricKey];
+                      const planCount = metricData?.plan || 0;
 
                       enrichedDynamicExpenses[kpiKey] = {
-                        serviceName,
+                        serviceName: foundService?.name || serviceName,
                         category: finalCategory,
-                        count: 0,
-                        rate: 0,
-                        cost: 0,
+                        count: planCount,
+                        rate: finalRate,
+                        cost: planCount * finalRate,
                         syncedAt: new Date().toISOString()
                       };
                       categoriesInUse.add(finalCategory);
