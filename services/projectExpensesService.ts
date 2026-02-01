@@ -903,6 +903,8 @@ export const projectExpensesService = {
 
     console.log(`[ProjectExpenses] Found ${existingPublicationsCount || 0} publications for ${month}`);
 
+    let contentMetricsSnapshot: any = {};
+
     if ((existingPublicationsCount || 0) === 0 && hasLivedune) {
       console.log(`[ProjectExpenses] No publications found for ${month}, fetching from LiveDune API...`);
       const { liveduneContentSyncService } = await import('./liveduneContentSyncService');
@@ -916,19 +918,36 @@ export const projectExpensesService = {
 
       if (syncResult.synced > 0) {
         console.log(`[ProjectExpenses] Successfully synced ${syncResult.synced} publications from LiveDune`);
+
+        const { data: recalculatedMetrics, error: metricsError } = await supabase
+          .rpc('calculate_content_metrics_for_month', {
+            p_project_id: projectId,
+            p_month: month
+          });
+
+        if (metricsError) {
+          console.error('Error calculating content metrics snapshot after sync:', metricsError);
+        } else {
+          contentMetricsSnapshot = recalculatedMetrics || {};
+          console.log(`[ProjectExpenses] Recalculated metrics after LiveDune sync:`, contentMetricsSnapshot);
+        }
       } else if (syncResult.error) {
         console.error(`[ProjectExpenses] LiveDune sync failed:`, syncResult.error);
+      } else {
+        console.log(`[ProjectExpenses] No new publications synced from LiveDune (${syncResult.skipped} skipped)`);
       }
-    }
+    } else {
+      const { data: metrics, error: metricsError } = await supabase
+        .rpc('calculate_content_metrics_for_month', {
+          p_project_id: projectId,
+          p_month: month
+        });
 
-    const { data: contentMetricsSnapshot, error: metricsError } = await supabase
-      .rpc('calculate_content_metrics_for_month', {
-        p_project_id: projectId,
-        p_month: month
-      });
-
-    if (metricsError) {
-      console.error('Error calculating content metrics snapshot:', metricsError);
+      if (metricsError) {
+        console.error('Error calculating content metrics snapshot:', metricsError);
+      } else {
+        contentMetricsSnapshot = metrics || {};
+      }
     }
 
     const expenseData: Partial<ProjectExpense> & { projectId: string; month: string } = {

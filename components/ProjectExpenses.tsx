@@ -309,36 +309,79 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
       if (expense) {
         setCurrentExpense(expense);
       } else {
-        setCurrentExpense({
-          projectId,
-          month,
-          smmExpenses: 0,
-          smmPostsCount: 0,
-          smmReelsCount: 0,
-          smmStoriesCount: 0,
-          smmSpecDesignCount: 0,
-          smmMonitoring: false,
-          smmDubbingCount: 0,
-          smmScenariosCount: 0,
-          smmManualAdjustment: 0,
-          pmExpenses: 0,
-          pmSalaryShare: 0,
-          pmProjectCount: 1,
-          productionExpenses: 0,
-          productionMobilographHours: 0,
-          productionPhotographerHours: 0,
-          productionVideographerHours: 0,
-          productionVideoCost: 0,
-          productionManualAdjustment: 0,
-          modelsExpenses: 0,
-          targetologistExpenses: 0,
-          targetologistSalaryShare: 0,
-          targetologistProjectCount: 1,
-          otherExpenses: 0,
-          otherExpensesDescription: '',
-          revenue: 0,
-          notes: '',
-        });
+        console.log(`[ProjectExpenses] No expense found for ${month}, creating with syncDynamicExpenses`);
+        if (canEdit) {
+          try {
+            const synced = await projectExpensesService.syncDynamicExpenses(projectId, month, currentUser.id);
+            setCurrentExpense(synced);
+            await loadExpenses();
+          } catch (syncError) {
+            console.error('Error syncing new month:', syncError);
+            setCurrentExpense({
+              projectId,
+              month,
+              smmExpenses: 0,
+              smmPostsCount: 0,
+              smmReelsCount: 0,
+              smmStoriesCount: 0,
+              smmSpecDesignCount: 0,
+              smmMonitoring: false,
+              smmDubbingCount: 0,
+              smmScenariosCount: 0,
+              smmManualAdjustment: 0,
+              pmExpenses: 0,
+              pmSalaryShare: 0,
+              pmProjectCount: 1,
+              productionExpenses: 0,
+              productionMobilographHours: 0,
+              productionPhotographerHours: 0,
+              productionVideographerHours: 0,
+              productionVideoCost: 0,
+              productionManualAdjustment: 0,
+              modelsExpenses: 0,
+              targetologistExpenses: 0,
+              targetologistSalaryShare: 0,
+              targetologistProjectCount: 1,
+              otherExpenses: 0,
+              otherExpensesDescription: '',
+              revenue: 0,
+              notes: '',
+              dynamicExpenses: {}
+            });
+          }
+        } else {
+          setCurrentExpense({
+            projectId,
+            month,
+            smmExpenses: 0,
+            smmPostsCount: 0,
+            smmReelsCount: 0,
+            smmStoriesCount: 0,
+            smmSpecDesignCount: 0,
+            smmMonitoring: false,
+            smmDubbingCount: 0,
+            smmScenariosCount: 0,
+            smmManualAdjustment: 0,
+            pmExpenses: 0,
+            pmSalaryShare: 0,
+            pmProjectCount: 1,
+            productionExpenses: 0,
+            productionMobilographHours: 0,
+            productionPhotographerHours: 0,
+            productionVideographerHours: 0,
+            productionVideoCost: 0,
+            productionManualAdjustment: 0,
+            modelsExpenses: 0,
+            targetologistExpenses: 0,
+            targetologistSalaryShare: 0,
+            targetologistProjectCount: 1,
+            otherExpenses: 0,
+            otherExpensesDescription: '',
+            revenue: 0,
+            notes: '',
+            dynamicExpenses: {}
+          });
+        }
       }
     } catch (error) {
       console.error('Error loading expense:', error);
