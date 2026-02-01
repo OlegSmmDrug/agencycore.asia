@@ -57,8 +57,11 @@ export async function calculateUserStats(
   const completedTasks = tasks.filter(t => {
     if (t.assigneeId !== user.id) return false;
     if (t.status !== TaskStatus.DONE) return false;
-    if (!t.completedAt) return false;
-    const completedDate = new Date(t.completedAt);
+
+    const dateToUse = t.completedAt || t.deadline;
+    if (!dateToUse) return false;
+
+    const completedDate = new Date(dateToUse);
     return completedDate >= monthStart && completedDate <= monthEnd;
   });
 
