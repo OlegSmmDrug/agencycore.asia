@@ -46,6 +46,10 @@ export async function calculateUserStats(
   console.log(`[Payroll Debug] Base salary: ${baseSalary}`);
   console.log(`[Payroll Debug] KPI rules count: ${scheme?.kpiRules?.length || 0}`);
 
+  if (scheme && scheme.kpiRules.length > 0) {
+    console.log(`[Payroll Debug] Expected task types in scheme:`, JSON.stringify(scheme.kpiRules.map(r => r.taskType), null, 2));
+  }
+
   const monthStart = new Date(month + '-01');
   const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
 
@@ -57,17 +61,47 @@ export async function calculateUserStats(
     return completedDate >= monthStart && completedDate <= monthEnd;
   });
 
-  console.log(`[Payroll Debug] Total tasks assigned: ${tasks.filter(t => t.assigneeId === user.id).length}`);
-  console.log(`[Payroll Debug] DONE tasks: ${tasks.filter(t => t.assigneeId === user.id && t.status === TaskStatus.DONE).length}`);
-  console.log(`[Payroll Debug] DONE with completedAt: ${tasks.filter(t => t.assigneeId === user.id && t.status === TaskStatus.DONE && t.completedAt).length}`);
+  const allUserTasks = tasks.filter(t => t.assigneeId === user.id);
+  const doneTasks = allUserTasks.filter(t => t.status === TaskStatus.DONE);
+  const doneWithDate = doneTasks.filter(t => t.completedAt);
+
+  console.log(`[Payroll Debug] Total tasks assigned: ${allUserTasks.length}`);
+  console.log(`[Payroll Debug] DONE tasks: ${doneTasks.length}`);
+  console.log(`[Payroll Debug] DONE with completedAt: ${doneWithDate.length}`);
   console.log(`[Payroll Debug] Completed in period: ${completedTasks.length}`);
+
+  if (allUserTasks.length > 0) {
+    const allTypesDistribution = allUserTasks.reduce((acc, t) => {
+      acc[t.type] = (acc[t.type] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    console.log(`[Payroll Debug] ALL tasks types:`, JSON.stringify(allTypesDistribution, null, 2));
+  }
+
+  if (doneTasks.length > 0) {
+    const doneTypesDistribution = doneTasks.reduce((acc, t) => {
+      acc[t.type] = (acc[t.type] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    console.log(`[Payroll Debug] DONE tasks types:`, JSON.stringify(doneTypesDistribution, null, 2));
+
+    const missingDates = doneTasks.filter(t => !t.completedAt).map(t => ({
+      title: t.title,
+      type: t.type,
+      status: t.status,
+      deadline: t.deadline
+    }));
+    if (missingDates.length > 0) {
+      console.log(`[Payroll Debug] ⚠️ DONE tasks WITHOUT completedAt:`, JSON.stringify(missingDates, null, 2));
+    }
+  }
 
   if (completedTasks.length > 0) {
     const taskTypeDistribution = completedTasks.reduce((acc, t) => {
       acc[t.type] = (acc[t.type] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
-    console.log(`[Payroll Debug] Task type distribution:`, taskTypeDistribution);
+    console.log(`[Payroll Debug] Tasks in period types:`, JSON.stringify(taskTypeDistribution, null, 2));
   }
 
   const details: KpiDetail[] = [];
@@ -80,8 +114,13 @@ export async function calculateUserStats(
       const count = tasksOfType.length;
       const total = count * rule.value;
 
-      console.log(`[Payroll Debug] Rule: ${rule.taskType} @ ${rule.value} per task`);
+      console.log(`[Payroll Debug] Rule: "${rule.taskType}" @ ${rule.value} per task`);
+      console.log(`[Payroll Debug]   - Searching for type: "${rule.taskType}"`);
       console.log(`[Payroll Debug]   - Found ${count} tasks of this type`);
+      if (count === 0 && completedTasks.length > 0) {
+        const availableTypes = [...new Set(completedTasks.map(t => t.type))];
+        console.log(`[Payroll Debug]   - ⚠️ Available types in completed tasks:`, JSON.stringify(availableTypes, null, 2));
+      }
       console.log(`[Payroll Debug]   - Total earnings: ${total}`);
 
       totalKpi += total;
