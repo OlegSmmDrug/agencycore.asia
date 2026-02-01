@@ -5,6 +5,7 @@ import { INITIAL_JOB_TITLES } from '../constants';
 import BonusRuleBuilder from './BonusRuleBuilder';
 import { calculatorService } from '../services/calculatorService';
 import { taskTypeService, DynamicTaskType, StaticTaskType } from '../services/taskTypeService';
+import { calculatorCategoryHelper, CalculatorCategoryInfo } from '../services/calculatorCategoryHelper';
 import { useNumberInput } from '../hooks/useNumberInput';
 
 interface SalarySchemesProps {
@@ -53,6 +54,7 @@ const SalarySchemes: React.FC<SalarySchemesProps> = ({ users, schemes, onUpdateS
     const [activeTarget, setActiveTarget] = useState<string>(jobTitles[0]);
     const [dynamicTypes, setDynamicTypes] = useState<DynamicTaskType[]>([]);
     const [isLoadingTypes, setIsLoadingTypes] = useState(true);
+    const [categories, setCategories] = useState<CalculatorCategoryInfo[]>([]);
 
     const allTaskTypes = [...STATIC_TASK_TYPES, ...dynamicTypes.map(dt => dt.name as TaskType)];
 
@@ -84,8 +86,12 @@ const SalarySchemes: React.FC<SalarySchemesProps> = ({ users, schemes, onUpdateS
         const loadDynamicTypes = async () => {
             setIsLoadingTypes(true);
             try {
-                const types = await taskTypeService.getDynamicTaskTypes();
+                const [types, cats] = await Promise.all([
+                    taskTypeService.getDynamicTaskTypes(),
+                    calculatorCategoryHelper.getAllCategories()
+                ]);
                 setDynamicTypes(types.filter(t => !t.isDeprecated));
+                setCategories(cats);
             } catch (error) {
                 console.error('Failed to load dynamic task types:', error);
             } finally {
@@ -239,29 +245,18 @@ const SalarySchemes: React.FC<SalarySchemesProps> = ({ users, schemes, onUpdateS
                                     </div>
 
                                     {/* Динамические типы по категориям */}
-                                    {['smm', 'target', 'sites', 'video'].map(category => {
-                                        const categoryTypes = dynamicTypes.filter(dt => dt.category === category);
+                                    {categories.map(category => {
+                                        const categoryTypes = dynamicTypes.filter(dt => dt.category === category.id);
                                         if (categoryTypes.length === 0) return null;
 
-                                        const categoryLabels = {
-                                            smm: 'SMM',
-                                            target: 'Таргет',
-                                            sites: 'Сайты',
-                                            video: 'Продакшн'
-                                        };
-
-                                        const categoryColors = {
-                                            smm: 'blue',
-                                            target: 'purple',
-                                            sites: 'green',
-                                            video: 'rose'
-                                        };
-
                                         return (
-                                            <div key={category} className="space-y-4 pt-4 border-t border-slate-50">
+                                            <div key={category.id} className="space-y-4 pt-4 border-t border-slate-50">
                                                 <div className="flex items-center gap-2">
-                                                    <div className={`w-2 h-2 rounded-full bg-${categoryColors[category as keyof typeof categoryColors]}-400`}></div>
-                                                    <h4 className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{categoryLabels[category as keyof typeof categoryLabels]}</h4>
+                                                    <div className="w-2 h-2 rounded-full bg-blue-400"></div>
+                                                    <h4 className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                                                        <span>{category.icon}</span>
+                                                        <span>{category.name}</span>
+                                                    </h4>
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-4">
                                                     {categoryTypes.map(dt => (
