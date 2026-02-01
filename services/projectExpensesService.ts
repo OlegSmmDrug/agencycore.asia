@@ -615,7 +615,7 @@ export const projectExpensesService = {
   ): Promise<ProjectExpense> {
     const { data: project, error: projectError } = await supabase
       .from('projects')
-      .select('id, name, team_ids, budget, livedune_access_token, livedune_account_id, start_date, end_date, content_metrics')
+      .select('id, name, team_ids, budget, livedune_access_token, livedune_account_id, start_date, end_date, content_metrics, content_metrics_visible')
       .eq('id', projectId)
       .single();
 
@@ -630,6 +630,7 @@ export const projectExpensesService = {
       startDate: project.start_date,
       endDate: project.end_date,
       contentMetrics: project.content_metrics || {},
+      contentMetricsVisible: project.content_metrics_visible || [],
     } as Project;
 
     const dynamicExpenses: DynamicExpenses = {};
@@ -637,92 +638,8 @@ export const projectExpensesService = {
 
     await calculatorCategoryHelper.getAllCategories();
 
-    const { data: completedTasks, error: tasksError } = await supabase
-      .from('tasks')
-      .select('id, assignee_id, type, completed_at, estimated_hours')
-      .eq('project_id', projectId)
-      .eq('status', 'Done');
-
-    if (tasksError) {
-      console.error('Error fetching completed tasks:', tasksError);
-    }
-
-    const tasksByExecutor: Record<string, Record<string, number>> = {};
-
-    if (completedTasks && completedTasks.length > 0) {
-      for (const task of completedTasks) {
-        if (!task.assignee_id || !task.type) continue;
-
-        if (!tasksByExecutor[task.assignee_id]) {
-          tasksByExecutor[task.assignee_id] = {};
-        }
-
-        const taskType = task.type;
-        const hours = Number(task.estimated_hours) || 1;
-        tasksByExecutor[task.assignee_id][taskType] =
-          (tasksByExecutor[task.assignee_id][taskType] || 0) + hours;
-      }
-    }
-
-    const salarySchemes = await salarySchemeService.getAll();
-    const { data: users, error: usersError } = await supabase
-      .from('users')
-      .select('id, name, job_title')
-      .in('id', Object.keys(tasksByExecutor));
-
-    if (usersError) {
-      console.error('Error fetching users:', usersError);
-    }
-
-    for (const executorId in tasksByExecutor) {
-      const user = users?.find(u => u.id === executorId);
-      if (!user) continue;
-
-      const userScheme = salarySchemes.find(
-        s => s.targetType === 'user' && s.targetId === executorId
-      );
-      const jobTitleScheme = salarySchemes.find(
-        s => s.targetType === 'jobTitle' && s.targetId === user.job_title
-      );
-
-      const scheme = userScheme || jobTitleScheme;
-      if (!scheme || !scheme.kpiRules || scheme.kpiRules.length === 0) continue;
-
-      const taskTypeCounts = tasksByExecutor[executorId];
-
-      for (const taskType in taskTypeCounts) {
-        const hours = taskTypeCounts[taskType];
-        const kpiRule = scheme.kpiRules.find(rule => rule.taskType === taskType);
-
-        if (kpiRule && kpiRule.value > 0) {
-          const category = await calculatorCategoryHelper.getCategoryByJobTitleAndTaskType(user.job_title, taskType);
-
-          if (category === 'video') {
-            continue;
-          }
-
-          const serviceKey = `${executorId}_${taskType}`;
-
-          dynamicExpenses[serviceKey] = {
-            serviceName: `${user.name} - ${taskType}`,
-            count: hours,
-            rate: kpiRule.value,
-            cost: hours * kpiRule.value,
-            category,
-            syncedAt: now
-          };
-        }
-      }
-    }
-
-    const { data: salarySchemesByJobTitle, error: schemesError } = await supabase
-      .from('salary_schemes')
-      .select('id, target_id, kpi_rules')
-      .eq('target_type', 'jobTitle');
-
-    if (schemesError) {
-      console.error('Error fetching salary schemes:', schemesError);
-    }
+    const calculatorServices = await calculatorService.getAll();
+    console.log(`[syncDynamicExpenses] Loaded ${calculatorServices.length} calculator services`);
 
     const normalizeServiceName = (name: string): string => {
       return name
@@ -733,57 +650,47 @@ export const projectExpensesService = {
         .replace(/ё/g, 'е');
     };
 
-    const findKpiRule = (metricName: string) => {
-      const normalizedMetric = normalizeServiceName(metricName);
-
-      if (!salarySchemesByJobTitle) return null;
-
-      for (const scheme of salarySchemesByJobTitle) {
-        if (!scheme.kpi_rules || !Array.isArray(scheme.kpi_rules)) continue;
-
-        for (const rule of scheme.kpi_rules as any[]) {
-          const normalizedTaskType = normalizeServiceName(rule.taskType || '');
-
-          if (normalizedTaskType === normalizedMetric) {
-            return {
-              taskType: rule.taskType,
-              value: rule.value,
-              jobTitle: scheme.target_id
-            };
-          }
-        }
-      }
-
-      return null;
+    const findCalculatorService = (metricKey: string) => {
+      const normalized = normalizeServiceName(metricKey);
+      return calculatorServices.find(s => {
+        const serviceName = normalizeServiceName(s.name);
+        return serviceName === normalized || serviceName.includes(normalized) || normalized.includes(serviceName);
+      });
     };
 
-    if (fullProject.contentMetrics) {
-      const contentMetrics = fullProject.contentMetrics as Record<string, { fact?: number; plan?: number }>;
+    if (fullProject.contentMetricsVisible && Array.isArray(fullProject.contentMetricsVisible)) {
+      console.log(`[syncDynamicExpenses] Processing ${fullProject.contentMetricsVisible.length} visible metrics`);
 
-      for (const [metricKey, metricValue] of Object.entries(contentMetrics)) {
-        const fact = metricValue?.fact || 0;
-        if (fact === 0) continue;
+      for (const metricKey of fullProject.contentMetricsVisible) {
+        const contentMetrics = fullProject.contentMetrics as Record<string, { fact?: number; plan?: number }>;
+        const metricData = contentMetrics[metricKey];
+        const plan = metricData?.plan || 0;
 
-        const kpiRule = findKpiRule(metricKey);
+        if (plan === 0) {
+          console.log(`[syncDynamicExpenses] Skipping ${metricKey} - plan is 0`);
+          continue;
+        }
 
-        if (kpiRule && kpiRule.value > 0) {
+        const calculatorService = findCalculatorService(metricKey);
+
+        if (calculatorService && calculatorService.costPrice && calculatorService.costPrice > 0) {
           const serviceKey = `kpi_${metricKey}`;
-          const cost = fact * kpiRule.value;
-
-          const category = await calculatorCategoryHelper.getCategoryByJobTitleAndTaskType(kpiRule.jobTitle || '', metricKey);
+          const rate = calculatorService.costPrice;
+          const cost = plan * rate;
+          const category = calculatorService.category || 'smm';
 
           dynamicExpenses[serviceKey] = {
-            serviceName: kpiRule.taskType,
-            count: fact,
-            rate: kpiRule.value,
+            serviceName: calculatorService.name,
+            count: plan,
+            rate: rate,
             cost,
             category,
             syncedAt: now
           };
 
-          console.log(`[ProjectExpenses] Added KPI service: ${kpiRule.taskType} x ${fact} = ${cost} ₸ (${kpiRule.jobTitle}, ${category})`);
+          console.log(`[syncDynamicExpenses] ✅ Added: ${calculatorService.name} (${plan} × ${rate} = ${cost} ₸) [${category}]`);
         } else {
-          console.warn(`[ProjectExpenses] No KPI rule found for metric: ${metricKey}`);
+          console.warn(`[syncDynamicExpenses] ❌ No calculator service found for: ${metricKey}`);
         }
       }
     }

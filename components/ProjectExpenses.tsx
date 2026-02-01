@@ -253,42 +253,6 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     }
   };
 
-  useEffect(() => {
-    if (isMonthFrozen) return;
-
-    const autoSync = async () => {
-      if (!saving && canEdit) {
-        try {
-          const synced = await projectExpensesService.syncDynamicExpenses(projectId, selectedMonth, currentUser.id);
-          setCurrentExpense(synced);
-          await loadExpenses();
-          setLastAutoSync(new Date());
-          setNextSyncIn(180);
-
-        } catch (error) {
-          console.error('Auto-sync error:', error);
-        }
-      }
-    };
-
-    const syncInterval = setInterval(() => {
-      autoSync();
-    }, 180000);
-
-    const countdownInterval = setInterval(() => {
-      setNextSyncIn(prev => {
-        if (prev <= 1) return 180;
-        return prev - 1;
-      });
-    }, 1000);
-
-    autoSync();
-
-    return () => {
-      clearInterval(syncInterval);
-      clearInterval(countdownInterval);
-    };
-  }, [projectId, selectedMonth, canEdit, isMonthFrozen]);
 
   const loadExpenses = async () => {
     try {

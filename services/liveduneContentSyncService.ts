@@ -269,6 +269,15 @@ export const liveduneContentSyncService = {
   ): Promise<{ synced: number; skipped: number; error?: string }> {
     console.log(`[LiveDune API Sync] Fetching content from LiveDune API for ${month}`);
 
+    const monthStart = new Date(month + '-01');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (monthStart > today) {
+      console.log(`[LiveDune API Sync] Month ${month} is in the future, skipping`);
+      return { synced: 0, skipped: 0 };
+    }
+
     const { data: project, error: projectError } = await supabase
       .from('projects')
       .select('id, team_ids, organization_id')
@@ -279,7 +288,6 @@ export const liveduneContentSyncService = {
       return { synced: 0, skipped: 0, error: 'Project not found' };
     }
 
-    const monthStart = new Date(month + '-01');
     const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
 
     const dateFrom = monthStart.toISOString().split('T')[0];
