@@ -557,16 +557,14 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
     setIsSyncingContent(true);
     try {
       console.log('[ProjectDetails] Forcing content sync for project:', project.name);
-      const updatedProject = await autoCalculateContentForProject(project, tasks, 30, true);
+      const updatedProject = await autoCalculateContentForProject(project, tasks);
       if (updatedProject && onProjectChangedLocal) {
         onProjectChangedLocal(updatedProject);
         console.log('[ProjectDetails] Content synced successfully');
-      } else {
-        console.log('[ProjectDetails] Content sync completed but no project update returned');
       }
     } catch (error) {
       console.error('[ProjectDetails] Error syncing content:', error);
-      alert('Ошибка при синхронизации контента: ' + (error as Error).message);
+      alert('Ошибка при синхронизации контента');
     } finally {
       setIsSyncingContent(false);
     }
