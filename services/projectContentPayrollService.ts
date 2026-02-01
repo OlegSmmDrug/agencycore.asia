@@ -75,7 +75,7 @@ export const calculateProjectContentPayroll = async (
   console.log(`[Project Content Payroll] === Calculating for ${user.name} (${user.jobTitle}) - Month: ${month} ===`);
 
   const monthStart = new Date(month + '-01');
-  const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+  const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0, 23, 59, 59, 999);
 
   const userScheme = salarySchemes.find(
     s => s.targetType === 'user' && s.targetId === user.id
@@ -105,11 +105,16 @@ export const calculateProjectContentPayroll = async (
       return false;
     }
 
-    const projectStart = new Date(project.startDate);
     const projectEnd = new Date(project.endDate);
+    const now = new Date();
 
-    const overlaps = projectStart <= monthEnd && projectEnd >= monthStart;
-    return overlaps;
+    // Учитываем только проекты, которые:
+    // 1. Уже завершились (endDate < текущая дата)
+    // 2. Завершились в расчетном месяце
+    const isCompleted = projectEnd < now;
+    const completedInThisMonth = projectEnd >= monthStart && projectEnd <= monthEnd;
+
+    return isCompleted && completedInThisMonth;
   });
 
   console.log(`[Project Content Payroll] Found ${eligibleProjects.length} eligible projects`);
