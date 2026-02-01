@@ -788,6 +788,14 @@ export const cacheContentToDatabase = async (
     console.error('[LiveDune Cache] Error caching content:', error);
   } else {
     console.log(`[LiveDune Cache] Successfully cached ${cacheData.length} items`);
+
+    try {
+      const { liveduneContentSyncService } = await import('./liveduneContentSyncService');
+      const syncResult = await liveduneContentSyncService.syncProjectContent(projectId);
+      console.log(`[LiveDune Cache] Auto-sync result:`, syncResult);
+    } catch (syncError) {
+      console.error('[LiveDune Cache] Auto-sync failed:', syncError);
+    }
   }
 };
 

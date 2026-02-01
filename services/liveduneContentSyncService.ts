@@ -1,0 +1,263 @@
+import { supabase } from '../lib/supabase';
+import { contentPublicationService } from './contentPublicationService';
+
+interface LiveduneCacheItem {
+  id: string;
+  project_id: string;
+  account_id: string;
+  content_type: 'post' | 'story' | 'reels';
+  content_id: string;
+  published_date: string;
+  user_id: string | null;
+  organization_id: string;
+  synced_at: string;
+}
+
+const mapContentType = (liveduneType: string): string => {
+  switch (liveduneType) {
+    case 'post':
+      return 'Post';
+    case 'story':
+      return 'Stories ';
+    case 'reels':
+      return 'Reels Production';
+    default:
+      return liveduneType;
+  }
+};
+
+export const liveduneContentSyncService = {
+  async syncProjectContent(projectId: string): Promise<{ synced: number; skipped: number; error?: string }> {
+    console.log(`[LiveDune Sync] Starting sync for project ${projectId}`);
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, team_ids, organization_id')
+      .eq('id', projectId)
+      .single();
+
+    if (projectError || !project) {
+      console.error('[LiveDune Sync] Project not found:', projectError);
+      return { synced: 0, skipped: 0, error: 'Project not found' };
+    }
+
+    const { data: cachedContent, error: cacheError } = await supabase
+      .from('livedune_content_cache')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('organization_id', project.organization_id)
+      .order('published_date', { ascending: true });
+
+    if (cacheError) {
+      console.error('[LiveDune Sync] Error fetching cached content:', cacheError);
+      return { synced: 0, skipped: 0, error: cacheError.message };
+    }
+
+    if (!cachedContent || cachedContent.length === 0) {
+      console.log('[LiveDune Sync] No cached content found');
+      return { synced: 0, skipped: 0 };
+    }
+
+    console.log(`[LiveDune Sync] Found ${cachedContent.length} cached items`);
+
+    const { data: existingPublications, error: pubError } = await supabase
+      .from('content_publications')
+      .select('id')
+      .eq('project_id', projectId);
+
+    const existingCount = existingPublications?.length || 0;
+
+    if (existingCount > 0) {
+      console.log(`[LiveDune Sync] Project already has ${existingCount} publications, skipping sync`);
+      return { synced: 0, skipped: cachedContent.length };
+    }
+
+    let synced = 0;
+    let skipped = 0;
+
+    const smmMembers = await this.getSMMTeamMembers(project.team_ids || []);
+
+    if (smmMembers.length === 0) {
+      console.warn('[LiveDune Sync] No SMM members in project team, publications will have no assigned user');
+    }
+
+    for (const item of cachedContent as LiveduneCacheItem[]) {
+      let assignedUserId = item.user_id;
+
+      if (!assignedUserId && smmMembers.length > 0) {
+        assignedUserId = smmMembers[synced % smmMembers.length].id;
+      }
+
+      if (!assignedUserId) {
+        console.warn(`[LiveDune Sync] Skipping item ${item.content_id}: no user to assign`);
+        skipped++;
+        continue;
+      }
+
+      const success = await contentPublicationService.create({
+        projectId: item.project_id,
+        contentType: mapContentType(item.content_type),
+        publishedAt: new Date(item.published_date).toISOString(),
+        assignedUserId: assignedUserId,
+        organizationId: item.organization_id,
+        description: `Synced from LiveDune (${item.content_id})`
+      });
+
+      if (success) {
+        synced++;
+      } else {
+        skipped++;
+      }
+    }
+
+    console.log(`[LiveDune Sync] Completed: ${synced} synced, ${skipped} skipped`);
+    return { synced, skipped };
+  },
+
+  async syncAllProjects(organizationId: string): Promise<{ total: number; synced: number; skipped: number }> {
+    console.log(`[LiveDune Sync] Starting sync for all projects in organization ${organizationId}`);
+
+    const { data: projects, error } = await supabase
+      .from('projects')
+      .select('id, name')
+      .eq('organization_id', organizationId);
+
+    if (error || !projects) {
+      console.error('[LiveDune Sync] Error fetching projects:', error);
+      return { total: 0, synced: 0, skipped: 0 };
+    }
+
+    let totalSynced = 0;
+    let totalSkipped = 0;
+
+    for (const project of projects) {
+      const result = await this.syncProjectContent(project.id);
+      totalSynced += result.synced;
+      totalSkipped += result.skipped;
+    }
+
+    console.log(`[LiveDune Sync] Organization sync completed: ${totalSynced} synced, ${totalSkipped} skipped from ${projects.length} projects`);
+    return { total: projects.length, synced: totalSynced, skipped: totalSkipped };
+  },
+
+  async syncMonthRange(
+    projectId: string,
+    month: string
+  ): Promise<{ synced: number; skipped: number }> {
+    console.log(`[LiveDune Sync] Syncing month ${month} for project ${projectId}`);
+
+    const monthStart = new Date(month + '-01');
+    const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, team_ids, organization_id')
+      .eq('id', projectId)
+      .single();
+
+    if (projectError || !project) {
+      console.error('[LiveDune Sync] Project not found:', projectError);
+      return { synced: 0, skipped: 0 };
+    }
+
+    const { data: cachedContent, error: cacheError } = await supabase
+      .from('livedune_content_cache')
+      .select('*')
+      .eq('project_id', projectId)
+      .gte('published_date', monthStart.toISOString().split('T')[0])
+      .lte('published_date', monthEnd.toISOString().split('T')[0]);
+
+    if (cacheError || !cachedContent || cachedContent.length === 0) {
+      console.log('[LiveDune Sync] No cached content for this month');
+      return { synced: 0, skipped: 0 };
+    }
+
+    const smmMembers = await this.getSMMTeamMembers(project.team_ids || []);
+    let synced = 0;
+    let skipped = 0;
+
+    for (const item of cachedContent as LiveduneCacheItem[]) {
+      const { data: existing } = await supabase
+        .from('content_publications')
+        .select('id')
+        .eq('project_id', item.project_id)
+        .eq('content_type', mapContentType(item.content_type))
+        .eq('published_at', new Date(item.published_date).toISOString())
+        .single();
+
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      let assignedUserId = item.user_id;
+      if (!assignedUserId && smmMembers.length > 0) {
+        assignedUserId = smmMembers[synced % smmMembers.length].id;
+      }
+
+      if (!assignedUserId) {
+        skipped++;
+        continue;
+      }
+
+      const success = await contentPublicationService.create({
+        projectId: item.project_id,
+        contentType: mapContentType(item.content_type),
+        publishedAt: new Date(item.published_date).toISOString(),
+        assignedUserId: assignedUserId,
+        organizationId: item.organization_id,
+        description: `Synced from LiveDune (${item.content_id})`
+      });
+
+      if (success) {
+        synced++;
+      } else {
+        skipped++;
+      }
+    }
+
+    return { synced, skipped };
+  },
+
+  async getSMMTeamMembers(teamIds: string[]): Promise<Array<{ id: string; name: string; jobTitle: string }>> {
+    if (!teamIds || teamIds.length === 0) return [];
+
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('id, name, job_title')
+      .in('id', teamIds);
+
+    if (error) {
+      console.error('[LiveDune Sync] Error fetching team members:', error);
+      return [];
+    }
+
+    return (users || []).filter(u => {
+      const title = (u.job_title || '').toLowerCase();
+      return title.includes('smm') || title.includes('контент');
+    }).map(u => ({
+      id: u.id,
+      name: u.name,
+      jobTitle: u.job_title || ''
+    }));
+  },
+
+  async assignUserToPublication(publicationId: string, userId: string): Promise<boolean> {
+    return await contentPublicationService.update(publicationId, { assignedUserId: userId });
+  },
+
+  async getUnassignedPublications(projectId: string): Promise<number> {
+    const { count, error } = await supabase
+      .from('content_publications')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', projectId)
+      .is('assigned_user_id', null);
+
+    if (error) {
+      console.error('[LiveDune Sync] Error counting unassigned:', error);
+      return 0;
+    }
+
+    return count || 0;
+  }
+};
