@@ -31,7 +31,8 @@ export const syncAllProjectKpis = async (
           accessToken: project.liveduneAccessToken,
           accountId: project.liveduneAccountId
         },
-        dateRange
+        dateRange,
+        project.id
       );
     } catch (error) {
       console.error('Error fetching LiveDune data:', error);
@@ -97,7 +98,8 @@ export const syncSingleKpi = async (
           accessToken: project.liveduneAccessToken,
           accountId: project.liveduneAccountId
         },
-        dateRange
+        dateRange,
+        project.id
       );
     } catch (error) {
       console.error('Error fetching LiveDune data:', error);

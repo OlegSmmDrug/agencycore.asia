@@ -1,4 +1,6 @@
 import { LiveduneAccount, LiveduneAnalyticsResponse, LivedunePost, LiveduneAudience, LiveduneStory, LiveduneReels, LiveduneDetailedAnalytics } from '../types';
+import { supabase } from '../lib/supabase';
+import { getCurrentOrganizationId } from '../utils/organizationContext';
 
 const LIVEDUNE_PROXY_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/livedune-proxy`;
 
@@ -538,20 +540,34 @@ export const getLiveduneReels = async (config: LiveduneApiConfig, dateRange: str
 
 export const getLiveduneDetailedAnalytics = async (
   config: LiveduneApiConfig,
-  dateRange: string = '30d'
+  dateRange: string = '30d',
+  projectId?: string,
+  userId?: string
 ): Promise<LiveduneDetailedAnalytics | null> => {
   if (!config.accessToken || !config.accountId) {
     return null;
   }
 
   try {
-    const [analytics, stories, reels] = await Promise.all([
+    const [analytics, posts, stories, reels] = await Promise.all([
       getLiveduneAnalytics(config, dateRange),
+      getLivedunePosts(config, dateRange),
       getLiveduneStories(config, dateRange),
       getLiveduneReels(config, dateRange)
     ]);
 
     if (!analytics) return null;
+
+    if (projectId && config.accountId) {
+      await cacheContentToDatabase(
+        projectId,
+        config.accountId.toString(),
+        posts,
+        stories,
+        reels,
+        userId
+      ).catch(err => console.error('[LiveDune Cache] Failed to cache content:', err));
+    }
 
     const storiesViews = stories.reduce((sum, s) => sum + s.views, 0);
     const storiesReach = stories.reduce((sum, s) => sum + s.reach, 0);
@@ -658,4 +674,186 @@ const generateMockReels = (accountId: number): LiveduneReels[] => {
     });
   }
   return reels;
+};
+
+export const cacheContentToDatabase = async (
+  projectId: string,
+  accountId: string,
+  posts: LivedunePost[],
+  stories: LiveduneStory[],
+  reels: LiveduneReels[],
+  userId?: string
+): Promise<void> => {
+  const organizationId = getCurrentOrganizationId();
+  if (!organizationId) {
+    console.warn('No organization ID found for caching');
+    return;
+  }
+
+  console.log(`[LiveDune Cache] Saving ${posts.length} posts, ${stories.length} stories, ${reels.length} reels for project ${projectId}`);
+
+  const cacheData = [];
+
+  for (const post of posts) {
+    cacheData.push({
+      project_id: projectId,
+      account_id: accountId.toString(),
+      content_type: 'post',
+      content_id: post.post_id,
+      published_date: new Date(post.created).toISOString().split('T')[0],
+      metrics: {
+        likes: post.reactions?.likes || 0,
+        comments: post.reactions?.comments || 0,
+        saved: post.reactions?.saved || 0,
+        reach: post.reach?.total || 0,
+        engagement_rate: post.engagement_rate || 0,
+        type: post.type
+      },
+      thumbnail_url: null,
+      permalink: post.url,
+      caption: post.text || '',
+      user_id: userId || null,
+      task_id: null,
+      organization_id: organizationId,
+      synced_at: new Date().toISOString()
+    });
+  }
+
+  for (const story of stories) {
+    cacheData.push({
+      project_id: projectId,
+      account_id: accountId.toString(),
+      content_type: 'story',
+      content_id: story.story_id,
+      published_date: new Date(story.created).toISOString().split('T')[0],
+      metrics: {
+        views: story.views || 0,
+        replies: story.replies || 0,
+        interactions: story.interactions || 0,
+        exits: story.exits || 0,
+        reach: story.reach || 0,
+        impressions: story.impressions || 0,
+        engagement_rate: story.engagement_rate || 0
+      },
+      thumbnail_url: null,
+      permalink: story.url,
+      caption: null,
+      user_id: userId || null,
+      task_id: null,
+      organization_id: organizationId,
+      synced_at: new Date().toISOString()
+    });
+  }
+
+  for (const reel of reels) {
+    cacheData.push({
+      project_id: projectId,
+      account_id: accountId.toString(),
+      content_type: 'reels',
+      content_id: reel.reel_id,
+      published_date: new Date(reel.created).toISOString().split('T')[0],
+      metrics: {
+        views: reel.views || 0,
+        likes: reel.likes || 0,
+        comments: reel.comments || 0,
+        shares: reel.shares || 0,
+        saves: reel.saves || 0,
+        reach: reel.reach || 0,
+        plays: reel.plays || 0,
+        engagement_rate: reel.engagement_rate || 0
+      },
+      thumbnail_url: null,
+      permalink: reel.url,
+      caption: reel.text || '',
+      user_id: userId || null,
+      task_id: null,
+      organization_id: organizationId,
+      synced_at: new Date().toISOString()
+    });
+  }
+
+  if (cacheData.length === 0) {
+    console.log('[LiveDune Cache] No content to cache');
+    return;
+  }
+
+  const { error } = await supabase
+    .from('livedune_content_cache')
+    .upsert(cacheData, {
+      onConflict: 'project_id,content_id,content_type',
+      ignoreDuplicates: false
+    });
+
+  if (error) {
+    console.error('[LiveDune Cache] Error caching content:', error);
+  } else {
+    console.log(`[LiveDune Cache] Successfully cached ${cacheData.length} items`);
+  }
+};
+
+export const getCachedContentStats = async (
+  projectId: string,
+  dateFrom: Date,
+  dateTo: Date
+): Promise<{ posts: number; stories: number; reels: number }> => {
+  const organizationId = getCurrentOrganizationId();
+  if (!organizationId) {
+    return { posts: 0, stories: 0, reels: 0 };
+  }
+
+  const { data, error } = await supabase
+    .from('livedune_content_cache')
+    .select('content_type')
+    .eq('project_id', projectId)
+    .eq('organization_id', organizationId)
+    .gte('published_date', dateFrom.toISOString().split('T')[0])
+    .lte('published_date', dateTo.toISOString().split('T')[0]);
+
+  if (error) {
+    console.error('[LiveDune Cache] Error fetching cached stats:', error);
+    return { posts: 0, stories: 0, reels: 0 };
+  }
+
+  const stats = (data || []).reduce((acc, item) => {
+    if (item.content_type === 'post') acc.posts++;
+    if (item.content_type === 'story') acc.stories++;
+    if (item.content_type === 'reels') acc.reels++;
+    return acc;
+  }, { posts: 0, stories: 0, reels: 0 });
+
+  console.log(`[LiveDune Cache] Project ${projectId} cached stats:`, stats);
+  return stats;
+};
+
+export const getCachedContentByUser = async (
+  userId: string,
+  dateFrom: Date,
+  dateTo: Date,
+  contentType?: 'post' | 'story' | 'reels'
+): Promise<number> => {
+  const organizationId = getCurrentOrganizationId();
+  if (!organizationId) {
+    return 0;
+  }
+
+  let query = supabase
+    .from('livedune_content_cache')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('organization_id', organizationId)
+    .gte('published_date', dateFrom.toISOString().split('T')[0])
+    .lte('published_date', dateTo.toISOString().split('T')[0]);
+
+  if (contentType) {
+    query = query.eq('content_type', contentType);
+  }
+
+  const { count, error } = await query;
+
+  if (error) {
+    console.error('[LiveDune Cache] Error fetching user content count:', error);
+    return 0;
+  }
+
+  return count || 0;
 };

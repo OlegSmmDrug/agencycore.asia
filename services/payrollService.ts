@@ -45,6 +45,12 @@ export async function calculateUserStats(
     return completedDate >= monthStart && completedDate <= monthEnd;
   });
 
+  console.log(`[Payroll Debug] User: ${user.name}, Month: ${month}`);
+  console.log(`[Payroll Debug] Total tasks assigned: ${tasks.filter(t => t.assigneeId === user.id).length}`);
+  console.log(`[Payroll Debug] DONE tasks: ${tasks.filter(t => t.assigneeId === user.id && t.status === TaskStatus.DONE).length}`);
+  console.log(`[Payroll Debug] DONE with completedAt: ${tasks.filter(t => t.assigneeId === user.id && t.status === TaskStatus.DONE && t.completedAt).length}`);
+  console.log(`[Payroll Debug] Completed in period: ${completedTasks.length}`);
+
   const details: KpiDetail[] = [];
   let totalKpi = 0;
 

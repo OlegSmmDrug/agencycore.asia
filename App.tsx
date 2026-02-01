@@ -508,6 +508,12 @@ const App: React.FC = () => {
 
   const handleUpdateTask = async (taskId: string, updates: Partial<Task>) => {
     try {
+      if (updates.status === TaskStatus.DONE && !updates.completedAt) {
+        updates.completedAt = new Date().toISOString();
+      }
+      if (updates.status && updates.status !== TaskStatus.DONE) {
+        updates.completedAt = undefined;
+      }
       await taskService.update(taskId, updates);
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
       addNotification('Задача обновлена', 'success');
