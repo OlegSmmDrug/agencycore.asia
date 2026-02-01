@@ -133,55 +133,8 @@ export const getLiveduneContentCounts = async (
       stories: stories.length
     });
 
-    // Сохраняем полученные данные в content_publications
-    if (posts.length > 0 || reels.length > 0 || stories.length > 0) {
-      console.log(`[Content Calculation] ${project.name}: Saving API data to content_publications`);
-      const publicationsToInsert: any[] = [];
-
-      posts.forEach(post => {
-        publicationsToInsert.push({
-          project_id: project.id,
-          organization_id: project.organizationId,
-          content_type: 'post',
-          published_at: post.created || new Date().toISOString(),
-          description: `Synced from Livedune API: ${post.text?.substring(0, 100) || ''}`
-        });
-      });
-
-      reels.forEach(reel => {
-        publicationsToInsert.push({
-          project_id: project.id,
-          organization_id: project.organizationId,
-          content_type: 'reels',
-          published_at: reel.created || new Date().toISOString(),
-          description: `Synced from Livedune API: ${reel.text?.substring(0, 100) || ''}`
-        });
-      });
-
-      stories.forEach(story => {
-        publicationsToInsert.push({
-          project_id: project.id,
-          organization_id: project.organizationId,
-          content_type: 'story',
-          published_at: story.created || new Date().toISOString(),
-          description: 'Synced from Livedune API'
-        });
-      });
-
-      if (publicationsToInsert.length > 0) {
-        const { error: insertError } = await supabase
-          .from('content_publications')
-          .insert(publicationsToInsert)
-          .select();
-
-        if (insertError) {
-          console.error(`[Content Calculation] ${project.name}: Error saving to content_publications:`, insertError);
-        } else {
-          console.log(`[Content Calculation] ${project.name}: Saved ${publicationsToInsert.length} publications to DB`);
-        }
-      }
-    }
-
+    // Данные из API используются только для подсчета
+    // Сохранение происходит через forceSyncLiveduneContent()
     return {
       posts: posts.length,
       reels: reels.length,
@@ -337,21 +290,130 @@ export const updateProjectDynamicContentFacts = async (
   }
 };
 
+export const forceSyncLiveduneContent = async (
+  project: Project,
+  daysBack: number = 30
+): Promise<boolean> => {
+  try {
+    if (!project.liveduneAccessToken || !project.liveduneAccountId) {
+      console.log(`[forceSyncLiveduneContent] ${project.name}: No Livedune credentials`);
+      return false;
+    }
+
+    const config = {
+      accessToken: project.liveduneAccessToken,
+      accountId: project.liveduneAccountId
+    };
+
+    console.log(`[forceSyncLiveduneContent] ${project.name}: Fetching data from Livedune API for last ${daysBack} days`);
+
+    // Загружаем данные из API
+    const [posts, reels, stories] = await Promise.all([
+      getLivedunePosts(config, `${daysBack}d`),
+      getLiveduneReels(config, `${daysBack}d`),
+      getLiveduneStories(config, `${daysBack}d`)
+    ]);
+
+    console.log(`[forceSyncLiveduneContent] ${project.name}: API returned ${posts.length} posts, ${reels.length} reels, ${stories.length} stories`);
+
+    // Очищаем старые данные
+    const { supabase } = await import('../lib/supabase');
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysBack);
+
+    await supabase
+      .from('content_publications')
+      .delete()
+      .eq('project_id', project.id)
+      .gte('published_at', cutoffDate.toISOString());
+
+    console.log(`[forceSyncLiveduneContent] ${project.name}: Cleared old publications`);
+
+    // Вставляем новые данные
+    const publicationsToInsert: any[] = [];
+
+    posts.forEach(post => {
+      publicationsToInsert.push({
+        project_id: project.id,
+        organization_id: project.organizationId,
+        content_type: 'post',
+        published_at: post.created || new Date().toISOString(),
+        description: `Synced from Livedune: ${post.text?.substring(0, 100) || ''}`
+      });
+    });
+
+    reels.forEach(reel => {
+      publicationsToInsert.push({
+        project_id: project.id,
+        organization_id: project.organizationId,
+        content_type: 'reels',
+        published_at: reel.created || new Date().toISOString(),
+        description: `Synced from Livedune: ${reel.text?.substring(0, 100) || ''}`
+      });
+    });
+
+    stories.forEach(story => {
+      publicationsToInsert.push({
+        project_id: project.id,
+        organization_id: project.organizationId,
+        content_type: 'story',
+        published_at: story.created || new Date().toISOString(),
+        description: 'Synced from Livedune'
+      });
+    });
+
+    if (publicationsToInsert.length > 0) {
+      const { error: insertError } = await supabase
+        .from('content_publications')
+        .insert(publicationsToInsert);
+
+      if (insertError) {
+        console.error(`[forceSyncLiveduneContent] ${project.name}: Error inserting:`, insertError);
+        return false;
+      }
+
+      console.log(`[forceSyncLiveduneContent] ${project.name}: Successfully synced ${publicationsToInsert.length} publications`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`[forceSyncLiveduneContent] Error:`, error);
+    return false;
+  }
+};
+
 export const autoCalculateContentForProject = async (
   project: Project,
-  tasks: Task[]
+  tasks: Task[],
+  daysBack: number = 30,
+  forceSync: boolean = false
 ): Promise<Project | null> => {
-  if (project.contentAutoCalculate === false) {
+  if (project.contentAutoCalculate === false && !forceSync) {
     return null;
   }
 
-  const startDate = new Date(project.startDate);
-  const projectEndDate = new Date(project.endDate);
+  // Принудительная синхронизация из Livedune
+  if (forceSync && project.liveduneAccessToken) {
+    console.log(`[autoCalculateContentForProject] ${project.name}: Force syncing from Livedune`);
+    await forceSyncLiveduneContent(project, daysBack);
+  }
+
   const today = new Date();
   today.setHours(23, 59, 59, 999);
 
-  // Use the earlier date between project end date and today
+  // Последние N дней (но не раньше start_date проекта)
+  const calculatedStartDate = new Date(today);
+  calculatedStartDate.setDate(calculatedStartDate.getDate() - daysBack);
+  calculatedStartDate.setHours(0, 0, 0, 0);
+
+  const projectStartDate = new Date(project.startDate);
+  const startDate = calculatedStartDate > projectStartDate ? calculatedStartDate : projectStartDate;
+
+  const projectEndDate = new Date(project.endDate);
   const endDate = projectEndDate > today ? today : projectEndDate;
+
+  console.log(`[autoCalculateContentForProject] ${project.name}: Calculating content for last ${daysBack} days (${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]})`);
 
   const dynamicFacts = await calculateDynamicContentFacts(project, tasks, { start: startDate, end: endDate });
 
