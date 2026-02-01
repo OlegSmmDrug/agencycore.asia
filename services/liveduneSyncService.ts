@@ -67,13 +67,16 @@ export const syncProjectForMonth = async (
   year: number,
   month: number
 ): Promise<SyncResult> => {
-  const dateFrom = new Date(year, month - 1, 1);
-  const dateTo = new Date(year, month, 0);
+  // Format dates as YYYY-MM-DD strings directly to avoid timezone issues
+  const monthStr = String(month).padStart(2, '0');
+  const lastDay = new Date(year, month, 0).getDate();
+  const dateFrom = `${year}-${monthStr}-01`;
+  const dateTo = `${year}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
 
   return syncLiveduneContent({
     project_id: projectId,
-    date_from: dateFrom.toISOString().split('T')[0],
-    date_to: dateTo.toISOString().split('T')[0]
+    date_from: dateFrom,
+    date_to: dateTo
   });
 };
 
@@ -86,12 +89,15 @@ export const syncOrganizationForMonth = async (
   year: number,
   month: number
 ): Promise<SyncResult> => {
-  const dateFrom = new Date(year, month - 1, 1);
-  const dateTo = new Date(year, month, 0);
+  // Format dates as YYYY-MM-DD strings directly to avoid timezone issues
+  const monthStr = String(month).padStart(2, '0');
+  const lastDay = new Date(year, month, 0).getDate();
+  const dateFrom = `${year}-${monthStr}-01`;
+  const dateTo = `${year}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
 
   return syncLiveduneContent({
     organization_id: organizationId,
-    date_from: dateFrom.toISOString().split('T')[0],
-    date_to: dateTo.toISOString().split('T')[0]
+    date_from: dateFrom,
+    date_to: dateTo
   });
 };
