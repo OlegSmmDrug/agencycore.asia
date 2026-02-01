@@ -7,6 +7,7 @@ import {
 import { Client, User, Task, Project, Transaction, ProjectStatus, ClientStatus, SystemRole, ProjectFinancials } from '../types';
 import FinancialModel from './FinancialModel';
 import TransactionJournal from './TransactionJournal';
+import { UnifiedAnalyticsDashboard } from './UnifiedAnalyticsDashboard';
 
 interface AnalyticsProps {
     clients: Client[];
@@ -35,20 +36,22 @@ const Analytics: React.FC<AnalyticsProps> = ({
 }) => {
     // Initialize tab from prop if possible to avoid empty initial render
     const initialTab = useMemo(() => {
+        if (externalTab === 'unified_analytics') return 'unified';
         if (externalTab === 'pnl') return 'finance';
         if (externalTab === 'sales_analytics') return 'sales';
         if (externalTab === 'unit_economics') return 'unit';
         if (externalTab === 'team_performance') return 'team';
         if (externalTab === 'financial_model') return 'finmodel';
         if (externalTab === 'payments') return 'payments';
-        return 'finance';
+        return 'unified';
     }, [externalTab]);
 
-    const [activeTab, setActiveTab] = useState<'finance' | 'sales' | 'unit' | 'team' | 'finmodel' | 'payments'>(initialTab);
+    const [activeTab, setActiveTab] = useState<'unified' | 'finance' | 'sales' | 'unit' | 'team' | 'finmodel' | 'payments'>(initialTab);
 
     useEffect(() => {
         if (!externalTab) return;
-        if (externalTab === 'pnl') setActiveTab('finance');
+        if (externalTab === 'unified_analytics') setActiveTab('unified');
+        else if (externalTab === 'pnl') setActiveTab('finance');
         else if (externalTab === 'sales_analytics') setActiveTab('sales');
         else if (externalTab === 'unit_economics') setActiveTab('unit');
         else if (externalTab === 'team_performance') setActiveTab('team');
@@ -179,14 +182,15 @@ const Analytics: React.FC<AnalyticsProps> = ({
                     
                     <div className="flex bg-slate-100 p-1.5 rounded-2xl w-full xl:w-auto overflow-x-auto hide-scrollbar border border-slate-200">
                         {[
+                            { id: 'unified', label: '📊 Унифицированная' },
                             { id: 'finance', label: '💰 Финансы (P&L)' },
-                            { id: 'finmodel', label: '📊 Фин. модель' },
+                            { id: 'finmodel', label: '📈 Фин. модель' },
                             { id: 'payments', label: '💳 Журнал платежей' },
-                            { id: 'sales', label: '📈 Продажи' },
+                            { id: 'sales', label: '🎯 Продажи' },
                             { id: 'unit', label: '🧬 Юнит-экономика' },
                             { id: 'team', label: '👥 Команда и HR' }
                         ].map(tab => (
-                            <button 
+                            <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id as any)}
                                 className={`flex items-center gap-2 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-white text-blue-600 shadow-lg' : 'text-slate-500 hover:text-slate-800'}`}
@@ -200,7 +204,9 @@ const Analytics: React.FC<AnalyticsProps> = ({
 
             {/* Scrollable Content Area */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:px-8 pb-20">
-                {activeTab === 'finmodel' ? (
+                {activeTab === 'unified' ? (
+                    <UnifiedAnalyticsDashboard />
+                ) : activeTab === 'finmodel' ? (
                     <div className="h-full rounded-[2rem] overflow-hidden border border-slate-200 shadow-sm bg-white">
                         <FinancialModel transactions={transactions} clients={clients} />
                     </div>
