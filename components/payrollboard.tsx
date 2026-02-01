@@ -186,6 +186,7 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
         setLoading(true);
         try {
             const filteredUsers = selectedRoleFilter === 'all' ? users : users.filter(u => u.jobTitle === selectedRoleFilter);
+            console.log(`[Payroll] Total users: ${users.length}, Filtered: ${filteredUsers.length}, Role filter: ${selectedRoleFilter}, Month: ${selectedMonth}`);
             const rowsData: RowData[] = [];
 
             for (const user of filteredUsers) {
@@ -233,6 +234,11 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
             }
 
             setRows(rowsData);
+            console.log(`[Payroll] Loaded ${rowsData.length} rows for display`);
+            if (rowsData.length > 0) {
+                console.log(`[Payroll] First row:`, rowsData[0].user.name, `Total: ${rowsData[0].total}`);
+                console.log(`[Payroll] Last row:`, rowsData[rowsData.length - 1].user.name, `Total: ${rowsData[rowsData.length - 1].total}`);
+            }
         } catch (error) {
             console.error('Error loading payroll data:', error);
         } finally {
@@ -313,6 +319,17 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Финансовый контроль персонала</p>
                 </div>
                 <div className="flex items-center gap-3">
+                    <select
+                        className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-black text-slate-700 outline-none"
+                        value={selectedRoleFilter}
+                        onChange={(e) => setSelectedRoleFilter(e.target.value)}
+                    >
+                        <option value="all">Все должности ({users.length})</option>
+                        {availableJobTitles && availableJobTitles.map(title => {
+                            const count = users.filter(u => u.jobTitle === title).length;
+                            return <option key={title} value={title}>{title} ({count})</option>;
+                        })}
+                    </select>
                     <div className="flex flex-col items-end gap-1">
                         <input
                             type="month"
