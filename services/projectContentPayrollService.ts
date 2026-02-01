@@ -96,93 +96,76 @@ export const calculateProjectContentPayroll = async (
   const details: ContentPayrollDetail[] = [];
   let totalEarnings = 0;
 
-  const eligibleProjects = projects.filter(project => {
-    if (!project.teamIds || !project.teamIds.includes(user.id)) {
-      return false;
+  // Получаем публикации контента за указанный месяц для этого пользователя
+  const { data: publications, error } = await supabase
+    .from('content_publications')
+    .select('*, projects!inner(name)')
+    .eq('assigned_user_id', user.id)
+    .gte('published_at', monthStart.toISOString())
+    .lte('published_at', monthEnd.toISOString());
+
+  if (error) {
+    console.error('[Project Content Payroll] Error fetching publications:', error);
+    return { totalEarnings: 0, details: [] };
+  }
+
+  console.log(`[Project Content Payroll] Found ${publications?.length || 0} publications in ${month}`);
+
+  if (!publications || publications.length === 0) {
+    console.log(`[Project Content Payroll] No publications found for ${user.name} in ${month}`);
+    return { totalEarnings: 0, details: [] };
+  }
+
+  // Группируем публикации по проекту и типу контента
+  interface GroupedPublication {
+    projectId: string;
+    projectName: string;
+    contentType: string;
+    count: number;
+  }
+
+  const groupedByProject = publications.reduce((acc, pub) => {
+    const key = `${pub.project_id}_${pub.content_type}`;
+    if (!acc[key]) {
+      acc[key] = {
+        projectId: pub.project_id,
+        projectName: pub.projects.name,
+        contentType: pub.content_type,
+        count: 0
+      };
     }
+    acc[key].count++;
+    return acc;
+  }, {} as Record<string, GroupedPublication>);
 
-    if (!project.startDate || !project.endDate) {
-      return false;
-    }
+  console.log(`[Project Content Payroll] Grouped publications:`, groupedByProject);
 
-    const projectEnd = new Date(project.endDate);
-    const now = new Date();
+  // Рассчитываем оплату за каждый тип контента
+  const groups: GroupedPublication[] = Object.values(groupedByProject);
 
-    // Учитываем только проекты, которые:
-    // 1. Уже завершились (endDate < текущая дата)
-    // 2. Завершились в расчетном месяце
-    const isCompleted = projectEnd < now;
-    const completedInThisMonth = projectEnd >= monthStart && projectEnd <= monthEnd;
+  for (const group of groups) {
+    const rule = scheme.kpiRules.find(r => r.taskType === group.contentType);
 
-    return isCompleted && completedInThisMonth;
-  });
-
-  console.log(`[Project Content Payroll] Found ${eligibleProjects.length} eligible projects`);
-
-  for (const project of eligibleProjects) {
-    if (!project.contentMetrics || Object.keys(project.contentMetrics).length === 0) {
-      console.log(`[Project Content Payroll] Project ${project.name}: No content metrics`);
+    if (!rule) {
+      console.log(`[Project Content Payroll] No rule found for content type: ${group.contentType}`);
       continue;
     }
 
-    console.log(`[Project Content Payroll] Project ${project.name}:`, project.contentMetrics);
+    const earnings = group.count * rule.value;
 
-    const teamMemberIds = project.teamIds || [];
-    if (teamMemberIds.length === 0) {
-      console.log(`[Project Content Payroll] Project ${project.name}: No team members`);
-      continue;
-    }
+    console.log(`[Project Content Payroll] ${group.projectName} - ${group.contentType}: ${group.count} × ${rule.value} = ${earnings}`);
 
-    const teamMembers = await getUsersByIds(teamMemberIds);
-    const smmMembers = teamMembers.filter(member => isSMMRole(member.jobTitle));
+    details.push({
+      projectId: group.projectId,
+      projectName: group.projectName,
+      contentType: group.contentType,
+      quantity: group.count,
+      rate: rule.value,
+      total: earnings,
+      sharePercentage: 100 // каждая публикация уже назначена конкретному пользователю
+    });
 
-    if (smmMembers.length === 0) {
-      console.log(`[Project Content Payroll] Project ${project.name}: No SMM members in team`);
-      continue;
-    }
-
-    const isSMMInTeam = smmMembers.some(member => member.id === user.id);
-    if (!isSMMInTeam) {
-      console.log(`[Project Content Payroll] Project ${project.name}: User ${user.name} is not an SMM member`);
-      continue;
-    }
-
-    const smmCount = smmMembers.length;
-    const userShare = 1 / smmCount;
-
-    console.log(`[Project Content Payroll] Project ${project.name}: ${teamMemberIds.length} team members, ${smmCount} SMM members, user share: ${(userShare * 100).toFixed(1)}%`);
-    console.log(`[Project Content Payroll]   SMM members:`, smmMembers.map(m => `${m.name} (${m.jobTitle})`).join(', '));
-
-    for (const [metricKey, metricData] of Object.entries(project.contentMetrics)) {
-      const fact = metricData.fact || 0;
-      if (fact === 0) continue;
-
-      const normalizedType = normalizeContentType(metricKey);
-
-      const rule = scheme.kpiRules.find(r => r.taskType === normalizedType);
-
-      if (!rule) {
-        console.log(`[Project Content Payroll]   - ${metricKey} (${normalizedType}): fact=${fact}, no matching rule`);
-        continue;
-      }
-
-      const userQuantity = fact * userShare;
-      const earnings = userQuantity * rule.value;
-
-      console.log(`[Project Content Payroll]   - ${metricKey} → ${normalizedType}: fact=${fact}, userShare=${userQuantity.toFixed(2)}, rate=${rule.value}, earnings=${earnings.toFixed(2)}`);
-
-      details.push({
-        projectId: project.id,
-        projectName: project.name,
-        contentType: normalizedType,
-        quantity: userQuantity,
-        rate: rule.value,
-        total: earnings,
-        sharePercentage: userShare * 100
-      });
-
-      totalEarnings += earnings;
-    }
+    totalEarnings += earnings;
   }
 
   console.log(`[Project Content Payroll] Total content earnings: ${totalEarnings}`);
