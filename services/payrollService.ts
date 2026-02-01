@@ -1,5 +1,6 @@
 import { User, Task, Project, SalaryScheme, TaskStatus, TaskType } from '../types';
 import { bonusCalculationService, BonusCalculationDetail } from './bonusCalculationService';
+import { calculateProjectContentPayroll } from './projectContentPayrollService';
 
 interface KpiDetail {
   taskType: TaskType;
@@ -134,10 +135,16 @@ export async function calculateUserStats(
         });
       }
     }
-    console.log(`[Payroll Debug] Total KPI earned: ${totalKpi}`);
+    console.log(`[Payroll Debug] Total KPI earned from tasks: ${totalKpi}`);
   } else {
     console.log(`[Payroll Debug] No scheme found - skipping KPI calculation`);
   }
+
+  const projectContentResult = calculateProjectContentPayroll(user, projects, salarySchemes, month);
+  console.log(`[Payroll Debug] Project content KPI: ${projectContentResult.totalEarnings}`);
+
+  const totalKpiWithContent = totalKpi + projectContentResult.totalEarnings;
+  console.log(`[Payroll Debug] Total KPI (tasks + content): ${totalKpiWithContent}`);
 
   let bonusResult;
   try {
@@ -147,11 +154,11 @@ export async function calculateUserStats(
     bonusResult = { totalBonus: 0, details: [], period: month };
   }
 
-  const totalEarnings = baseSalary + totalKpi + bonusResult.totalBonus;
+  const totalEarnings = baseSalary + totalKpiWithContent + bonusResult.totalBonus;
 
   return {
     baseSalary,
-    kpiEarned: totalKpi,
+    kpiEarned: totalKpiWithContent,
     bonusesEarned: bonusResult.totalBonus,
     details,
     bonusDetails: bonusResult.details,
