@@ -140,7 +140,7 @@ export async function calculateUserStats(
     console.log(`[Payroll Debug] No scheme found - skipping KPI calculation`);
   }
 
-  const projectContentResult = calculateProjectContentPayroll(user, projects, salarySchemes, month);
+  const projectContentResult = await calculateProjectContentPayroll(user, projects, salarySchemes, month);
   console.log(`[Payroll Debug] Project content KPI: ${projectContentResult.totalEarnings}`);
 
   const totalKpiWithContent = totalKpi + projectContentResult.totalEarnings;

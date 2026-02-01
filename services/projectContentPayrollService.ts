@@ -1,5 +1,6 @@
 import { User, Project, SalaryScheme } from '../types';
 import { ContentMetrics } from './serviceMappingService';
+import { supabase } from '../lib/supabase';
 
 interface ContentPayrollDetail {
   projectId: string;
@@ -16,6 +17,35 @@ interface ProjectContentPayroll {
   details: ContentPayrollDetail[];
 }
 
+interface CachedUser {
+  id: string;
+  jobTitle: string;
+  name: string;
+}
+
+let usersCache: CachedUser[] | null = null;
+
+const getUsersByIds = async (userIds: string[]): Promise<CachedUser[]> => {
+  if (!usersCache) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, job_title, name');
+
+    if (error) {
+      console.error('[Project Content Payroll] Error fetching users:', error);
+      return [];
+    }
+
+    usersCache = (data || []).map(u => ({
+      id: u.id,
+      jobTitle: u.job_title || '',
+      name: u.name
+    }));
+  }
+
+  return usersCache.filter(u => userIds.includes(u.id));
+};
+
 const normalizeContentType = (metricKey: string): string => {
   const key = metricKey.toLowerCase();
 
@@ -31,12 +61,17 @@ const normalizeContentType = (metricKey: string): string => {
   return metricKey;
 };
 
-export const calculateProjectContentPayroll = (
+const isSMMRole = (jobTitle: string): boolean => {
+  const title = jobTitle.toLowerCase();
+  return title.includes('smm') || title.includes('контент');
+};
+
+export const calculateProjectContentPayroll = async (
   user: User,
   projects: Project[],
   salarySchemes: SalaryScheme[],
   month: string
-): ProjectContentPayroll => {
+): Promise<ProjectContentPayroll> => {
   console.log(`[Project Content Payroll] === Calculating for ${user.name} (${user.jobTitle}) - Month: ${month} ===`);
 
   const monthStart = new Date(month + '-01');
@@ -87,12 +122,31 @@ export const calculateProjectContentPayroll = (
 
     console.log(`[Project Content Payroll] Project ${project.name}:`, project.contentMetrics);
 
-    const teamMembers = project.teamIds || [];
+    const teamMemberIds = project.teamIds || [];
+    if (teamMemberIds.length === 0) {
+      console.log(`[Project Content Payroll] Project ${project.name}: No team members`);
+      continue;
+    }
 
-    const smmCount = Math.max(1, teamMembers.length);
+    const teamMembers = await getUsersByIds(teamMemberIds);
+    const smmMembers = teamMembers.filter(member => isSMMRole(member.jobTitle));
+
+    if (smmMembers.length === 0) {
+      console.log(`[Project Content Payroll] Project ${project.name}: No SMM members in team`);
+      continue;
+    }
+
+    const isSMMInTeam = smmMembers.some(member => member.id === user.id);
+    if (!isSMMInTeam) {
+      console.log(`[Project Content Payroll] Project ${project.name}: User ${user.name} is not an SMM member`);
+      continue;
+    }
+
+    const smmCount = smmMembers.length;
     const userShare = 1 / smmCount;
 
-    console.log(`[Project Content Payroll] Project ${project.name}: ${teamMembers.length} team members, user share: ${(userShare * 100).toFixed(1)}%`);
+    console.log(`[Project Content Payroll] Project ${project.name}: ${teamMemberIds.length} team members, ${smmCount} SMM members, user share: ${(userShare * 100).toFixed(1)}%`);
+    console.log(`[Project Content Payroll]   SMM members:`, smmMembers.map(m => `${m.name} (${m.jobTitle})`).join(', '));
 
     for (const [metricKey, metricData] of Object.entries(project.contentMetrics)) {
       const fact = metricData.fact || 0;
