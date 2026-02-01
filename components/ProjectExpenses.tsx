@@ -713,33 +713,30 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                   .sort((a, b) => a.sortOrder - b.sortOrder);
 
                 if (sortedCategories.length === 0) {
-                  const legacyCategories = ['smm', 'video', 'target', 'sites'].filter(catId =>
-                    Object.values(enrichedDynamicExpenses).some(item => item.category === catId)
-                  );
+                  const uniqueCategories = Array.from(new Set(
+                    Object.values(enrichedDynamicExpenses).map(item => item.category)
+                  ));
 
-                  return legacyCategories.map(category => {
+                  return uniqueCategories.map(categoryId => {
                     const categoryServices = Object.entries(enrichedDynamicExpenses).filter(
-                      ([_, item]) => item.category === category
+                      ([_, item]) => item.category === categoryId
                     );
                     if (categoryServices.length === 0) return null;
 
-                    const legacyNames: Record<string, string> = {
-                      smm: 'SMM', video: 'Продакшн', target: 'Таргет', sites: 'Сайты'
-                    };
-                    const legacyIcons: Record<string, string> = {
-                      smm: '📱', video: '🎬', target: '🎯', sites: '🌐'
-                    };
+                    const categoryInfo = categories.find(c => c.id === categoryId);
+                    const categoryName = categoryInfo?.name || categoryId.toUpperCase();
+                    const categoryIcon = categoryInfo?.icon || '📁';
 
                     const categoryTotal = categoryServices.reduce((sum, [_, item]) => sum + item.cost, 0);
                     const categoryPercent = totalExpenses > 0 ? (categoryTotal / totalExpenses * 100).toFixed(1) : '0.0';
 
                     return (
-                      <div key={category} className="mb-6 last:mb-0">
+                      <div key={categoryId} className="mb-6 last:mb-0">
                         <div className="bg-white rounded-lg p-4 mb-3 border border-blue-300">
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
-                              <span className="text-2xl">{legacyIcons[category] || '📁'}</span>
-                              <span className="text-lg font-bold text-slate-800">{legacyNames[category] || category}</span>
+                              <span className="text-2xl">{categoryIcon}</span>
+                              <span className="text-lg font-bold text-slate-800">{categoryName}</span>
                             </div>
                             <div className="text-right">
                               <div className="text-xl font-bold text-blue-700">{categoryTotal.toLocaleString()} ₸</div>
@@ -755,7 +752,10 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {categoryServices.map(([serviceId, item]) => {
-                            const isProductionOrPhoto = category === 'video' || item.serviceName.includes(' - Shooting') || item.serviceName.includes(' - Мобилография');
+                            const isProductionOrPhoto = categoryId === 'video' ||
+                              (categoryInfo && (categoryInfo.name.includes('Продакшн') || categoryInfo.name.includes('Видео') || categoryInfo.name.includes('Фото'))) ||
+                              item.serviceName.includes(' - Shooting') ||
+                              item.serviceName.includes(' - Мобилография');
                             const countLabel = isProductionOrPhoto ? 'Часов' : 'Количество';
                             return (
                               <div key={serviceId} className="bg-white p-4 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors">
