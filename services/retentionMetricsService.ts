@@ -55,6 +55,7 @@ export const retentionMetricsService = {
     }
 
     const { startDate, endDate } = this.getPeriodFilter(period, date);
+    console.log(`[Retention Debug] Calculating for user ${userId}, period: ${period}, date range: ${startDate.toISOString()} - ${endDate.toISOString()}`);
 
     const { data: projects, error: projectsError } = await supabase
       .from('projects')
@@ -98,6 +99,9 @@ export const retentionMetricsService = {
     const totalProjects = projects.length;
     const retentionRate = totalProjects > 0 ? (renewedProjects / totalProjects) * 100 : 0;
     const renewalRevenue = (renewals || []).reduce((sum, r) => sum + Number(r.renewed_amount), 0);
+
+    console.log(`[Retention Debug] Found ${totalProjects} projects, ${renewedProjects} renewed. Rate: ${retentionRate}%, Revenue: ${renewalRevenue}`);
+    console.log(`[Retention Debug] Renewal records:`, renewals);
 
     return {
       retentionRate: Math.round(retentionRate * 100) / 100,

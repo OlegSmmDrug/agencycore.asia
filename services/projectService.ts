@@ -304,21 +304,27 @@ export const projectService = {
     const newEndDate = currentEnd.toISOString().split('T')[0];
     const newLTV = (project.totalLTV || 0) + project.budget;
 
+    const renewalData = {
+      project_id: id,
+      client_id: project.clientId,
+      previous_end_date: previousEndDate,
+      new_end_date: newEndDate,
+      renewal_date: new Date().toISOString(),
+      renewed_amount: project.budget,
+      renewed_by: renewedBy || null,
+      organization_id: organizationId
+    };
+
+    console.log('[Project Renewal] Creating renewal record:', renewalData);
+
     const { error: renewalError } = await supabase
       .from('project_renewals')
-      .insert({
-        project_id: id,
-        client_id: project.clientId,
-        previous_end_date: previousEndDate,
-        new_end_date: newEndDate,
-        renewal_date: new Date().toISOString(),
-        renewed_amount: project.budget,
-        renewed_by: renewedBy || null,
-        organization_id: organizationId
-      });
+      .insert(renewalData);
 
     if (renewalError) {
       console.error('Error logging project renewal:', renewalError);
+    } else {
+      console.log('[Project Renewal] Success! Renewal record created.');
     }
 
     return this.update(id, {

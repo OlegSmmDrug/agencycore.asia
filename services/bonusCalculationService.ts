@@ -36,9 +36,10 @@ async function getMetricValue(
     }
 
     case 'project_retention': {
-      const period = 'quarter';
+      const period = rule.calculationPeriod === 'monthly' ? 'month' : 'quarter';
       const metrics = await retentionMetricsService.calculateRetentionRate(user.id, period, date);
       const baseAmount = rule.applyToBase ? metrics.renewalRevenue : 1;
+      console.log(`[Retention Debug] User: ${user.id}, Period: ${period}, Rate: ${metrics.retentionRate}%, Revenue: ${metrics.renewalRevenue}, Base: ${baseAmount}`);
       return { value: metrics.retentionRate, baseAmount };
     }
 
