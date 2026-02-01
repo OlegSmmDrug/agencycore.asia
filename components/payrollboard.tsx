@@ -402,7 +402,9 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
                                 <div key={i} className="flex justify-between items-center p-3 bg-blue-50 rounded-xl border border-blue-100">
                                     <div>
                                         <p className="font-bold text-slate-700 text-sm">{d.taskType}</p>
-                                        <p className="text-[10px] text-slate-400 uppercase">{d.count} задач × {d.rate} ₸</p>
+                                        <p className="text-[10px] text-slate-400 uppercase">
+                                            {d.count} {d.count === 1 ? 'задача' : d.count < 5 ? 'задачи' : 'задач'} • {d.hours} ч × {d.rate.toLocaleString()} ₸/ч
+                                        </p>
                                     </div>
                                     <div className="font-black text-blue-600 text-sm">+{d.total.toLocaleString()} ₸</div>
                                 </div>

@@ -5,6 +5,7 @@ import { calculateProjectContentPayroll } from './projectContentPayrollService';
 interface KpiDetail {
   taskType: TaskType;
   count: number;
+  hours: number;
   rate: number;
   total: number;
 }
@@ -127,11 +128,18 @@ export async function calculateUserStats(
     for (const rule of scheme.kpiRules) {
       const tasksOfType = completedTasks.filter(t => t.type === rule.taskType);
       const count = tasksOfType.length;
-      const total = count * rule.value;
 
-      console.log(`[Payroll Debug] Rule: "${rule.taskType}" @ ${rule.value} per task`);
+      const totalHours = tasksOfType.reduce((sum, t) => {
+        const hours = parseFloat(String(t.estimatedHours || 1));
+        return sum + hours;
+      }, 0);
+
+      const total = totalHours * rule.value;
+
+      console.log(`[Payroll Debug] Rule: "${rule.taskType}" @ ${rule.value} per hour`);
       console.log(`[Payroll Debug]   - Searching for type: "${rule.taskType}"`);
       console.log(`[Payroll Debug]   - Found ${count} tasks of this type`);
+      console.log(`[Payroll Debug]   - Total hours: ${totalHours}`);
       if (count === 0 && completedTasks.length > 0) {
         const availableTypes = [...new Set(completedTasks.map(t => t.type))];
         console.log(`[Payroll Debug]   - ⚠️ Available types in completed tasks:`, JSON.stringify(availableTypes, null, 2));
@@ -144,6 +152,7 @@ export async function calculateUserStats(
         details.push({
           taskType: rule.taskType,
           count,
+          hours: totalHours,
           rate: rule.value,
           total
         });
