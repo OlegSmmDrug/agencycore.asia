@@ -63,7 +63,7 @@ export async function calculateUserStats(
   }
 
   const monthStart = new Date(month + '-01');
-  const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+  const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0, 23, 59, 59, 999);
 
   const completedTasks = tasks.filter(t => {
     if (t.assigneeId !== user.id) return false;
