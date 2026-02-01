@@ -7,7 +7,6 @@ import ClientBoard from './components/ClientBoard';
 import TasksView from './components/TasksView';
 import TeamManagement from './components/teammanagement';
 import Analytics from './components/Analytics';
-import UnifiedAnalytics from './components/UnifiedAnalytics';
 import Integrations from './components/Integrations';
 import KnowledgeBase from './components/KnowledgeBase';
 import DocumentsPage from './components/DocumentsPage';
@@ -1196,11 +1195,7 @@ const App: React.FC = () => {
             />
         );
       case 'analytics':
-        return currentAuthUser?.organizationId ? (
-          <UnifiedAnalytics
-            organizationId={currentAuthUser.organizationId}
-          />
-        ) : (
+        return (
           <Analytics
             clients={clients}
             users={users}
