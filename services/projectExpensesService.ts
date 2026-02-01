@@ -892,6 +892,25 @@ export const projectExpensesService = {
       }
     }
 
+    const { count: existingPublicationsCount } = await supabase
+      .from('content_publications')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', projectId)
+      .gte('published_at', `${month}-01`)
+      .lt('published_at', `${month}-32`);
+
+    if ((existingPublicationsCount || 0) === 0 && hasLivedune) {
+      console.log(`[ProjectExpenses] No publications found for ${month}, fetching from LiveDune API...`);
+      const { liveduneContentSyncService } = await import('./liveduneContentSyncService');
+      const syncResult = await liveduneContentSyncService.fetchAndSyncMonthFromLiveDune(
+        projectId,
+        month,
+        fullProject.liveduneAccessToken!,
+        fullProject.liveduneAccountId!
+      );
+      console.log(`[ProjectExpenses] LiveDune sync result for ${month}:`, syncResult);
+    }
+
     const { data: contentMetricsSnapshot, error: metricsError } = await supabase
       .rpc('calculate_content_metrics_for_month', {
         p_project_id: projectId,

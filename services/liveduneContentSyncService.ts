@@ -259,5 +259,182 @@ export const liveduneContentSyncService = {
     }
 
     return count || 0;
+  },
+
+  async fetchAndSyncMonthFromLiveDune(
+    projectId: string,
+    month: string,
+    liveduneAccessToken: string,
+    liveduneAccountId: number
+  ): Promise<{ synced: number; skipped: number; error?: string }> {
+    console.log(`[LiveDune API Sync] Fetching content from LiveDune API for ${month}`);
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, team_ids, organization_id')
+      .eq('id', projectId)
+      .single();
+
+    if (projectError || !project) {
+      return { synced: 0, skipped: 0, error: 'Project not found' };
+    }
+
+    const monthStart = new Date(month + '-01');
+    const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+
+    const dateFrom = monthStart.toISOString().split('T')[0];
+    const dateTo = monthEnd.toISOString().split('T')[0];
+
+    const LIVEDUNE_PROXY_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/livedune-proxy`;
+    const headers = {
+      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json'
+    };
+
+    let synced = 0;
+    let skipped = 0;
+
+    const smmMembers = await this.getSMMTeamMembers(project.team_ids || []);
+
+    try {
+      const postsUrl = `${LIVEDUNE_PROXY_URL}?endpoint=/accounts/${liveduneAccountId}/posts&access_token=${encodeURIComponent(liveduneAccessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
+      const postsResponse = await fetch(postsUrl, { headers });
+
+      if (postsResponse.ok) {
+        const postsData = await postsResponse.json();
+        const posts = postsData.response || [];
+        console.log(`[LiveDune API Sync] Fetched ${posts.length} posts`);
+
+        for (const post of posts) {
+          const publishedAt = new Date(post.created || post.date).toISOString();
+
+          const { data: existing } = await supabase
+            .from('content_publications')
+            .select('id')
+            .eq('project_id', projectId)
+            .eq('content_type', 'Post')
+            .eq('published_at', publishedAt)
+            .maybeSingle();
+
+          if (existing) {
+            skipped++;
+            continue;
+          }
+
+          const assignedUserId = smmMembers.length > 0 ? smmMembers[synced % smmMembers.length].id : null;
+          if (!assignedUserId) {
+            skipped++;
+            continue;
+          }
+
+          const success = await contentPublicationService.create({
+            projectId,
+            contentType: 'Post',
+            publishedAt,
+            assignedUserId,
+            organizationId: project.organization_id,
+            description: `From LiveDune API (${post.post_id || post.id})`
+          });
+
+          if (success) synced++;
+          else skipped++;
+        }
+      }
+
+      const storiesUrl = `${LIVEDUNE_PROXY_URL}?endpoint=/accounts/${liveduneAccountId}/stories&access_token=${encodeURIComponent(liveduneAccessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
+      const storiesResponse = await fetch(storiesUrl, { headers });
+
+      if (storiesResponse.ok) {
+        const storiesData = await storiesResponse.json();
+        const stories = storiesData.response || [];
+        console.log(`[LiveDune API Sync] Fetched ${stories.length} stories`);
+
+        for (const story of stories) {
+          const publishedAt = new Date(story.created || story.date).toISOString();
+
+          const { data: existing } = await supabase
+            .from('content_publications')
+            .select('id')
+            .eq('project_id', projectId)
+            .eq('content_type', 'Stories ')
+            .eq('published_at', publishedAt)
+            .maybeSingle();
+
+          if (existing) {
+            skipped++;
+            continue;
+          }
+
+          const assignedUserId = smmMembers.length > 0 ? smmMembers[synced % smmMembers.length].id : null;
+          if (!assignedUserId) {
+            skipped++;
+            continue;
+          }
+
+          const success = await contentPublicationService.create({
+            projectId,
+            contentType: 'Stories ',
+            publishedAt,
+            assignedUserId,
+            organizationId: project.organization_id,
+            description: `From LiveDune API (${story.story_id || story.id})`
+          });
+
+          if (success) synced++;
+          else skipped++;
+        }
+      }
+
+      const reelsUrl = `${LIVEDUNE_PROXY_URL}?endpoint=/accounts/${liveduneAccountId}/reels&access_token=${encodeURIComponent(liveduneAccessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
+      const reelsResponse = await fetch(reelsUrl, { headers });
+
+      if (reelsResponse.ok) {
+        const reelsData = await reelsResponse.json();
+        const reels = reelsData.response || [];
+        console.log(`[LiveDune API Sync] Fetched ${reels.length} reels`);
+
+        for (const reel of reels) {
+          const publishedAt = new Date(reel.created || reel.date).toISOString();
+
+          const { data: existing } = await supabase
+            .from('content_publications')
+            .select('id')
+            .eq('project_id', projectId)
+            .eq('content_type', 'Reels Production')
+            .eq('published_at', publishedAt)
+            .maybeSingle();
+
+          if (existing) {
+            skipped++;
+            continue;
+          }
+
+          const assignedUserId = smmMembers.length > 0 ? smmMembers[synced % smmMembers.length].id : null;
+          if (!assignedUserId) {
+            skipped++;
+            continue;
+          }
+
+          const success = await contentPublicationService.create({
+            projectId,
+            contentType: 'Reels Production',
+            publishedAt,
+            assignedUserId,
+            organizationId: project.organization_id,
+            description: `From LiveDune API (${reel.reel_id || reel.id})`
+          });
+
+          if (success) synced++;
+          else skipped++;
+        }
+      }
+
+      console.log(`[LiveDune API Sync] Completed: ${synced} synced, ${skipped} skipped`);
+      return { synced, skipped };
+
+    } catch (error) {
+      console.error('[LiveDune API Sync] Error:', error);
+      return { synced, skipped, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
   }
 };
