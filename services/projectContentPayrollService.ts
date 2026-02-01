@@ -1,6 +1,7 @@
 import { User, Project, SalaryScheme } from '../types';
 import { ContentMetrics } from './serviceMappingService';
 import { supabase } from '../lib/supabase';
+import { autoSyncContentPublications } from './autoContentPublicationService';
 
 interface ContentPayrollDetail {
   projectId: string;
@@ -95,6 +96,33 @@ export const calculateProjectContentPayroll = async (
 
   const details: ContentPayrollDetail[] = [];
   let totalEarnings = 0;
+
+  // Автосинхронизация контента из LiveDune для проектов пользователя
+  const userProjects = projects.filter(p =>
+    p.teamIds.includes(user.id) &&
+    p.liveduneAccessToken &&
+    p.liveduneAccountId &&
+    p.organizationId
+  );
+
+  if (userProjects.length > 0) {
+    console.log(`[Project Content Payroll] Auto-syncing ${userProjects.length} projects for ${user.name}`);
+
+    const syncPromises = userProjects.map(project =>
+      autoSyncContentPublications(project, { start: monthStart, end: monthEnd })
+        .catch(err => {
+          console.error(`[Project Content Payroll] Sync failed for ${project.name}:`, err);
+          return { synced: 0, errors: 1 };
+        })
+    );
+
+    const syncResults = await Promise.all(syncPromises);
+    const totalSynced = syncResults.reduce((sum, r) => sum + r.synced, 0);
+
+    if (totalSynced > 0) {
+      console.log(`[Project Content Payroll] Synced ${totalSynced} new publications for ${user.name}`);
+    }
+  }
 
   // Получаем публикации контента за указанный месяц для этого пользователя
   const { data: publications, error } = await supabase
