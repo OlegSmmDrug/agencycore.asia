@@ -7,6 +7,7 @@ import {
 import { Client, User, Task, Project, Transaction, ProjectStatus, ClientStatus, SystemRole, ProjectFinancials } from '../types';
 import FinancialModel from './FinancialModel';
 import TransactionJournal from './TransactionJournal';
+import { supabase } from '../lib/supabase';
 
 interface AnalyticsProps {
     clients: Client[];
@@ -115,34 +116,143 @@ const Analytics: React.FC<AnalyticsProps> = ({
         return { funnel, managerPerformance, cac };
     }, [clients, users, transactions]);
 
-    // --- 3. UNIT ECONOMICS ---
+    // --- 3. UNIT ECONOMICS (REAL DATA) ---
+    const [projectExpensesData, setProjectExpensesData] = useState<Record<string, any>>({});
+    const [loadingExpenses, setLoadingExpenses] = useState(true);
+
+    useEffect(() => {
+        const loadProjectExpenses = async () => {
+            setLoadingExpenses(true);
+            const expensesMap: Record<string, any> = {};
+
+            for (const project of projects) {
+                try {
+                    const { data, error } = await supabase
+                        .from('project_expenses')
+                        .select('*')
+                        .eq('project_id', project.id)
+                        .order('month', { ascending: false });
+
+                    if (!error && data && data.length > 0) {
+                        const totalRevenue = data.reduce((sum, exp) => sum + (Number(exp.revenue) || 0), 0);
+                        const totalExpenses = data.reduce((sum, exp) => sum + (Number(exp.total_expenses) || 0), 0);
+                        const avgRevenue = totalRevenue / data.length;
+                        const avgExpenses = totalExpenses / data.length;
+
+                        const latestExpense = data[0];
+                        const dynamicExpenses = latestExpense.dynamic_expenses || {};
+
+                        const categoryBreakdown: Record<string, number> = {
+                            smm: 0,
+                            video: 0,
+                            target: 0,
+                            sites: 0,
+                            fot: Number(latestExpense.fot_expenses) || 0,
+                            models: Number(latestExpense.models_expenses) || 0,
+                            other: Number(latestExpense.other_expenses) || 0
+                        };
+
+                        for (const key in dynamicExpenses) {
+                            const item = dynamicExpenses[key];
+                            const category = item.category || 'other';
+                            categoryBreakdown[category] = (categoryBreakdown[category] || 0) + (item.cost || 0);
+                        }
+
+                        if (Object.keys(dynamicExpenses).length === 0) {
+                            categoryBreakdown.smm = Number(latestExpense.smm_expenses) || 0;
+                            categoryBreakdown.video = Number(latestExpense.production_expenses) || 0;
+                            categoryBreakdown.target = Number(latestExpense.targetologist_expenses) || 0;
+                        }
+
+                        expensesMap[project.id] = {
+                            totalRevenue,
+                            totalExpenses,
+                            avgRevenue,
+                            avgExpenses,
+                            latestMonth: latestExpense.month,
+                            latestRevenue: Number(latestExpense.revenue) || 0,
+                            latestExpenses: Number(latestExpense.total_expenses) || 0,
+                            latestMargin: Number(latestExpense.margin_percent) || 0,
+                            monthsCount: data.length,
+                            categoryBreakdown,
+                            allExpenses: data
+                        };
+                    } else {
+                        const estimatedExpenses = (project.budget || 0) * 0.55;
+                        expensesMap[project.id] = {
+                            totalRevenue: project.budget || 0,
+                            totalExpenses: estimatedExpenses,
+                            avgRevenue: project.budget || 0,
+                            avgExpenses: estimatedExpenses,
+                            latestMonth: new Date().toISOString().slice(0, 7),
+                            latestRevenue: project.budget || 0,
+                            latestExpenses: estimatedExpenses,
+                            latestMargin: project.budget > 0 ? ((project.budget - estimatedExpenses) / project.budget) * 100 : 0,
+                            monthsCount: 0,
+                            categoryBreakdown: {},
+                            allExpenses: [],
+                            isEstimated: true
+                        };
+                    }
+                } catch (error) {
+                    console.error('Error loading expenses for project:', project.id, error);
+                }
+            }
+
+            setProjectExpensesData(expensesMap);
+            setLoadingExpenses(false);
+        };
+
+        if (projects.length > 0) {
+            loadProjectExpenses();
+        }
+    }, [projects]);
+
     const unitData = useMemo(() => {
         const serviceTypes = ['SMM', 'Таргет', 'Комплекс', 'Сайты'];
         const profitabilityByService = serviceTypes.map(s => {
             const serviceProjects = projects.filter(p => p.services && p.services.includes(s));
-            const rev = serviceProjects.reduce((acc, p) => acc + (p.budget || 0), 0);
-            const exp = serviceProjects.reduce((acc, p) => acc + ((p.budget || 0) * 0.6), 0); 
+            let totalRev = 0;
+            let totalExp = 0;
+
+            serviceProjects.forEach(p => {
+                const expData = projectExpensesData[p.id];
+                if (expData) {
+                    totalRev += expData.avgRevenue || 0;
+                    totalExp += expData.avgExpenses || 0;
+                }
+            });
+
             return {
                 name: s,
-                revenue: rev,
-                margin: rev > 0 ? ((rev - exp) / rev) * 100 : 0
+                revenue: totalRev,
+                expenses: totalExp,
+                margin: totalRev > 0 ? ((totalRev - totalExp) / totalRev) * 100 : 0
             };
         });
 
         const projectList = projects.map(p => {
-            const rev = p.budget || 0;
-            const exp = rev * 0.55; 
+            const expData = projectExpensesData[p.id];
+            const rev = expData?.latestRevenue || p.budget || 0;
+            const exp = expData?.latestExpenses || ((p.budget || 0) * 0.55);
+            const margin = expData?.latestMargin || (rev > 0 ? ((rev - exp) / rev) * 100 : 0);
+
             return {
+                id: p.id,
                 name: p.name,
                 revenue: rev,
                 expenses: exp,
                 profit: rev - exp,
-                margin: rev > 0 ? ((rev - exp) / rev) * 100 : 0
+                margin: margin,
+                categoryBreakdown: expData?.categoryBreakdown || {},
+                monthsCount: expData?.monthsCount || 0,
+                latestMonth: expData?.latestMonth || '',
+                isEstimated: expData?.isEstimated || false
             };
         }).sort((a, b) => b.profit - a.profit);
 
         return { profitabilityByService, projectList };
-    }, [projects]);
+    }, [projects, projectExpensesData]);
 
     // --- 4. TEAM PERFORMANCE ---
     const teamData = useMemo(() => {
@@ -379,31 +489,206 @@ const Analytics: React.FC<AnalyticsProps> = ({
                     </div>
                 ) : activeTab === 'unit' ? (
                     <div className="space-y-6 animate-fade-in">
-                        <div className={UI.CARD}>
-                            <h3 className="font-black text-xs uppercase tracking-widest mb-10 text-slate-900 flex items-center gap-2">
-                                <div className="w-1 h-4 bg-indigo-600 rounded-full"></div> Рентабельность услуг (Маржа по нишам)
-                            </h3>
-                            {unitData.profitabilityByService.some(s => s.revenue > 0) ? (
-                                <div className="h-[380px] w-full">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <ComposedChart data={unitData.profitabilityByService}>
-                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
-                                            <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
-                                            <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fill: '#3b82f6', fontSize: 10}} unit="%" />
-                                            <Tooltip contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}} />
-                                            <Bar yAxisId="left" dataKey="revenue" fill="#e2e8f0" radius={[6, 6, 0, 0]} barSize={70} name="Выручка" />
-                                            <Line yAxisId="right" type="monotone" dataKey="margin" stroke="#3b82f6" strokeWidth={4} dot={{r: 8, fill: '#3b82f6', strokeWidth: 3, stroke: '#fff'}} name="Маржа %" />
-                                        </ComposedChart>
-                                    </ResponsiveContainer>
+                        {loadingExpenses ? (
+                            <div className={UI.CARD}>
+                                <div className="flex items-center justify-center py-12">
+                                    <div className="flex items-center gap-3">
+                                        <svg className="animate-spin h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        <span className="text-slate-600 font-semibold">Загрузка реальных данных расходов...</span>
+                                    </div>
                                 </div>
-                            ) : (
-                                <div className="text-center py-12">
-                                    <p className="text-slate-400 text-sm">Нет данных по проектам</p>
-                                    <p className="text-slate-300 text-xs mt-2">Добавьте проекты с указанием услуг и бюджета</p>
+                            </div>
+                        ) : (
+                            <>
+                                <div className={UI.CARD}>
+                                    <h3 className="font-black text-xs uppercase tracking-widest mb-10 text-slate-900 flex items-center gap-2">
+                                        <div className="w-1 h-4 bg-indigo-600 rounded-full"></div> Рентабельность услуг (Маржа по нишам)
+                                    </h3>
+                                    {unitData.profitabilityByService.some(s => s.revenue > 0) ? (
+                                        <div className="h-[380px] w-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <ComposedChart data={unitData.profitabilityByService}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
+                                                    <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
+                                                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fill: '#3b82f6', fontSize: 10}} unit="%" />
+                                                    <Tooltip contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}} />
+                                                    <Bar yAxisId="left" dataKey="revenue" fill="#e2e8f0" radius={[6, 6, 0, 0]} barSize={70} name="Выручка" />
+                                                    <Line yAxisId="right" type="monotone" dataKey="margin" stroke="#3b82f6" strokeWidth={4} dot={{r: 8, fill: '#3b82f6', strokeWidth: 3, stroke: '#fff'}} name="Маржа %" />
+                                                </ComposedChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-12">
+                                            <p className="text-slate-400 text-sm">Нет данных по проектам</p>
+                                            <p className="text-slate-300 text-xs mt-2">Добавьте проекты с указанием услуг и бюджета</p>
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
+
+                                <div className={UI.CARD}>
+                                    <div className="flex items-center justify-between mb-8">
+                                        <h3 className="font-black text-xs uppercase tracking-widest text-slate-900 flex items-center gap-2">
+                                            <div className="w-1 h-4 bg-emerald-600 rounded-full"></div> Детальная сводка по проектам
+                                        </h3>
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
+                                            <div className="flex items-center gap-1">
+                                                <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                                                <span>Реальные данные</span>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+                                                <span>Оценка</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {unitData.projectList.length > 0 ? (
+                                        <div className="space-y-4">
+                                            {unitData.projectList.map((proj, index) => {
+                                                const catBreakdown = proj.categoryBreakdown || {};
+                                                const hasBreakdown = Object.keys(catBreakdown).length > 0;
+
+                                                return (
+                                                    <div key={proj.id} className="bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-2xl p-5 hover:shadow-md transition-all">
+                                                        <div className="flex items-start justify-between mb-4">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black ${
+                                                                    index === 0 ? 'bg-amber-100 text-amber-600' :
+                                                                    index === 1 ? 'bg-slate-200 text-slate-600' :
+                                                                    index === 2 ? 'bg-orange-100 text-orange-600' :
+                                                                    'bg-slate-100 text-slate-500'
+                                                                }`}>
+                                                                    {index + 1}
+                                                                </div>
+                                                                <div>
+                                                                    <h4 className="font-black text-slate-900 text-sm flex items-center gap-2">
+                                                                        {proj.name}
+                                                                        {proj.isEstimated && (
+                                                                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-black uppercase rounded">
+                                                                                Оценка
+                                                                            </span>
+                                                                        )}
+                                                                    </h4>
+                                                                    {proj.monthsCount > 0 && (
+                                                                        <p className="text-[9px] text-slate-500 font-bold uppercase">
+                                                                            {proj.monthsCount} {proj.monthsCount === 1 ? 'месяц' : 'месяца'} данных • Последний: {proj.latestMonth}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className={`text-lg font-black ${proj.margin >= 30 ? 'text-emerald-600' : proj.margin >= 15 ? 'text-blue-600' : 'text-rose-600'}`}>
+                                                                    {proj.margin.toFixed(1)}%
+                                                                </div>
+                                                                <div className="text-[9px] text-slate-400 font-bold uppercase">Маржа</div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-3 gap-4 mb-4">
+                                                            <div className="bg-white rounded-xl p-3 border border-blue-100">
+                                                                <div className="text-[9px] text-slate-500 font-bold uppercase mb-1">Выручка</div>
+                                                                <div className="text-lg font-black text-blue-600">{proj.revenue.toLocaleString()} ₸</div>
+                                                            </div>
+                                                            <div className="bg-white rounded-xl p-3 border border-rose-100">
+                                                                <div className="text-[9px] text-slate-500 font-bold uppercase mb-1">Расходы</div>
+                                                                <div className="text-lg font-black text-rose-600">{proj.expenses.toLocaleString()} ₸</div>
+                                                            </div>
+                                                            <div className="bg-white rounded-xl p-3 border border-emerald-100">
+                                                                <div className="text-[9px] text-slate-500 font-bold uppercase mb-1">Прибыль</div>
+                                                                <div className={`text-lg font-black ${proj.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                    {proj.profit.toLocaleString()} ₸
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        {hasBreakdown && (
+                                                            <div>
+                                                                <div className="text-[9px] text-slate-500 font-bold uppercase mb-2 flex items-center gap-2">
+                                                                    <div className="w-1 h-3 bg-slate-300 rounded-full"></div>
+                                                                    Структура расходов
+                                                                </div>
+                                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                                    {catBreakdown.smm > 0 && (
+                                                                        <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                                                                            <div className="text-[8px] text-blue-600 font-bold uppercase">SMM</div>
+                                                                            <div className="text-sm font-black text-blue-700">{catBreakdown.smm.toLocaleString()} ₸</div>
+                                                                        </div>
+                                                                    )}
+                                                                    {catBreakdown.video > 0 && (
+                                                                        <div className="bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
+                                                                            <div className="text-[8px] text-purple-600 font-bold uppercase">Продакшн</div>
+                                                                            <div className="text-sm font-black text-purple-700">{catBreakdown.video.toLocaleString()} ₸</div>
+                                                                        </div>
+                                                                    )}
+                                                                    {catBreakdown.target > 0 && (
+                                                                        <div className="bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
+                                                                            <div className="text-[8px] text-orange-600 font-bold uppercase">Таргет</div>
+                                                                            <div className="text-sm font-black text-orange-700">{catBreakdown.target.toLocaleString()} ₸</div>
+                                                                        </div>
+                                                                    )}
+                                                                    {catBreakdown.fot > 0 && (
+                                                                        <div className="bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
+                                                                            <div className="text-[8px] text-emerald-600 font-bold uppercase">ФОТ</div>
+                                                                            <div className="text-sm font-black text-emerald-700">{catBreakdown.fot.toLocaleString()} ₸</div>
+                                                                        </div>
+                                                                    )}
+                                                                    {catBreakdown.models > 0 && (
+                                                                        <div className="bg-pink-50 border border-pink-100 rounded-lg px-3 py-2">
+                                                                            <div className="text-[8px] text-pink-600 font-bold uppercase">Модели</div>
+                                                                            <div className="text-sm font-black text-pink-700">{catBreakdown.models.toLocaleString()} ₸</div>
+                                                                        </div>
+                                                                    )}
+                                                                    {catBreakdown.other > 0 && (
+                                                                        <div className="bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
+                                                                            <div className="text-[8px] text-slate-600 font-bold uppercase">Прочие</div>
+                                                                            <div className="text-sm font-black text-slate-700">{catBreakdown.other.toLocaleString()} ₸</div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="mt-3 pt-3 border-t border-slate-100">
+                                                            <div className="flex items-center justify-between text-[9px]">
+                                                                <span className="text-slate-500 font-bold uppercase">Рентабельность</span>
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-32 bg-slate-100 h-2 rounded-full overflow-hidden">
+                                                                        <div
+                                                                            className={`h-full rounded-full transition-all ${
+                                                                                proj.margin >= 30 ? 'bg-emerald-500' :
+                                                                                proj.margin >= 15 ? 'bg-blue-500' :
+                                                                                'bg-rose-500'
+                                                                            }`}
+                                                                            style={{ width: `${Math.min(100, proj.margin)}%` }}
+                                                                        ></div>
+                                                                    </div>
+                                                                    <span className={`font-black ${
+                                                                        proj.margin >= 30 ? 'text-emerald-600' :
+                                                                        proj.margin >= 15 ? 'text-blue-600' :
+                                                                        'text-rose-600'
+                                                                    }`}>
+                                                                        {proj.margin.toFixed(1)}%
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-12">
+                                            <p className="text-slate-400 text-sm">Нет данных по проектам</p>
+                                            <p className="text-slate-300 text-xs mt-2">Добавьте проекты для анализа</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        )}
                     </div>
                 ) : (
                     <div className="space-y-6 animate-fade-in">
