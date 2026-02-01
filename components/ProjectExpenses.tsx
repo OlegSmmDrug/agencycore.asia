@@ -1103,15 +1103,20 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
           )}
 
           <div className="bg-white border border-slate-200 rounded-xl p-6">
-            <h3 className="text-lg font-bold text-slate-800 mb-4">История расходов</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-800">История расходов</h3>
+              <div className="text-xs text-slate-500">
+                Кликните на месяц, чтобы посмотреть детали
+              </div>
+            </div>
             {expenses.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-slate-200">
                       <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Месяц</th>
-                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700">СММ</th>
-                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700">Продакшн</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700">Услуги</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700">ФОТ</th>
                       <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700">Прочие</th>
                       <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700">Всего расходов</th>
                       <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700">Выручка</th>
@@ -1119,31 +1124,47 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {expenses.map((exp) => (
-                      <tr
-                        key={exp.id}
-                        className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer ${
-                          exp.month === selectedMonth ? 'bg-blue-50' : ''
-                        }`}
-                        onClick={() => setSelectedMonth(exp.month)}
-                      >
-                        <td className="py-3 px-4 text-sm font-medium">{exp.month}</td>
-                        <td className="py-3 px-4 text-sm text-right">{exp.smmExpenses.toLocaleString()} ₸</td>
-                        <td className="py-3 px-4 text-sm text-right">{exp.productionExpenses.toLocaleString()} ₸</td>
-                        <td className="py-3 px-4 text-sm text-right">
-                          {(exp.pmExpenses + exp.targetologistExpenses + exp.modelsExpenses + exp.otherExpenses).toLocaleString()} ₸
-                        </td>
-                        <td className="py-3 px-4 text-sm text-right font-semibold">{exp.totalExpenses.toLocaleString()} ₸</td>
-                        <td className="py-3 px-4 text-sm text-right">{exp.revenue.toLocaleString()} ₸</td>
-                        <td className={`py-3 px-4 text-sm text-right font-semibold ${
-                          exp.marginPercent >= 30 ? 'text-green-600' :
-                          exp.marginPercent >= 15 ? 'text-yellow-600' :
-                          'text-red-600'
-                        }`}>
-                          {exp.marginPercent.toFixed(1)}%
-                        </td>
-                      </tr>
-                    ))}
+                    {expenses.map((exp) => {
+                      let servicesExpenses = 0;
+
+                      if (exp.dynamicExpenses && Object.keys(exp.dynamicExpenses).length > 0) {
+                        servicesExpenses = Object.values(exp.dynamicExpenses).reduce((sum, item) => sum + (item.cost || 0), 0);
+                      } else {
+                        servicesExpenses = exp.smmExpenses + exp.productionExpenses + exp.pmExpenses + exp.targetologistExpenses;
+                      }
+
+                      const fotTotal = exp.fotExpenses || 0;
+                      const otherTotal = exp.modelsExpenses + exp.otherExpenses;
+
+                      return (
+                        <tr
+                          key={exp.id}
+                          className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors ${
+                            exp.month === selectedMonth ? 'bg-blue-50 font-semibold' : ''
+                          }`}
+                          onClick={() => setSelectedMonth(exp.month)}
+                        >
+                          <td className="py-3 px-4 text-sm font-medium">
+                            {new Date(exp.month + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+                            {exp.month === selectedMonth && (
+                              <span className="ml-2 text-xs text-blue-600">← Текущий</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-right">{servicesExpenses.toLocaleString()} ₸</td>
+                          <td className="py-3 px-4 text-sm text-right">{fotTotal.toLocaleString()} ₸</td>
+                          <td className="py-3 px-4 text-sm text-right">{otherTotal.toLocaleString()} ₸</td>
+                          <td className="py-3 px-4 text-sm text-right font-semibold text-slate-900">{exp.totalExpenses.toLocaleString()} ₸</td>
+                          <td className="py-3 px-4 text-sm text-right text-green-700">{exp.revenue.toLocaleString()} ₸</td>
+                          <td className={`py-3 px-4 text-sm text-right font-semibold ${
+                            exp.marginPercent >= 30 ? 'text-green-600' :
+                            exp.marginPercent >= 15 ? 'text-yellow-600' :
+                            'text-red-600'
+                          }`}>
+                            {exp.marginPercent.toFixed(1)}%
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
