@@ -389,22 +389,9 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
       const hasNewContent = project.contentMetrics && Object.keys(project.contentMetrics).length > 0;
 
       if (!hasLegacyContent && !hasNewContent) {
-        const allContentMetrics = await extractContentPlanFromCalculator(client);
-
-        if (Object.keys(allContentMetrics).length > 0) {
-          if (project.contentMetricsVisible && project.contentMetricsVisible.length > 0) {
-            const filteredMetrics: any = {};
-            for (const visibleKey of project.contentMetricsVisible) {
-              if (allContentMetrics[visibleKey]) {
-                filteredMetrics[visibleKey] = allContentMetrics[visibleKey];
-              }
-            }
-            if (Object.keys(filteredMetrics).length > 0) {
-              updates.contentMetrics = filteredMetrics;
-            }
-          } else {
-            updates.contentMetrics = allContentMetrics;
-          }
+        const contentMetrics = await extractContentPlanFromCalculator(client);
+        if (Object.keys(contentMetrics).length > 0) {
+          updates.contentMetrics = contentMetrics;
         }
       }
 
@@ -1296,32 +1283,16 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                   <button
                     onClick={async () => {
                       try {
-                        const allContentMetrics = await extractContentPlanFromCalculator(client);
-                        if (Object.keys(allContentMetrics).length === 0) {
+                        const contentMetrics = await extractContentPlanFromCalculator(client);
+                        if (Object.keys(contentMetrics).length === 0) {
                           alert('В калькуляторе нет услуг с количеством');
                           return;
                         }
-
-                        const contentOnlyKeys = Object.keys(allContentMetrics).filter(key => {
-                          const lowerKey = key.toLowerCase();
-                          return lowerKey.includes('post') || lowerKey.includes('stor') ||
-                                 lowerKey.includes('reel') || lowerKey.includes('пост') ||
-                                 lowerKey.includes('стор') || lowerKey.includes('рилс');
-                        });
-
-                        const visibleKeys = contentOnlyKeys.length > 0 ? contentOnlyKeys : Object.keys(allContentMetrics).slice(0, 3);
-
-                        const filteredMetrics: any = {};
-                        for (const key of visibleKeys) {
-                          if (allContentMetrics[key]) {
-                            filteredMetrics[key] = allContentMetrics[key];
-                          }
-                        }
-
+                        const allKeys = Object.keys(contentMetrics);
                         onUpdateProject({
                           ...project,
-                          contentMetrics: filteredMetrics,
-                          contentMetricsVisible: visibleKeys
+                          contentMetrics: contentMetrics,
+                          contentMetricsVisible: allKeys.slice(0, 3)
                         });
                       } catch (error) {
                         console.error('Error loading from calculator:', error);
