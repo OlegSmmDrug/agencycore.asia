@@ -7,7 +7,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const LIVEDUNE_API_BASE = "https://api.livedune.com/v1";
+const getProxyUrl = (supabaseUrl: string) => `${supabaseUrl}/functions/v1/livedune-proxy`;
 
 interface SyncRequest {
   date_from?: string; // YYYY-MM-DD
@@ -80,22 +80,28 @@ Deno.serve(async (req: Request) => {
 
         const accountId = project.livedune_account_id;
         const accessToken = project.livedune_access_token;
+        const proxyUrl = getProxyUrl(supabaseUrl);
 
         // Fetch posts
-        const postsUrl = `${LIVEDUNE_API_BASE}/accounts/${accountId}/posts?access_token=${accessToken}&date_from=${dateFrom}&date_to=${dateTo}`;
+        const postsUrl = `${proxyUrl}?endpoint=/accounts/${accountId}/posts&access_token=${encodeURIComponent(accessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
         const postsResponse = await fetch(postsUrl);
         const postsData = await postsResponse.json();
         const posts = postsData.response || [];
 
         // Fetch stories
-        const storiesUrl = `${LIVEDUNE_API_BASE}/accounts/${accountId}/stories?access_token=${accessToken}&date_from=${dateFrom}&date_to=${dateTo}`;
+        const storiesUrl = `${proxyUrl}?endpoint=/accounts/${accountId}/stories&access_token=${encodeURIComponent(accessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
+        console.log(`[LiveDune Sync] Fetching stories from: ${storiesUrl}`);
         const storiesResponse = await fetch(storiesUrl);
-        const storiesData = await storiesResponse.json();
+        console.log(`[LiveDune Sync] Stories response status: ${storiesResponse.status}`);
+        const storiesText = await storiesResponse.text();
+        console.log(`[LiveDune Sync] Stories raw response: ${storiesText.substring(0, 500)}`);
+        const storiesData = JSON.parse(storiesText);
         const stories = storiesData.response || [];
+        console.log(`[LiveDune Sync] Found ${stories.length} stories`);
 
         // Fetch reels
         let reels = [];
-        const reelsUrl = `${LIVEDUNE_API_BASE}/accounts/${accountId}/reels?access_token=${accessToken}&date_from=${dateFrom}&date_to=${dateTo}`;
+        const reelsUrl = `${proxyUrl}?endpoint=/accounts/${accountId}/reels&access_token=${encodeURIComponent(accessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
         const reelsResponse = await fetch(reelsUrl);
 
         if (reelsResponse.ok) {
