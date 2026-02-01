@@ -37,12 +37,76 @@ export const getLiveduneContentCounts = async (
   project: Project,
   dateRange?: { start: Date; end: Date }
 ): Promise<LiveduneContentCounts> => {
-  if (!project.liveduneAccessToken || !project.liveduneAccountId) {
-    console.log(`[Content Calculation] ${project.name}: No Livedune credentials (token=${!!project.liveduneAccessToken}, accountId=${project.liveduneAccountId})`);
-    return { posts: 0, reels: 0, stories: 0, hasError: false };
-  }
-
   try {
+    // Попытка 1: Получить данные из локального кеша (content_publications)
+    const { supabase } = await import('../lib/supabase');
+
+    let query = supabase
+      .from('content_publications')
+      .select('content_type')
+      .eq('project_id', project.id);
+
+    if (dateRange) {
+      query = query
+        .gte('published_at', dateRange.start.toISOString())
+        .lte('published_at', dateRange.end.toISOString());
+    }
+
+    const { data: publications, error: dbError } = await query;
+
+    if (!dbError && publications && publications.length > 0) {
+      const posts = publications.filter(p => p.content_type.toLowerCase() === 'post').length;
+      const reels = publications.filter(p => p.content_type.toLowerCase() === 'reels' || p.content_type.toLowerCase() === 'reel').length;
+      const stories = publications.filter(p => p.content_type.toLowerCase() === 'story' || p.content_type.toLowerCase() === 'stories').length;
+
+      console.log(`[Content Calculation] ${project.name}: Using content_publications data:`, {
+        posts,
+        reels,
+        stories
+      });
+
+      return { posts, reels, stories, hasError: false };
+    }
+
+    // Попытка 2: Получить данные из livedune_content_cache
+    const { data: cachedContent, error: cacheError } = await supabase
+      .from('livedune_content_cache')
+      .select('content_type')
+      .eq('project_id', project.id);
+
+    if (!cacheError && cachedContent && cachedContent.length > 0) {
+      let filteredCache = cachedContent;
+
+      if (dateRange) {
+        const { data: dateFiltered } = await supabase
+          .from('livedune_content_cache')
+          .select('content_type')
+          .eq('project_id', project.id)
+          .gte('published_date', dateRange.start.toISOString().split('T')[0])
+          .lte('published_date', dateRange.end.toISOString().split('T')[0]);
+
+        if (dateFiltered) filteredCache = dateFiltered;
+      }
+
+      const posts = filteredCache.filter(p => p.content_type === 'post').length;
+      const reels = filteredCache.filter(p => p.content_type === 'reels').length;
+      const stories = filteredCache.filter(p => p.content_type === 'story').length;
+
+      console.log(`[Content Calculation] ${project.name}: Using livedune_content_cache data:`, {
+        posts,
+        reels,
+        stories
+      });
+
+      return { posts, reels, stories, hasError: false };
+    }
+
+    // Попытка 3: Обратиться к API Livedune (только если есть токен)
+    if (!project.liveduneAccessToken || !project.liveduneAccountId) {
+      console.log(`[Content Calculation] ${project.name}: No Livedune credentials and no cached data`);
+      return { posts: 0, reels: 0, stories: 0, hasError: false };
+    }
+
     const config = {
       accessToken: project.liveduneAccessToken,
       accountId: project.liveduneAccountId
@@ -55,7 +119,7 @@ export const getLiveduneContentCounts = async (
       dateRangeStr = `${fromStr}|${toStr}`;
     }
 
-    console.log(`[Content Calculation] ${project.name}: Fetching Livedune content with accountId=${config.accountId} for date range: ${dateRangeStr}`);
+    console.log(`[Content Calculation] ${project.name}: Fetching from Livedune API with accountId=${config.accountId} for date range: ${dateRangeStr}`);
 
     const [posts, reels, stories] = await Promise.all([
       getLivedunePosts(config, dateRangeStr),
@@ -63,7 +127,7 @@ export const getLiveduneContentCounts = async (
       getLiveduneStories(config, dateRangeStr)
     ]);
 
-    console.log(`[Content Calculation] ${project.name} (accountId=${config.accountId}) Results:`, {
+    console.log(`[Content Calculation] ${project.name} (accountId=${config.accountId}) API Results:`, {
       posts: posts.length,
       reels: reels.length,
       stories: stories.length
@@ -76,7 +140,7 @@ export const getLiveduneContentCounts = async (
       hasError: false
     };
   } catch (error) {
-    console.error(`[Content Calculation] ${project.name}: LiveDune API error (token expired or Instagram error):`, error);
+    console.error(`[Content Calculation] ${project.name}: Error in getLiveduneContentCounts:`, error);
     return { posts: 0, reels: 0, stories: 0, hasError: true };
   }
 };
