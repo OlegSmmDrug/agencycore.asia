@@ -226,8 +226,10 @@ const Analytics: React.FC<AnalyticsProps> = ({
                         };
                     }
 
-                    setProjectExpensesData({ ...expensesMap });
-                    setPrevMonthExpensesData({ ...prevExpensesMap });
+                    setProjectExpensesData(prev => ({ ...prev, [project.id]: expensesMap[project.id] }));
+                    if (prevExpensesMap[project.id]) {
+                        setPrevMonthExpensesData(prev => ({ ...prev, [project.id]: prevExpensesMap[project.id] }));
+                    }
                 } catch (error) {
                     console.error('Error loading expenses for project:', project.id, error);
                 }
@@ -251,7 +253,20 @@ const Analytics: React.FC<AnalyticsProps> = ({
 
         const serviceTypes = ['SMM', 'Таргет', 'Комплекс', 'Сайты'];
         const profitabilityByService = serviceTypes.map(s => {
-            const serviceProjects = activeProjects.filter(p => p.services && p.services.includes(s));
+            let serviceProjects;
+
+            if (s === 'Комплекс') {
+                serviceProjects = activeProjects.filter(p =>
+                    p.services && p.services.length > 1
+                );
+            } else {
+                serviceProjects = activeProjects.filter(p =>
+                    p.services &&
+                    p.services.length === 1 &&
+                    p.services[0] === s
+                );
+            }
+
             let totalRev = 0;
             let totalExp = 0;
 
