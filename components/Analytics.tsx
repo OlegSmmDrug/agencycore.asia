@@ -140,15 +140,21 @@ const Analytics: React.FC<AnalyticsProps> = ({
 
     useEffect(() => {
         const loadProjectExpenses = async () => {
-            setLoadingExpenses(true);
-            const expensesMap: Record<string, any> = {};
-            const prevExpensesMap: Record<string, any> = {};
             const prevMonth = getPreviousMonth(selectedMonth);
 
             const activeProjects = projects.filter(p =>
                 p.status !== ProjectStatus.COMPLETED &&
-                p.status !== 'archived' as any
+                p.status !== ProjectStatus.ARCHIVED
             );
+
+            if (activeProjects.length === 0) {
+                setLoadingExpenses(false);
+                return;
+            }
+
+            setLoadingExpenses(true);
+            const expensesMap: Record<string, any> = {};
+            const prevExpensesMap: Record<string, any> = {};
 
             for (const project of activeProjects) {
                 try {
@@ -219,25 +225,28 @@ const Analytics: React.FC<AnalyticsProps> = ({
                             margin: Number(prevData.margin_percent) || 0
                         };
                     }
+
+                    setProjectExpensesData({ ...expensesMap });
+                    setPrevMonthExpensesData({ ...prevExpensesMap });
                 } catch (error) {
                     console.error('Error loading expenses for project:', project.id, error);
                 }
             }
 
-            setProjectExpensesData(expensesMap);
-            setPrevMonthExpensesData(prevExpensesMap);
             setLoadingExpenses(false);
         };
 
         if (projects.length > 0) {
             loadProjectExpenses();
+        } else {
+            setLoadingExpenses(false);
         }
     }, [projects, selectedMonth]);
 
     const unitData = useMemo(() => {
         const activeProjects = projects.filter(p =>
             p.status !== ProjectStatus.COMPLETED &&
-            p.status !== 'archived' as any
+            p.status !== ProjectStatus.ARCHIVED
         );
 
         const serviceTypes = ['SMM', 'Таргет', 'Комплекс', 'Сайты'];
@@ -693,16 +702,35 @@ const Analytics: React.FC<AnalyticsProps> = ({
                                     </div>
 
                                     {unitData.projectList.length > 0 ? (
-                                        <div className="space-y-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                                             {unitData.projectList.map((proj, index) => {
                                                 const catBreakdown = proj.categoryBreakdown || {};
                                                 const hasBreakdown = Object.keys(catBreakdown).length > 0;
+                                                const isLoaded = projectExpensesData[proj.id] !== undefined;
+
+                                                if (!isLoaded && loadingExpenses) {
+                                                    return (
+                                                        <div key={proj.id} className="bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-2xl p-4 animate-pulse">
+                                                            <div className="flex items-start justify-between mb-3">
+                                                                <div className="w-7 h-7 rounded-lg bg-slate-200"></div>
+                                                                <div className="w-16 h-8 bg-slate-200 rounded"></div>
+                                                            </div>
+                                                            <div className="w-3/4 h-4 bg-slate-200 rounded mb-2"></div>
+                                                            <div className="w-1/2 h-3 bg-slate-100 rounded mb-4"></div>
+                                                            <div className="space-y-2">
+                                                                <div className="w-full h-6 bg-slate-100 rounded"></div>
+                                                                <div className="w-full h-6 bg-slate-100 rounded"></div>
+                                                                <div className="w-full h-6 bg-slate-100 rounded"></div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
 
                                                 return (
-                                                    <div key={proj.id} className="bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-2xl p-5 hover:shadow-md transition-all">
-                                                        <div className="flex items-start justify-between mb-4">
-                                                            <div className="flex items-center gap-3">
-                                                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black ${
+                                                    <div key={proj.id} className="bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-2xl p-4 hover:shadow-md transition-all flex flex-col h-full">
+                                                        <div className="flex items-start justify-between mb-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black ${
                                                                     index === 0 ? 'bg-amber-100 text-amber-600' :
                                                                     index === 1 ? 'bg-slate-200 text-slate-600' :
                                                                     index === 2 ? 'bg-orange-100 text-orange-600' :
@@ -710,131 +738,113 @@ const Analytics: React.FC<AnalyticsProps> = ({
                                                                 }`}>
                                                                     {index + 1}
                                                                 </div>
-                                                                <div className="flex-1">
-                                                                    <h4 className="font-black text-slate-900 text-sm flex items-center gap-2">
-                                                                        {proj.name}
-                                                                        {proj.isEstimated && (
-                                                                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-black uppercase rounded">
-                                                                                Оценка
-                                                                            </span>
-                                                                        )}
-                                                                    </h4>
-                                                                    <p className="text-[9px] text-slate-500 font-bold uppercase">
-                                                                        {new Date(proj.month + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
-                                                                    </p>
-                                                                    {proj.hasComparison && (
-                                                                        <div className={`text-[9px] font-bold mt-1 flex items-center gap-1 ${
-                                                                            Math.abs(proj.marginChange) < 2 ? 'text-blue-600' :
-                                                                            proj.marginChange > 0 ? 'text-emerald-600' :
-                                                                            'text-rose-600'
-                                                                        }`}>
-                                                                            {Math.abs(proj.marginChange) < 2 ? '→' :
-                                                                             proj.marginChange > 0 ? '↑' : '↓'}
-                                                                            {Math.abs(proj.marginChange) < 2 ? (
-                                                                                'Стабильно'
-                                                                            ) : proj.marginChange > 0 ? (
-                                                                                `Маржа +${proj.marginChange.toFixed(1)}%`
-                                                                            ) : (
-                                                                                `Маржа ${proj.marginChange.toFixed(1)}%`
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
+                                                                {proj.isEstimated && (
+                                                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-black uppercase rounded">
+                                                                        Оценка
+                                                                    </span>
+                                                                )}
                                                             </div>
-                                                            <div className="text-right">
-                                                                <div className={`text-lg font-black ${proj.margin >= 30 ? 'text-emerald-600' : proj.margin >= 15 ? 'text-blue-600' : 'text-rose-600'}`}>
-                                                                    {proj.margin.toFixed(1)}%
-                                                                </div>
-                                                                <div className="text-[9px] text-slate-400 font-bold uppercase">Маржа</div>
+                                                            <div className={`text-2xl font-black ${proj.margin >= 30 ? 'text-emerald-600' : proj.margin >= 15 ? 'text-blue-600' : 'text-rose-600'}`}>
+                                                                {proj.margin.toFixed(1)}%
                                                             </div>
                                                         </div>
 
-                                                        <div className="grid grid-cols-3 gap-4 mb-4">
-                                                            <div className="bg-white rounded-xl p-3 border border-blue-100">
-                                                                <div className="text-[9px] text-slate-500 font-bold uppercase mb-1">Выручка</div>
-                                                                <div className="text-lg font-black text-blue-600">{proj.revenue.toLocaleString()} ₸</div>
+                                                        <h4 className="font-black text-slate-900 text-sm mb-1 line-clamp-2">
+                                                            {proj.name}
+                                                        </h4>
+                                                        <p className="text-[9px] text-slate-500 font-bold uppercase mb-2">
+                                                            {new Date(proj.month + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+                                                        </p>
+
+                                                        {proj.hasComparison && (
+                                                            <div className={`text-[9px] font-bold mb-3 flex items-center gap-1 px-2 py-1 rounded ${
+                                                                Math.abs(proj.marginChange) < 2 ? 'bg-blue-50 text-blue-600' :
+                                                                proj.marginChange > 0 ? 'bg-emerald-50 text-emerald-600' :
+                                                                'bg-rose-50 text-rose-600'
+                                                            }`}>
+                                                                {Math.abs(proj.marginChange) < 2 ? '→' :
+                                                                 proj.marginChange > 0 ? '↑' : '↓'}
+                                                                {Math.abs(proj.marginChange) < 2 ? (
+                                                                    'Стабильно'
+                                                                ) : proj.marginChange > 0 ? (
+                                                                    `+${proj.marginChange.toFixed(1)}%`
+                                                                ) : (
+                                                                    `${proj.marginChange.toFixed(1)}%`
+                                                                )}
                                                             </div>
-                                                            <div className="bg-white rounded-xl p-3 border border-rose-100">
-                                                                <div className="text-[9px] text-slate-500 font-bold uppercase mb-1">Расходы</div>
-                                                                <div className="text-lg font-black text-rose-600">{proj.expenses.toLocaleString()} ₸</div>
+                                                        )}
+
+                                                        <div className="space-y-2 mb-3">
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-[9px] text-slate-500 font-bold uppercase">Выручка</span>
+                                                                <span className="text-sm font-black text-blue-600">{(proj.revenue / 1000).toFixed(0)}k ₸</span>
                                                             </div>
-                                                            <div className="bg-white rounded-xl p-3 border border-emerald-100">
-                                                                <div className="text-[9px] text-slate-500 font-bold uppercase mb-1">Прибыль</div>
-                                                                <div className={`text-lg font-black ${proj.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                                    {proj.profit.toLocaleString()} ₸
-                                                                </div>
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-[9px] text-slate-500 font-bold uppercase">Расходы</span>
+                                                                <span className="text-sm font-black text-rose-600">{(proj.expenses / 1000).toFixed(0)}k ₸</span>
+                                                            </div>
+                                                            <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+                                                                <span className="text-[9px] text-slate-500 font-bold uppercase">Прибыль</span>
+                                                                <span className={`text-base font-black ${proj.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                    {(proj.profit / 1000).toFixed(0)}k ₸
+                                                                </span>
                                                             </div>
                                                         </div>
 
                                                         {hasBreakdown && (
-                                                            <div>
-                                                                <div className="text-[9px] text-slate-500 font-bold uppercase mb-2 flex items-center gap-2">
-                                                                    <div className="w-1 h-3 bg-slate-300 rounded-full"></div>
-                                                                    Структура расходов
-                                                                </div>
-                                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                            <div className="mt-auto">
+                                                                <div className="text-[8px] text-slate-500 font-bold uppercase mb-2">Структура</div>
+                                                                <div className="grid grid-cols-2 gap-1.5">
                                                                     {catBreakdown.smm > 0 && (
-                                                                        <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
-                                                                            <div className="text-[8px] text-blue-600 font-bold uppercase">SMM</div>
-                                                                            <div className="text-sm font-black text-blue-700">{catBreakdown.smm.toLocaleString()} ₸</div>
+                                                                        <div className="bg-blue-50 border border-blue-100 rounded px-2 py-1.5">
+                                                                            <div className="text-[7px] text-blue-600 font-bold uppercase">SMM</div>
+                                                                            <div className="text-xs font-black text-blue-700">{(catBreakdown.smm / 1000).toFixed(0)}k</div>
                                                                         </div>
                                                                     )}
                                                                     {catBreakdown.video > 0 && (
-                                                                        <div className="bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
-                                                                            <div className="text-[8px] text-purple-600 font-bold uppercase">Продакшн</div>
-                                                                            <div className="text-sm font-black text-purple-700">{catBreakdown.video.toLocaleString()} ₸</div>
+                                                                        <div className="bg-purple-50 border border-purple-100 rounded px-2 py-1.5">
+                                                                            <div className="text-[7px] text-purple-600 font-bold uppercase">Продакшн</div>
+                                                                            <div className="text-xs font-black text-purple-700">{(catBreakdown.video / 1000).toFixed(0)}k</div>
                                                                         </div>
                                                                     )}
                                                                     {catBreakdown.target > 0 && (
-                                                                        <div className="bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
-                                                                            <div className="text-[8px] text-orange-600 font-bold uppercase">Таргет</div>
-                                                                            <div className="text-sm font-black text-orange-700">{catBreakdown.target.toLocaleString()} ₸</div>
+                                                                        <div className="bg-orange-50 border border-orange-100 rounded px-2 py-1.5">
+                                                                            <div className="text-[7px] text-orange-600 font-bold uppercase">Таргет</div>
+                                                                            <div className="text-xs font-black text-orange-700">{(catBreakdown.target / 1000).toFixed(0)}k</div>
                                                                         </div>
                                                                     )}
                                                                     {catBreakdown.fot > 0 && (
-                                                                        <div className="bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
-                                                                            <div className="text-[8px] text-emerald-600 font-bold uppercase">ФОТ</div>
-                                                                            <div className="text-sm font-black text-emerald-700">{catBreakdown.fot.toLocaleString()} ₸</div>
+                                                                        <div className="bg-emerald-50 border border-emerald-100 rounded px-2 py-1.5">
+                                                                            <div className="text-[7px] text-emerald-600 font-bold uppercase">ФОТ</div>
+                                                                            <div className="text-xs font-black text-emerald-700">{(catBreakdown.fot / 1000).toFixed(0)}k</div>
                                                                         </div>
                                                                     )}
                                                                     {catBreakdown.models > 0 && (
-                                                                        <div className="bg-pink-50 border border-pink-100 rounded-lg px-3 py-2">
-                                                                            <div className="text-[8px] text-pink-600 font-bold uppercase">Модели</div>
-                                                                            <div className="text-sm font-black text-pink-700">{catBreakdown.models.toLocaleString()} ₸</div>
+                                                                        <div className="bg-pink-50 border border-pink-100 rounded px-2 py-1.5">
+                                                                            <div className="text-[7px] text-pink-600 font-bold uppercase">Модели</div>
+                                                                            <div className="text-xs font-black text-pink-700">{(catBreakdown.models / 1000).toFixed(0)}k</div>
                                                                         </div>
                                                                     )}
                                                                     {catBreakdown.other > 0 && (
-                                                                        <div className="bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
-                                                                            <div className="text-[8px] text-slate-600 font-bold uppercase">Прочие</div>
-                                                                            <div className="text-sm font-black text-slate-700">{catBreakdown.other.toLocaleString()} ₸</div>
+                                                                        <div className="bg-slate-50 border border-slate-100 rounded px-2 py-1.5">
+                                                                            <div className="text-[7px] text-slate-600 font-bold uppercase">Прочие</div>
+                                                                            <div className="text-xs font-black text-slate-700">{(catBreakdown.other / 1000).toFixed(0)}k</div>
                                                                         </div>
                                                                     )}
                                                                 </div>
                                                             </div>
                                                         )}
 
-                                                        <div className="mt-3 pt-3 border-t border-slate-100">
-                                                            <div className="flex items-center justify-between text-[9px]">
-                                                                <span className="text-slate-500 font-bold uppercase">Рентабельность</span>
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="w-32 bg-slate-100 h-2 rounded-full overflow-hidden">
-                                                                        <div
-                                                                            className={`h-full rounded-full transition-all ${
-                                                                                proj.margin >= 30 ? 'bg-emerald-500' :
-                                                                                proj.margin >= 15 ? 'bg-blue-500' :
-                                                                                'bg-rose-500'
-                                                                            }`}
-                                                                            style={{ width: `${Math.min(100, proj.margin)}%` }}
-                                                                        ></div>
-                                                                    </div>
-                                                                    <span className={`font-black ${
-                                                                        proj.margin >= 30 ? 'text-emerald-600' :
-                                                                        proj.margin >= 15 ? 'text-blue-600' :
-                                                                        'text-rose-600'
-                                                                    }`}>
-                                                                        {proj.margin.toFixed(1)}%
-                                                                    </span>
-                                                                </div>
+                                                        <div className="mt-3 pt-2 border-t border-slate-100">
+                                                            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                                                <div
+                                                                    className={`h-full rounded-full transition-all ${
+                                                                        proj.margin >= 30 ? 'bg-emerald-500' :
+                                                                        proj.margin >= 15 ? 'bg-blue-500' :
+                                                                        'bg-rose-500'
+                                                                    }`}
+                                                                    style={{ width: `${Math.min(100, proj.margin)}%` }}
+                                                                ></div>
                                                             </div>
                                                         </div>
                                                     </div>
