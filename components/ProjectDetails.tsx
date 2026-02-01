@@ -2333,6 +2333,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
           accessToken={project.liveduneAccessToken!}
           projectAccountId={project.liveduneAccountId}
           onAccountChange={handleLiveduneAccountChange}
+          projectId={project.id}
         />
       </div>
     );

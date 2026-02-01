@@ -13,19 +13,22 @@ import {
     getLiveduneReels
 } from '../services/liveduneService';
 import { LiveduneAccount, LiveduneDetailedAnalytics, LivedunePost, LiveduneAudience, LiveduneStory, LiveduneReels } from '../types';
+import { LiveduneSyncButton } from './LiveduneSyncButton';
 
 interface SmmAnalyticsProps {
     accessToken: string;
     projectAccountId?: number;
     onAccountChange?: (accountId: number) => void;
     dateRange?: string;
+    projectId?: string;
 }
 
 const SmmAnalytics: React.FC<SmmAnalyticsProps> = ({
     accessToken,
     projectAccountId,
     onAccountChange,
-    dateRange = '30d'
+    dateRange = '30d',
+    projectId
 }) => {
     const [accounts, setAccounts] = useState<LiveduneAccount[]>([]);
     const [selectedAccountId, setSelectedAccountId] = useState<number | null>(projectAccountId || null);
@@ -278,6 +281,14 @@ const SmmAnalytics: React.FC<SmmAnalyticsProps> = ({
                         >
                             Свой период
                         </button>
+                        {projectId && (
+                            <LiveduneSyncButton
+                                projectId={projectId}
+                                onSyncComplete={() => {
+                                    window.location.reload();
+                                }}
+                            />
+                        )}
                     </div>
                 </div>
 
