@@ -268,6 +268,7 @@ export type ProjectHealthStatus = 'excellent' | 'good' | 'warning' | 'critical';
 export interface Project {
   id: string;
   clientId: string;
+  organizationId?: string;
   name: string;
   status: ProjectStatus;
   startDate: string;

@@ -2,6 +2,7 @@ import { Task, TaskStatus, Project, TaskType } from '../types';
 import { projectService } from './projectService';
 import { serviceMappingService, ContentMetrics } from './serviceMappingService';
 import { getLivedunePosts, getLiveduneStories, getLiveduneReels } from './liveduneService';
+import { autoSyncContentPublications } from './autoContentPublicationService';
 
 interface ContentFacts {
   postsFact: number;
@@ -107,6 +108,10 @@ export const calculateDynamicContentFacts = async (
 
     if (liveduneCounts.hasError) {
       console.warn(`[Content Calculation] ${project.name}: LiveDune error detected. Preserving manual data.`);
+    } else if (liveduneCounts.posts > 0 || liveduneCounts.reels > 0 || liveduneCounts.stories > 0) {
+      autoSyncContentPublications(project, dateRange).catch(err =>
+        console.error(`[Content Calculation] Auto-sync failed for ${project.name}:`, err)
+      );
     }
 
     const result: ContentMetrics = {};
