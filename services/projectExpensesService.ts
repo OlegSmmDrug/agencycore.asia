@@ -59,6 +59,7 @@ const mapRowToExpense = (row: any): ProjectExpense => ({
   lastSyncedAt: row.last_synced_at,
   syncSource: row.sync_source || 'manual',
   salaryCalculations: row.salary_calculations || {},
+  contentMetricsSnapshot: row.content_metrics_snapshot || {},
 });
 
 export const calculateSmmExpenses = (expense: Partial<ProjectExpense>): number => {
@@ -469,6 +470,7 @@ export const projectExpensesService = {
       last_synced_at: expense.lastSyncedAt,
       sync_source: expense.syncSource || 'manual',
       salary_calculations: expense.salaryCalculations || {},
+      content_metrics_snapshot: expense.contentMetricsSnapshot || {},
     };
 
     const existing = await this.getExpenseByProjectAndMonth(expense.projectId, expense.month);
@@ -890,6 +892,16 @@ export const projectExpensesService = {
       }
     }
 
+    const { data: contentMetricsSnapshot, error: metricsError } = await supabase
+      .rpc('calculate_content_metrics_for_month', {
+        p_project_id: projectId,
+        p_month: month
+      });
+
+    if (metricsError) {
+      console.error('Error calculating content metrics snapshot:', metricsError);
+    }
+
     const expenseData: Partial<ProjectExpense> & { projectId: string; month: string } = {
       projectId,
       month,
@@ -927,6 +939,7 @@ export const projectExpensesService = {
       otherExpensesDescription: existing?.otherExpensesDescription || '',
       revenue: projectRevenue,
       notes: existing?.notes || '',
+      contentMetricsSnapshot: contentMetricsSnapshot || {},
     };
 
     return await this.createOrUpdateExpense(expenseData, userId);

@@ -27,10 +27,14 @@ const PlanFactComparison: React.FC<PlanFactComparisonProps> = ({ project, expens
       .trim();
   };
 
-  if (project.contentMetrics && expense.dynamicExpenses) {
+  const contentMetrics = expense.contentMetricsSnapshot && Object.keys(expense.contentMetricsSnapshot).length > 0
+    ? expense.contentMetricsSnapshot
+    : project.contentMetrics;
+
+  if (contentMetrics && expense.dynamicExpenses) {
     const metricsByService: Record<string, { plan: number; fact: number; items: any[] }> = {};
 
-    Object.entries(project.contentMetrics).forEach(([label, metric]: [string, any]) => {
+    Object.entries(contentMetrics).forEach(([label, metric]: [string, any]) => {
       const plan = metric.plan || 0;
       const fact = metric.fact || 0;
       const labelNormalized = normalize(label);

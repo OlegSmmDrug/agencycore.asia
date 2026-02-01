@@ -982,6 +982,7 @@ export interface ProjectExpense {
   lastSyncedAt?: string;
   syncSource?: SyncSource;
   salaryCalculations?: SalaryCalculations;
+  contentMetricsSnapshot?: Record<string, { plan: number; fact: number }>;
 }
 
 export interface ProjectExpenseHistory {
