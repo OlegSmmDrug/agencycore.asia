@@ -5,6 +5,7 @@ import { GLOBAL_RATES } from '../services/projectAnalytics';
 import { projectService } from '../services/projectService';
 import { costAnalysisService } from '../services/costAnalysisService';
 import { calculatorCategoryHelper, CalculatorCategoryInfo } from '../services/calculatorCategoryHelper';
+import { calculatorService } from '../services/calculatorService';
 import CostBreakdown from './CostBreakdown';
 import PlanFactComparison from './PlanFactComparison';
 import ExpenseTrends from './ExpenseTrends';
@@ -55,6 +56,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   const [syncType, setSyncType] = useState<'legacy' | 'dynamic'>('dynamic');
   const [isMonthFrozen, setIsMonthFrozen] = useState(false);
   const [categories, setCategories] = useState<CalculatorCategoryInfo[]>([]);
+  const [calculatorServices, setCalculatorServices] = useState<any[]>([]);
 
   const canEdit = currentUser.jobTitle.toLowerCase().includes('pm') ||
                   currentUser.jobTitle.toLowerCase().includes('project manager') ||
@@ -113,6 +115,27 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     setSelectedMonth(date.toISOString().slice(0, 7));
   };
 
+  const getCategoryFromCalculator = (serviceName: string): string | null => {
+    if (!serviceName || calculatorServices.length === 0) return null;
+
+    const normalize = (str: string): string => {
+      return str
+        .toLowerCase()
+        .replace(/[_\s]+/g, '')
+        .replace(/[^a-zа-я0-9]/g, '')
+        .trim();
+    };
+
+    const normalizedServiceName = normalize(serviceName);
+
+    const found = calculatorServices.find(s => {
+      const normalizedCalcName = normalize(s.name);
+      return normalizedCalcName === normalizedServiceName;
+    });
+
+    return found ? found.category : null;
+  };
+
   const detectCategory = (serviceName: string): string => {
     const lower = serviceName.toLowerCase();
 
@@ -130,7 +153,8 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
         lower.includes('съем') || lower.includes('shooting') ||
         lower.includes('видеограф') || lower.includes('цветокор') ||
         lower.includes('анимац') || lower.includes('фото') ||
-        lower.includes('ретуш') || lower.includes('мобилограф')) {
+        lower.includes('ретуш') || lower.includes('мобилограф') ||
+        lower.includes('модель')) {
       return 'video';
     }
 
@@ -174,9 +198,12 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     const updatedDynamicExpenses = { ...currentExpense.dynamicExpenses };
     if (!updatedDynamicExpenses[serviceId]) {
       const serviceName = serviceId.replace('kpi_', '').charAt(0).toUpperCase() + serviceId.replace('kpi_', '').slice(1).replace(/_/g, ' ');
+      const categoryFromCalculator = getCategoryFromCalculator(serviceName);
+      const finalCategory = categoryFromCalculator || detectCategory(serviceName);
+
       updatedDynamicExpenses[serviceId] = {
         serviceName,
-        category: detectCategory(serviceName),
+        category: finalCategory,
         count: 0,
         rate: 0,
         cost: 0,
@@ -201,7 +228,17 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   useEffect(() => {
     loadExpenses();
     loadCategories();
+    loadCalculatorServices();
   }, [projectId]);
+
+  const loadCalculatorServices = async () => {
+    try {
+      const services = await calculatorService.getAll();
+      setCalculatorServices(services);
+    } catch (error) {
+      console.error('Error loading calculator services:', error);
+    }
+  };
 
   useEffect(() => {
     loadExpenseForMonth(selectedMonth);
@@ -647,17 +684,19 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                     if (!existingKey) {
                       const kpiKey = `kpi_${metricKey}`;
                       const serviceName = metricKey.charAt(0).toUpperCase() + metricKey.slice(1).replace(/_/g, ' ');
-                      const detectedCategory = detectCategory(serviceName);
+
+                      const categoryFromCalculator = getCategoryFromCalculator(serviceName);
+                      const finalCategory = categoryFromCalculator || detectCategory(serviceName);
 
                       enrichedDynamicExpenses[kpiKey] = {
                         serviceName,
-                        category: detectedCategory,
+                        category: finalCategory,
                         count: 0,
                         rate: 0,
                         cost: 0,
                         syncedAt: new Date().toISOString()
                       };
-                      categoriesInUse.add(detectedCategory);
+                      categoriesInUse.add(finalCategory);
                     }
                   });
                 }
