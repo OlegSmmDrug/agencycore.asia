@@ -118,38 +118,65 @@ const Analytics: React.FC<AnalyticsProps> = ({
 
     // --- 3. UNIT ECONOMICS (REAL DATA) ---
     const [projectExpensesData, setProjectExpensesData] = useState<Record<string, any>>({});
+    const [prevMonthExpensesData, setPrevMonthExpensesData] = useState<Record<string, any>>({});
     const [loadingExpenses, setLoadingExpenses] = useState(true);
+    const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+
+    const navigateMonth = (direction: 'prev' | 'next') => {
+        const date = new Date(selectedMonth + '-01');
+        if (direction === 'prev') {
+            date.setMonth(date.getMonth() - 1);
+        } else {
+            date.setMonth(date.getMonth() + 1);
+        }
+        setSelectedMonth(date.toISOString().slice(0, 7));
+    };
+
+    const getPreviousMonth = (month: string): string => {
+        const date = new Date(month + '-01');
+        date.setMonth(date.getMonth() - 1);
+        return date.toISOString().slice(0, 7);
+    };
 
     useEffect(() => {
         const loadProjectExpenses = async () => {
             setLoadingExpenses(true);
             const expensesMap: Record<string, any> = {};
+            const prevExpensesMap: Record<string, any> = {};
+            const prevMonth = getPreviousMonth(selectedMonth);
 
-            for (const project of projects) {
+            const activeProjects = projects.filter(p =>
+                p.status !== ProjectStatus.COMPLETED &&
+                p.status !== 'archived' as any
+            );
+
+            for (const project of activeProjects) {
                 try {
-                    const { data, error } = await supabase
+                    const { data: currentData, error: currentError } = await supabase
                         .from('project_expenses')
                         .select('*')
                         .eq('project_id', project.id)
-                        .order('month', { ascending: false });
+                        .eq('month', selectedMonth)
+                        .maybeSingle();
 
-                    if (!error && data && data.length > 0) {
-                        const totalRevenue = data.reduce((sum, exp) => sum + (Number(exp.revenue) || 0), 0);
-                        const totalExpenses = data.reduce((sum, exp) => sum + (Number(exp.total_expenses) || 0), 0);
-                        const avgRevenue = totalRevenue / data.length;
-                        const avgExpenses = totalExpenses / data.length;
+                    const { data: prevData, error: prevError } = await supabase
+                        .from('project_expenses')
+                        .select('*')
+                        .eq('project_id', project.id)
+                        .eq('month', prevMonth)
+                        .maybeSingle();
 
-                        const latestExpense = data[0];
-                        const dynamicExpenses = latestExpense.dynamic_expenses || {};
+                    if (!currentError && currentData) {
+                        const dynamicExpenses = currentData.dynamic_expenses || {};
 
                         const categoryBreakdown: Record<string, number> = {
                             smm: 0,
                             video: 0,
                             target: 0,
                             sites: 0,
-                            fot: Number(latestExpense.fot_expenses) || 0,
-                            models: Number(latestExpense.models_expenses) || 0,
-                            other: Number(latestExpense.other_expenses) || 0
+                            fot: Number(currentData.fot_expenses) || 0,
+                            models: Number(currentData.models_expenses) || 0,
+                            other: Number(currentData.other_expenses) || 0
                         };
 
                         for (const key in dynamicExpenses) {
@@ -159,39 +186,37 @@ const Analytics: React.FC<AnalyticsProps> = ({
                         }
 
                         if (Object.keys(dynamicExpenses).length === 0) {
-                            categoryBreakdown.smm = Number(latestExpense.smm_expenses) || 0;
-                            categoryBreakdown.video = Number(latestExpense.production_expenses) || 0;
-                            categoryBreakdown.target = Number(latestExpense.targetologist_expenses) || 0;
+                            categoryBreakdown.smm = Number(currentData.smm_expenses) || 0;
+                            categoryBreakdown.video = Number(currentData.production_expenses) || 0;
+                            categoryBreakdown.target = Number(currentData.targetologist_expenses) || 0;
                         }
 
                         expensesMap[project.id] = {
-                            totalRevenue,
-                            totalExpenses,
-                            avgRevenue,
-                            avgExpenses,
-                            latestMonth: latestExpense.month,
-                            latestRevenue: Number(latestExpense.revenue) || 0,
-                            latestExpenses: Number(latestExpense.total_expenses) || 0,
-                            latestMargin: Number(latestExpense.margin_percent) || 0,
-                            monthsCount: data.length,
+                            month: currentData.month,
+                            revenue: Number(currentData.revenue) || 0,
+                            expenses: Number(currentData.total_expenses) || 0,
+                            margin: Number(currentData.margin_percent) || 0,
                             categoryBreakdown,
-                            allExpenses: data
+                            hasData: true
                         };
                     } else {
                         const estimatedExpenses = (project.budget || 0) * 0.55;
                         expensesMap[project.id] = {
-                            totalRevenue: project.budget || 0,
-                            totalExpenses: estimatedExpenses,
-                            avgRevenue: project.budget || 0,
-                            avgExpenses: estimatedExpenses,
-                            latestMonth: new Date().toISOString().slice(0, 7),
-                            latestRevenue: project.budget || 0,
-                            latestExpenses: estimatedExpenses,
-                            latestMargin: project.budget > 0 ? ((project.budget - estimatedExpenses) / project.budget) * 100 : 0,
-                            monthsCount: 0,
+                            month: selectedMonth,
+                            revenue: project.budget || 0,
+                            expenses: estimatedExpenses,
+                            margin: project.budget > 0 ? ((project.budget - estimatedExpenses) / project.budget) * 100 : 0,
                             categoryBreakdown: {},
-                            allExpenses: [],
+                            hasData: false,
                             isEstimated: true
+                        };
+                    }
+
+                    if (!prevError && prevData) {
+                        prevExpensesMap[project.id] = {
+                            revenue: Number(prevData.revenue) || 0,
+                            expenses: Number(prevData.total_expenses) || 0,
+                            margin: Number(prevData.margin_percent) || 0
                         };
                     }
                 } catch (error) {
@@ -200,26 +225,32 @@ const Analytics: React.FC<AnalyticsProps> = ({
             }
 
             setProjectExpensesData(expensesMap);
+            setPrevMonthExpensesData(prevExpensesMap);
             setLoadingExpenses(false);
         };
 
         if (projects.length > 0) {
             loadProjectExpenses();
         }
-    }, [projects]);
+    }, [projects, selectedMonth]);
 
     const unitData = useMemo(() => {
+        const activeProjects = projects.filter(p =>
+            p.status !== ProjectStatus.COMPLETED &&
+            p.status !== 'archived' as any
+        );
+
         const serviceTypes = ['SMM', 'Таргет', 'Комплекс', 'Сайты'];
         const profitabilityByService = serviceTypes.map(s => {
-            const serviceProjects = projects.filter(p => p.services && p.services.includes(s));
+            const serviceProjects = activeProjects.filter(p => p.services && p.services.includes(s));
             let totalRev = 0;
             let totalExp = 0;
 
             serviceProjects.forEach(p => {
                 const expData = projectExpensesData[p.id];
                 if (expData) {
-                    totalRev += expData.avgRevenue || 0;
-                    totalExp += expData.avgExpenses || 0;
+                    totalRev += expData.revenue || 0;
+                    totalExp += expData.expenses || 0;
                 }
             });
 
@@ -231,11 +262,17 @@ const Analytics: React.FC<AnalyticsProps> = ({
             };
         });
 
-        const projectList = projects.map(p => {
+        const projectList = activeProjects.map(p => {
             const expData = projectExpensesData[p.id];
-            const rev = expData?.latestRevenue || p.budget || 0;
-            const exp = expData?.latestExpenses || ((p.budget || 0) * 0.55);
-            const margin = expData?.latestMargin || (rev > 0 ? ((rev - exp) / rev) * 100 : 0);
+            const prevExpData = prevMonthExpensesData[p.id];
+
+            const rev = expData?.revenue || p.budget || 0;
+            const exp = expData?.expenses || ((p.budget || 0) * 0.55);
+            const margin = expData?.margin || (rev > 0 ? ((rev - exp) / rev) * 100 : 0);
+
+            const prevMargin = prevExpData?.margin || 0;
+            const marginChange = prevMargin > 0 ? margin - prevMargin : 0;
+            const hasComparison = prevExpData && prevExpData.margin > 0;
 
             return {
                 id: p.id,
@@ -245,14 +282,41 @@ const Analytics: React.FC<AnalyticsProps> = ({
                 profit: rev - exp,
                 margin: margin,
                 categoryBreakdown: expData?.categoryBreakdown || {},
-                monthsCount: expData?.monthsCount || 0,
-                latestMonth: expData?.latestMonth || '',
-                isEstimated: expData?.isEstimated || false
+                month: expData?.month || selectedMonth,
+                isEstimated: expData?.isEstimated || false,
+                hasData: expData?.hasData || false,
+                marginChange,
+                hasComparison
             };
         }).sort((a, b) => b.profit - a.profit);
 
-        return { profitabilityByService, projectList };
-    }, [projects, projectExpensesData]);
+        const totalCurrentRevenue = projectList.reduce((sum, p) => sum + p.revenue, 0);
+        const totalCurrentExpenses = projectList.reduce((sum, p) => sum + p.expenses, 0);
+        const totalCurrentMargin = totalCurrentRevenue > 0 ? ((totalCurrentRevenue - totalCurrentExpenses) / totalCurrentRevenue) * 100 : 0;
+
+        const totalPrevRevenue = activeProjects.reduce((sum, p) => {
+            const prevData = prevMonthExpensesData[p.id];
+            return sum + (prevData?.revenue || 0);
+        }, 0);
+        const totalPrevExpenses = activeProjects.reduce((sum, p) => {
+            const prevData = prevMonthExpensesData[p.id];
+            return sum + (prevData?.expenses || 0);
+        }, 0);
+        const totalPrevMargin = totalPrevRevenue > 0 ? ((totalPrevRevenue - totalPrevExpenses) / totalPrevRevenue) * 100 : 0;
+
+        const overallMarginChange = totalPrevMargin > 0 ? totalCurrentMargin - totalPrevMargin : 0;
+        const hasOverallComparison = totalPrevMargin > 0;
+
+        return {
+            profitabilityByService,
+            projectList,
+            totalCurrentRevenue,
+            totalCurrentExpenses,
+            totalCurrentMargin,
+            overallMarginChange,
+            hasOverallComparison
+        };
+    }, [projects, projectExpensesData, prevMonthExpensesData, selectedMonth]);
 
     // --- 4. TEAM PERFORMANCE ---
     const teamData = useMemo(() => {
@@ -489,6 +553,88 @@ const Analytics: React.FC<AnalyticsProps> = ({
                     </div>
                 ) : activeTab === 'unit' ? (
                     <div className="space-y-6 animate-fade-in">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-2xl font-black text-slate-900">Юнит-экономика</h3>
+                                <p className="text-xs text-slate-500 font-bold uppercase mt-1">
+                                    Анализ рентабельности по проектам • {new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={() => navigateMonth('prev')}
+                                    className="p-2 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200"
+                                >
+                                    <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                </button>
+                                <div className="text-center min-w-[140px]">
+                                    <div className="text-sm font-black text-slate-900">
+                                        {new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long' })}
+                                    </div>
+                                    <div className="text-xs text-slate-500 font-bold">
+                                        {new Date(selectedMonth + '-01').getFullYear()}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => navigateMonth('next')}
+                                    className="p-2 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200"
+                                >
+                                    <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        {unitData.hasOverallComparison && (
+                            <div className={`${UI.CARD} border-l-4 ${
+                                Math.abs(unitData.overallMarginChange) < 2 ? 'border-l-blue-500 bg-blue-50' :
+                                unitData.overallMarginChange > 0 ? 'border-l-emerald-500 bg-emerald-50' :
+                                'border-l-rose-500 bg-rose-50'
+                            }`}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                                            Math.abs(unitData.overallMarginChange) < 2 ? 'bg-blue-100' :
+                                            unitData.overallMarginChange > 0 ? 'bg-emerald-100' :
+                                            'bg-rose-100'
+                                        }`}>
+                                            {Math.abs(unitData.overallMarginChange) < 2 ? '📊' :
+                                             unitData.overallMarginChange > 0 ? '📈' : '📉'}
+                                        </div>
+                                        <div>
+                                            <div className="font-black text-slate-900 text-sm">Сравнение с прошлым месяцем</div>
+                                            <div className={`text-xs font-bold ${
+                                                Math.abs(unitData.overallMarginChange) < 2 ? 'text-blue-700' :
+                                                unitData.overallMarginChange > 0 ? 'text-emerald-700' :
+                                                'text-rose-700'
+                                            }`}>
+                                                {Math.abs(unitData.overallMarginChange) < 2 ? (
+                                                    `Маржинальность стабильна (${unitData.overallMarginChange > 0 ? '+' : ''}${unitData.overallMarginChange.toFixed(1)}%)`
+                                                ) : unitData.overallMarginChange > 0 ? (
+                                                    `Маржинальность выше на ${unitData.overallMarginChange.toFixed(1)}% по сравнению с прошлым месяцем`
+                                                ) : (
+                                                    `Маржинальность ниже на ${Math.abs(unitData.overallMarginChange).toFixed(1)}% по сравнению с прошлым месяцем`
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className={`text-2xl font-black ${
+                                            Math.abs(unitData.overallMarginChange) < 2 ? 'text-blue-600' :
+                                            unitData.overallMarginChange > 0 ? 'text-emerald-600' :
+                                            'text-rose-600'
+                                        }`}>
+                                            {unitData.overallMarginChange > 0 ? '+' : ''}{unitData.overallMarginChange.toFixed(1)}%
+                                        </div>
+                                        <div className="text-[9px] text-slate-500 font-bold uppercase">Изменение</div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {loadingExpenses ? (
                             <div className={UI.CARD}>
                                 <div className="flex items-center justify-center py-12">
@@ -497,7 +643,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                         </svg>
-                                        <span className="text-slate-600 font-semibold">Загрузка реальных данных расходов...</span>
+                                        <span className="text-slate-600 font-semibold">Загрузка данных за {new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}...</span>
                                     </div>
                                 </div>
                             </div>
@@ -564,7 +710,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
                                                                 }`}>
                                                                     {index + 1}
                                                                 </div>
-                                                                <div>
+                                                                <div className="flex-1">
                                                                     <h4 className="font-black text-slate-900 text-sm flex items-center gap-2">
                                                                         {proj.name}
                                                                         {proj.isEstimated && (
@@ -573,10 +719,25 @@ const Analytics: React.FC<AnalyticsProps> = ({
                                                                             </span>
                                                                         )}
                                                                     </h4>
-                                                                    {proj.monthsCount > 0 && (
-                                                                        <p className="text-[9px] text-slate-500 font-bold uppercase">
-                                                                            {proj.monthsCount} {proj.monthsCount === 1 ? 'месяц' : 'месяца'} данных • Последний: {proj.latestMonth}
-                                                                        </p>
+                                                                    <p className="text-[9px] text-slate-500 font-bold uppercase">
+                                                                        {new Date(proj.month + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+                                                                    </p>
+                                                                    {proj.hasComparison && (
+                                                                        <div className={`text-[9px] font-bold mt-1 flex items-center gap-1 ${
+                                                                            Math.abs(proj.marginChange) < 2 ? 'text-blue-600' :
+                                                                            proj.marginChange > 0 ? 'text-emerald-600' :
+                                                                            'text-rose-600'
+                                                                        }`}>
+                                                                            {Math.abs(proj.marginChange) < 2 ? '→' :
+                                                                             proj.marginChange > 0 ? '↑' : '↓'}
+                                                                            {Math.abs(proj.marginChange) < 2 ? (
+                                                                                'Стабильно'
+                                                                            ) : proj.marginChange > 0 ? (
+                                                                                `Маржа +${proj.marginChange.toFixed(1)}%`
+                                                                            ) : (
+                                                                                `Маржа ${proj.marginChange.toFixed(1)}%`
+                                                                            )}
+                                                                        </div>
                                                                     )}
                                                                 </div>
                                                             </div>
