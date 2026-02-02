@@ -11,16 +11,21 @@ interface ContentFacts {
 }
 
 const getTaskTypeForMetric = (metricKey: string): TaskType | null => {
+  if (metricKey === 'Post') return 'Post';
+  if (metricKey === 'Stories') return 'Stories';
+  if (metricKey === 'Reels') return 'Reels';
+
   const key = metricKey.toLowerCase();
 
-  if (key.includes('post') || key.includes('посты') || key.includes('пост')) {
+  if ((key.includes('post') || key.includes('посты') || key.includes('пост')) &&
+      !key.includes('reel') && !key.includes('stor') && !key.includes('стори')) {
     return 'Post';
-  }
-  if (key.includes('reel') || key.includes('рилс')) {
-    return 'Reels';
   }
   if (key.includes('stor') || key.includes('стори')) {
     return 'Stories';
+  }
+  if (key.includes('reel') || key.includes('рилс')) {
+    return 'Reels';
   }
 
   return null;

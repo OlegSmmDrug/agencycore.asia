@@ -9,6 +9,24 @@ const getCurrentOrganizationId = (): string | null => {
   return user.organizationId || null;
 };
 
+const normalizeContentKey = (name: string): string => {
+  const nameLower = name.toLowerCase();
+
+  if ((nameLower.includes('post') || nameLower.includes('пост') || nameLower.includes('посты')) &&
+      !nameLower.includes('reel') && !nameLower.includes('рилс') &&
+      !nameLower.includes('stor') && !nameLower.includes('стори')) {
+    return 'Post';
+  }
+  if (nameLower.includes('stories') || nameLower.includes('стори') || nameLower === 'story') {
+    return 'Stories';
+  }
+  if (nameLower.includes('reels') || nameLower.includes('рилс') || nameLower === 'reel') {
+    return 'Reels';
+  }
+
+  return name.toLowerCase().replace(/[^a-zа-я0-9]/gi, '_').replace(/_+/g, '_');
+};
+
 export const extractContentPlanFromCalculator = async (client?: Client): Promise<ContentMetrics> => {
   if (!client?.calculatorData?.items) {
     return {};
@@ -21,12 +39,16 @@ export const extractContentPlanFromCalculator = async (client?: Client): Promise
       if (!calcItem.quantity || calcItem.quantity === 0) continue;
 
       const metricLabel = calcItem.name || `service_${calcItem.serviceId}`;
-      const key = metricLabel.toLowerCase().replace(/[^a-zа-я0-9]/gi, '_').replace(/_+/g, '_');
+      const key = normalizeContentKey(metricLabel);
 
-      result[key] = {
-        plan: calcItem.quantity || 0,
-        fact: 0
-      };
+      if (result[key]) {
+        result[key].plan = (result[key].plan || 0) + (calcItem.quantity || 0);
+      } else {
+        result[key] = {
+          plan: calcItem.quantity || 0,
+          fact: 0
+        };
+      }
     }
 
     return result;

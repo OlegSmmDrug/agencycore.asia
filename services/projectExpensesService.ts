@@ -679,37 +679,108 @@ export const projectExpensesService = {
     }
     console.log(`[syncDynamicExpenses] Fact counts from content_publications:`, factCounts);
 
+    const { data: publicationsWithUsers } = await supabase
+      .from('content_publications')
+      .select('content_type, assigned_user_id')
+      .eq('project_id', projectId)
+      .gte('published_at', monthStart.toISOString())
+      .lte('published_at', monthEnd.toISOString());
+
+    const userPublications: Record<string, Record<string, number>> = {};
+    if (publicationsWithUsers) {
+      for (const pub of publicationsWithUsers) {
+        const userId = pub.assigned_user_id || 'unassigned';
+        const contentType = pub.content_type;
+        if (!userPublications[userId]) {
+          userPublications[userId] = {};
+        }
+        userPublications[userId][contentType] = (userPublications[userId][contentType] || 0) + 1;
+      }
+    }
+
+    const userIds = Object.keys(userPublications).filter(id => id !== 'unassigned');
+
+    const { data: users } = await supabase
+      .from('users')
+      .select('id, name, job_title')
+      .in('id', userIds.length > 0 ? userIds : ['no-match']);
+
+    const userMap = new Map<string, { name: string; jobTitle: string }>();
+    if (users) {
+      for (const u of users) {
+        userMap.set(u.id, { name: u.name, jobTitle: u.job_title || '' });
+      }
+    }
+
+    const { data: salarySchemes } = await supabase
+      .from('salary_schemes')
+      .select('target_type, target_id, kpi_rules');
+
+    const getKpiRate = (userId: string, contentType: string): number => {
+      const user = userMap.get(userId);
+      if (!salarySchemes) return 0;
+
+      let userScheme = salarySchemes.find(s => s.target_type === 'user' && s.target_id === userId);
+      if (!userScheme && user?.jobTitle) {
+        userScheme = salarySchemes.find(s => s.target_type === 'jobTitle' && s.target_id === user.jobTitle);
+      }
+
+      if (userScheme?.kpi_rules) {
+        const rule = (userScheme.kpi_rules as any[]).find(r => r.taskType === contentType);
+        if (rule && rule.value > 0) {
+          return rule.value;
+        }
+      }
+
+      return 0;
+    };
+
     const contentTypes = ['Post', 'Stories', 'Reels'];
     for (const contentType of contentTypes) {
-      const fact = factCounts[contentType] || 0;
+      const totalFact = factCounts[contentType] || 0;
 
-      if (fact === 0) {
+      if (totalFact === 0) {
         console.log(`[syncDynamicExpenses] Skipping ${contentType} - fact is 0`);
         continue;
       }
 
-      const calcService = findCalculatorService(contentType);
+      let totalCost = 0;
+      let hasAnyRate = false;
 
-      if (calcService) {
-        const rate = calcService.costPrice && calcService.costPrice > 0
-          ? calcService.costPrice
-          : Math.round(Number(calcService.price) * 0.5);
-        const cost = fact * rate;
-        const category = calcService.category || 'smm';
+      for (const [userId, counts] of Object.entries(userPublications)) {
+        const count = counts[contentType] || 0;
+        if (count === 0) continue;
 
-        dynamicExpenses[`content_${contentType}`] = {
-          serviceName: calcService.name,
-          count: fact,
-          rate: rate,
-          cost,
-          category,
-          syncedAt: now
-        };
-
-        console.log(`[syncDynamicExpenses] Added: ${calcService.name} (${fact} × ${rate} = ${cost}) [${category}]`);
-      } else {
-        console.warn(`[syncDynamicExpenses] No calculator service found for: ${contentType}`);
+        const rate = userId !== 'unassigned' ? getKpiRate(userId, contentType) : 0;
+        if (rate > 0) {
+          hasAnyRate = true;
+          totalCost += count * rate;
+          const userName = userMap.get(userId)?.name || 'Unknown';
+          console.log(`[syncDynamicExpenses] ${contentType}: ${userName} - ${count} x ${rate} = ${count * rate}`);
+        }
       }
+
+      if (!hasAnyRate) {
+        const calcService = findCalculatorService(contentType);
+        if (calcService) {
+          const rate = calcService.costPrice && calcService.costPrice > 0
+            ? calcService.costPrice
+            : Math.round(Number(calcService.price) * 0.5);
+          totalCost = totalFact * rate;
+          console.log(`[syncDynamicExpenses] ${contentType}: Using calculator rate ${rate}, total cost = ${totalCost}`);
+        }
+      }
+
+      dynamicExpenses[`content_${contentType}`] = {
+        serviceName: contentType,
+        count: totalFact,
+        rate: totalFact > 0 ? Math.round(totalCost / totalFact) : 0,
+        cost: totalCost,
+        category: 'smm',
+        syncedAt: now
+      };
+
+      console.log(`[syncDynamicExpenses] Added: ${contentType} (${totalFact} units, cost=${totalCost})`);
     }
 
     const existing = await this.getExpenseByProjectAndMonth(projectId, month);
