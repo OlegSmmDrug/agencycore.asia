@@ -358,7 +358,26 @@ export const projectService = {
   },
 
   async syncContentPlanFromClient(projectId: string, client?: Client): Promise<Project> {
-    const contentMetrics = await extractContentPlanFromCalculator(client);
-    return this.update(projectId, { contentMetrics });
+    const project = await this.getById(projectId);
+    if (!project) {
+      throw new Error('Project not found');
+    }
+
+    const newPlanMetrics = await extractContentPlanFromCalculator(client);
+
+    const mergedMetrics: ContentMetrics = { ...project.contentMetrics };
+
+    for (const [key, value] of Object.entries(newPlanMetrics)) {
+      if (mergedMetrics[key]) {
+        mergedMetrics[key] = {
+          plan: value.plan,
+          fact: mergedMetrics[key].fact || 0
+        };
+      } else {
+        mergedMetrics[key] = value;
+      }
+    }
+
+    return this.update(projectId, { contentMetrics: mergedMetrics });
   }
 };
