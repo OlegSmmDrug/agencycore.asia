@@ -16,7 +16,7 @@ export interface CreatePublicationData {
   projectId: string;
   contentType: string;
   publishedAt: string;
-  assignedUserId: string;
+  assignedUserId: string | null;
   organizationId: string;
   description?: string;
 }

@@ -4,7 +4,6 @@ import { GLOBAL_RATES } from './projectAnalytics';
 import { serviceMappingService } from './serviceMappingService';
 import { calculatorService } from './calculatorService';
 import { salarySchemeService } from './salarySchemeService';
-import { getLiveduneContentCounts, LiveduneContentCounts } from './contentCalculationService';
 import { calculatorCategoryHelper } from './calculatorCategoryHelper';
 
 const mapRowToExpense = (row: any): ProjectExpense => ({
@@ -658,102 +657,67 @@ export const projectExpensesService = {
       });
     };
 
-    if (fullProject.contentMetricsVisible && Array.isArray(fullProject.contentMetricsVisible)) {
-      console.log(`[syncDynamicExpenses] Processing ${fullProject.contentMetricsVisible.length} visible metrics`);
-
-      for (const metricKey of fullProject.contentMetricsVisible) {
-        const contentMetrics = fullProject.contentMetrics as Record<string, { fact?: number; plan?: number }>;
-        const metricData = contentMetrics[metricKey];
-        const plan = metricData?.plan || 0;
-
-        if (plan === 0) {
-          console.log(`[syncDynamicExpenses] Skipping ${metricKey} - plan is 0`);
-          continue;
-        }
-
-        const calculatorService = findCalculatorService(metricKey);
-
-        if (calculatorService && calculatorService.costPrice && calculatorService.costPrice > 0) {
-          const serviceKey = `kpi_${metricKey}`;
-          const rate = calculatorService.costPrice;
-          const cost = plan * rate;
-          const category = calculatorService.category || 'smm';
-
-          dynamicExpenses[serviceKey] = {
-            serviceName: calculatorService.name,
-            count: plan,
-            rate: rate,
-            cost,
-            category,
-            syncedAt: now
-          };
-
-          console.log(`[syncDynamicExpenses] ✅ Added: ${calculatorService.name} (${plan} × ${rate} = ${cost} ₸) [${category}]`);
-        } else {
-          console.warn(`[syncDynamicExpenses] ❌ No calculator service found for: ${metricKey}`);
-        }
-      }
-    }
-
-    const existing = await this.getExpenseByProjectAndMonth(projectId, month);
-    const modelsExpenses = existing?.modelsExpenses || 0;
-
     const monthStart = new Date(`${month}-01`);
     const monthEnd = new Date(monthStart);
     monthEnd.setMonth(monthEnd.getMonth() + 1);
     monthEnd.setDate(0);
     monthEnd.setHours(23, 59, 59, 999);
 
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-    const effectiveEndDate = monthEnd > today ? today : monthEnd;
+    const { data: publicationCounts } = await supabase
+      .from('content_publications')
+      .select('content_type')
+      .eq('project_id', projectId)
+      .gte('published_at', monthStart.toISOString())
+      .lte('published_at', monthEnd.toISOString());
 
-    let liveduneContent: LiveduneContentCounts = { posts: 0, reels: 0, stories: 0, hasError: false };
-    const hasLivedune = Boolean(fullProject.liveduneAccessToken && fullProject.liveduneAccountId);
+    const factCounts: Record<string, number> = {};
+    if (publicationCounts) {
+      for (const pub of publicationCounts) {
+        const type = pub.content_type;
+        factCounts[type] = (factCounts[type] || 0) + 1;
+      }
+    }
+    console.log(`[syncDynamicExpenses] Fact counts from content_publications:`, factCounts);
 
-    if (hasLivedune) {
-      liveduneContent = await getLiveduneContentCounts(fullProject, {
-        start: monthStart,
-        end: effectiveEndDate
-      });
-      console.log(`[ProjectExpenses] LiveDune content for ${month}:`, liveduneContent);
+    const contentTypes = ['Post', 'Stories', 'Reels'];
+    for (const contentType of contentTypes) {
+      const fact = factCounts[contentType] || 0;
 
-      if (liveduneContent.hasError) {
-        console.warn(`[ProjectExpenses] LiveDune API error detected for ${project.name}. Token may be expired or Instagram API issue. Falling back to manual data.`);
+      if (fact === 0) {
+        console.log(`[syncDynamicExpenses] Skipping ${contentType} - fact is 0`);
+        continue;
+      }
+
+      const calcService = findCalculatorService(contentType);
+
+      if (calcService) {
+        const rate = calcService.costPrice && calcService.costPrice > 0
+          ? calcService.costPrice
+          : Math.round(Number(calcService.price) * 0.5);
+        const cost = fact * rate;
+        const category = calcService.category || 'smm';
+
+        dynamicExpenses[`content_${contentType}`] = {
+          serviceName: calcService.name,
+          count: fact,
+          rate: rate,
+          cost,
+          category,
+          syncedAt: now
+        };
+
+        console.log(`[syncDynamicExpenses] Added: ${calcService.name} (${fact} × ${rate} = ${cost}) [${category}]`);
+      } else {
+        console.warn(`[syncDynamicExpenses] No calculator service found for: ${contentType}`);
       }
     }
 
-    const getManualContentFromMetrics = (): LiveduneContentCounts => {
-      const metrics = fullProject.contentMetrics || {};
-      let posts = 0;
-      let reels = 0;
-      let stories = 0;
+    const existing = await this.getExpenseByProjectAndMonth(projectId, month);
+    const modelsExpenses = existing?.modelsExpenses || 0;
 
-      for (const [key, value] of Object.entries(metrics)) {
-        const keyLower = key.toLowerCase();
-        const factValue = (value as any).fact || 0;
-
-        if ((keyLower.includes('post') || keyLower.includes('пост')) && !keyLower.includes('reel') && !keyLower.includes('stor')) {
-          posts += factValue;
-        } else if (keyLower.includes('reel') || keyLower.includes('рилс')) {
-          reels += factValue;
-        } else if (keyLower.includes('stor') || keyLower.includes('стори')) {
-          stories += factValue;
-        }
-      }
-
-      return { posts, reels, stories };
-    };
-
-    if (!hasLivedune || liveduneContent.hasError || (liveduneContent.posts === 0 && liveduneContent.reels === 0 && liveduneContent.stories === 0)) {
-      const manualContent = getManualContentFromMetrics();
-      if (manualContent.posts > 0 || manualContent.reels > 0 || manualContent.stories > 0) {
-        liveduneContent = manualContent;
-        console.log(`[ProjectExpenses] Using manual content from metrics for ${month}:`, liveduneContent);
-      } else if (!hasLivedune) {
-        console.log(`[ProjectExpenses] No LiveDune and no manual data for ${month}`);
-      }
-    }
+    const smmPostsCount = factCounts['Post'] || 0;
+    const smmStoriesCount = factCounts['Stories'] || 0;
+    const smmReelsCount = factCounts['Reels'] || 0;
 
     let totalDynamicCost = 0;
     for (const serviceId in dynamicExpenses) {
@@ -799,20 +763,13 @@ export const projectExpensesService = {
       }
     }
 
-    console.log(`[ProjectExpenses] Checking publications for ${month}: ${monthStart.toISOString()} to ${monthEnd.toISOString()}`);
-
-    const { count: existingPublicationsCount } = await supabase
-      .from('content_publications')
-      .select('id', { count: 'exact', head: true })
-      .eq('project_id', projectId)
-      .gte('published_at', monthStart.toISOString())
-      .lte('published_at', monthEnd.toISOString());
-
-    console.log(`[ProjectExpenses] Found ${existingPublicationsCount || 0} publications for ${month}`);
+    const totalPublications = smmPostsCount + smmStoriesCount + smmReelsCount;
+    console.log(`[ProjectExpenses] Found ${totalPublications} publications for ${month}: Posts=${smmPostsCount}, Stories=${smmStoriesCount}, Reels=${smmReelsCount}`);
 
     let contentMetricsSnapshot: any = {};
+    const hasLivedune = Boolean(fullProject.liveduneAccessToken && fullProject.liveduneAccountId);
 
-    if ((existingPublicationsCount || 0) === 0 && hasLivedune) {
+    if (totalPublications === 0 && hasLivedune) {
       console.log(`[ProjectExpenses] No publications found for ${month}, fetching from LiveDune API...`);
       const { liveduneContentSyncService } = await import('./liveduneContentSyncService');
       const syncResult = await liveduneContentSyncService.fetchAndSyncMonthFromLiveDune(
@@ -824,20 +781,8 @@ export const projectExpensesService = {
       console.log(`[ProjectExpenses] LiveDune sync result for ${month}:`, syncResult);
 
       if (syncResult.synced > 0) {
-        console.log(`[ProjectExpenses] Successfully synced ${syncResult.synced} publications from LiveDune`);
-
-        const { data: recalculatedMetrics, error: metricsError } = await supabase
-          .rpc('calculate_content_metrics_for_month', {
-            p_project_id: projectId,
-            p_month: month
-          });
-
-        if (metricsError) {
-          console.error('Error calculating content metrics snapshot after sync:', metricsError);
-        } else {
-          contentMetricsSnapshot = recalculatedMetrics || {};
-          console.log(`[ProjectExpenses] Recalculated metrics after LiveDune sync:`, contentMetricsSnapshot);
-        }
+        console.log(`[ProjectExpenses] Successfully synced ${syncResult.synced} publications from LiveDune, recalculating...`);
+        return await this.syncDynamicExpenses(projectId, month, userId);
       } else if (syncResult.error) {
         console.error(`[ProjectExpenses] LiveDune sync failed:`, syncResult.error);
       } else {
@@ -868,9 +813,9 @@ export const projectExpensesService = {
       totalExpenses,
       marginPercent,
       smmExpenses,
-      smmPostsCount: liveduneContent.posts,
-      smmReelsCount: liveduneContent.reels,
-      smmStoriesCount: liveduneContent.stories,
+      smmPostsCount,
+      smmReelsCount,
+      smmStoriesCount,
       smmSpecDesignCount: existing?.smmSpecDesignCount || 0,
       smmMonitoring: existing?.smmMonitoring || false,
       smmDubbingCount: existing?.smmDubbingCount || 0,

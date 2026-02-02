@@ -18,9 +18,9 @@ const mapContentType = (liveduneType: string): string => {
     case 'post':
       return 'Post';
     case 'story':
-      return 'Stories ';
+      return 'Stories';
     case 'reels':
-      return 'Reels Production';
+      return 'Reels';
     default:
       return liveduneType;
   }
@@ -232,10 +232,20 @@ export const liveduneContentSyncService = {
       return [];
     }
 
-    return (users || []).filter(u => {
+    const smmMembers = (users || []).filter(u => {
       const title = (u.job_title || '').toLowerCase();
       return title.includes('smm') || title.includes('контент');
     }).map(u => ({
+      id: u.id,
+      name: u.name,
+      jobTitle: u.job_title || ''
+    }));
+
+    if (smmMembers.length > 0) {
+      return smmMembers;
+    }
+
+    return (users || []).map(u => ({
       id: u.id,
       name: u.name,
       jobTitle: u.job_title || ''
@@ -306,11 +316,10 @@ export const liveduneContentSyncService = {
     const smmMembers = await this.getSMMTeamMembers(project.team_ids || []);
 
     if (smmMembers.length === 0) {
-      console.error('[LiveDune API Sync] No SMM team members found, cannot sync');
-      return { synced: 0, skipped: 0, error: 'No SMM team members found' };
+      console.warn('[LiveDune API Sync] No team members found, publications will be created without assigned user');
+    } else {
+      console.log(`[LiveDune API Sync] Found ${smmMembers.length} team members:`, smmMembers.map(m => m.name));
     }
-
-    console.log(`[LiveDune API Sync] Found ${smmMembers.length} SMM team members:`, smmMembers.map(m => m.name));
 
     try {
       const postsUrl = `${LIVEDUNE_PROXY_URL}?endpoint=/accounts/${liveduneAccountId}/posts&access_token=${encodeURIComponent(liveduneAccessToken)}&date_from=${dateFrom}&date_to=${dateTo}`;
@@ -350,7 +359,7 @@ export const liveduneContentSyncService = {
             continue;
           }
 
-          const assignedUserId = smmMembers[userRotationIndex % smmMembers.length].id;
+          const assignedUserId = smmMembers.length > 0 ? smmMembers[userRotationIndex % smmMembers.length].id : null;
           userRotationIndex++;
 
           const result = await contentPublicationService.create({
@@ -400,7 +409,7 @@ export const liveduneContentSyncService = {
             .from('content_publications')
             .select('id')
             .eq('project_id', projectId)
-            .eq('content_type', 'Stories ')
+            .eq('content_type', 'Stories')
             .eq('published_at', publishedAt)
             .maybeSingle();
 
@@ -409,12 +418,12 @@ export const liveduneContentSyncService = {
             continue;
           }
 
-          const assignedUserId = smmMembers[userRotationIndex % smmMembers.length].id;
+          const assignedUserId = smmMembers.length > 0 ? smmMembers[userRotationIndex % smmMembers.length].id : null;
           userRotationIndex++;
 
           const result = await contentPublicationService.create({
             projectId,
-            contentType: 'Stories ',
+            contentType: 'Stories',
             publishedAt,
             assignedUserId,
             organizationId: project.organization_id,
@@ -459,7 +468,7 @@ export const liveduneContentSyncService = {
             .from('content_publications')
             .select('id')
             .eq('project_id', projectId)
-            .eq('content_type', 'Reels Production')
+            .eq('content_type', 'Reels')
             .eq('published_at', publishedAt)
             .maybeSingle();
 
@@ -468,12 +477,12 @@ export const liveduneContentSyncService = {
             continue;
           }
 
-          const assignedUserId = smmMembers[userRotationIndex % smmMembers.length].id;
+          const assignedUserId = smmMembers.length > 0 ? smmMembers[userRotationIndex % smmMembers.length].id : null;
           userRotationIndex++;
 
           const result = await contentPublicationService.create({
             projectId,
-            contentType: 'Reels Production',
+            contentType: 'Reels',
             publishedAt,
             assignedUserId,
             organizationId: project.organization_id,

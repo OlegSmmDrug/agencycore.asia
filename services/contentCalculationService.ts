@@ -55,9 +55,9 @@ export const getLiveduneContentCounts = async (
     const { data: publications, error: dbError } = await query;
 
     if (!dbError && publications && publications.length > 0) {
-      const posts = publications.filter(p => p.content_type.toLowerCase() === 'post').length;
-      const reels = publications.filter(p => p.content_type.toLowerCase() === 'reels' || p.content_type.toLowerCase() === 'reel').length;
-      const stories = publications.filter(p => p.content_type.toLowerCase() === 'story' || p.content_type.toLowerCase() === 'stories').length;
+      const posts = publications.filter(p => p.content_type === 'Post' || p.content_type.toLowerCase() === 'post').length;
+      const reels = publications.filter(p => p.content_type === 'Reels' || p.content_type.toLowerCase() === 'reels' || p.content_type.toLowerCase() === 'reel').length;
+      const stories = publications.filter(p => p.content_type === 'Stories' || p.content_type.toLowerCase() === 'story' || p.content_type.toLowerCase() === 'stories').length;
 
       console.log(`[Content Calculation] ${project.name}: Using content_publications data:`, {
         posts,
@@ -142,7 +142,7 @@ export const getLiveduneContentCounts = async (
         publicationsToInsert.push({
           project_id: project.id,
           organization_id: project.organizationId,
-          content_type: 'post',
+          content_type: 'Post',
           published_at: post.created || new Date().toISOString(),
           description: `Synced from Livedune API: ${post.text?.substring(0, 100) || ''}`
         });
@@ -152,7 +152,7 @@ export const getLiveduneContentCounts = async (
         publicationsToInsert.push({
           project_id: project.id,
           organization_id: project.organizationId,
-          content_type: 'reels',
+          content_type: 'Reels',
           published_at: reel.created || new Date().toISOString(),
           description: `Synced from Livedune API: ${reel.text?.substring(0, 100) || ''}`
         });
@@ -162,7 +162,7 @@ export const getLiveduneContentCounts = async (
         publicationsToInsert.push({
           project_id: project.id,
           organization_id: project.organizationId,
-          content_type: 'story',
+          content_type: 'Stories',
           published_at: story.created || new Date().toISOString(),
           description: 'Synced from Livedune API'
         });
