@@ -12,7 +12,8 @@ import ExpenseTrends from './ExpenseTrends';
 import ProjectFinancialSummary from './ProjectFinancialSummary';
 import { SyncPreviewModal } from './SyncPreviewModal';
 import { ExpenseValidation } from './ExpenseValidation';
-import { ChevronLeft, ChevronRight, Lock, Unlock, Copy } from 'lucide-react';
+import { AddExpenseModal } from './AddExpenseModal';
+import { ChevronLeft, ChevronRight, Lock, Unlock, Copy, Plus, Trash2 } from 'lucide-react';
 
 interface ProjectExpensesProps {
   projectId: string;
@@ -57,6 +58,8 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   const [isMonthFrozen, setIsMonthFrozen] = useState(false);
   const [categories, setCategories] = useState<CalculatorCategoryInfo[]>([]);
   const [calculatorServices, setCalculatorServices] = useState<any[]>([]);
+  const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<{ id: string; name: string } | null>(null);
 
   const canEdit = currentUser.jobTitle.toLowerCase().includes('pm') ||
                   currentUser.jobTitle.toLowerCase().includes('project manager') ||
@@ -218,6 +221,42 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
         ? value * updatedDynamicExpenses[serviceId].rate
         : updatedDynamicExpenses[serviceId].count * value
     };
+
+    setCurrentExpense({
+      ...currentExpense,
+      dynamicExpenses: updatedDynamicExpenses
+    });
+  };
+
+  const handleAddExpense = (service: any, count: number, rate: number) => {
+    if (!currentExpense) return;
+
+    const timestamp = Date.now();
+    const manualKey = `manual_${service.id}_${timestamp}`;
+
+    const updatedDynamicExpenses = {
+      ...currentExpense.dynamicExpenses,
+      [manualKey]: {
+        serviceName: service.name,
+        category: service.category,
+        count,
+        rate,
+        cost: count * rate,
+        syncedAt: new Date().toISOString()
+      }
+    };
+
+    setCurrentExpense({
+      ...currentExpense,
+      dynamicExpenses: updatedDynamicExpenses
+    });
+  };
+
+  const handleRemoveExpense = (serviceId: string) => {
+    if (!currentExpense) return;
+
+    const updatedDynamicExpenses = { ...currentExpense.dynamicExpenses };
+    delete updatedDynamicExpenses[serviceId];
 
     setCurrentExpense({
       ...currentExpense,
@@ -774,11 +813,28 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                               item.serviceName.includes(' - Shooting') ||
                               item.serviceName.includes(' - Мобилография');
                             const countLabel = isProductionOrPhoto ? 'Часов' : 'Количество';
+                            const isManualExpense = serviceId.startsWith('manual_');
                             return (
                               <div key={serviceId} className="bg-white p-4 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors">
                                 <div className="flex justify-between items-start mb-2">
-                                  <span className="text-sm text-slate-700 font-medium">{item.serviceName}</span>
-                                  <span className="text-lg font-bold text-slate-900">{item.cost.toLocaleString()} ₸</span>
+                                  <div className="flex items-center gap-2 flex-1">
+                                    <span className="text-sm text-slate-700 font-medium">{item.serviceName}</span>
+                                    {isManualExpense && (
+                                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Вручную</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-lg font-bold text-slate-900">{item.cost.toLocaleString()} ₸</span>
+                                    {isManualExpense && isEditing && canEdit && !isMonthFrozen && (
+                                      <button
+                                        onClick={() => handleRemoveExpense(serviceId)}
+                                        className="p-1 hover:bg-red-50 text-red-600 rounded transition-colors"
+                                        title="Удалить расход"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                                 {isEditing && canEdit && !isMonthFrozen ? (
                                   <div className="space-y-2">
@@ -820,6 +876,18 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                               </div>
                             );
                           })}
+                          {isEditing && canEdit && !isMonthFrozen && (
+                            <button
+                              onClick={() => {
+                                setSelectedCategory({ id: categoryId, name: categoryName });
+                                setShowAddExpenseModal(true);
+                              }}
+                              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white p-4 rounded-lg border-2 border-dashed border-blue-400 hover:border-blue-500 transition-all flex items-center justify-center gap-2 font-semibold"
+                            >
+                              <Plus className="w-5 h-5" />
+                              Добавить расход
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -861,11 +929,28 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                             category.id.includes(c) || category.name.includes(c)
                           ) || item.serviceName.includes(' - Shooting') || item.serviceName.includes(' - Мобилография');
                           const countLabel = isProductionOrPhoto ? 'Часов' : 'Количество';
+                          const isManualExpense = serviceId.startsWith('manual_');
                           return (
                             <div key={serviceId} className="bg-white p-4 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors">
                               <div className="flex justify-between items-start mb-2">
-                                <span className="text-sm text-slate-700 font-medium">{item.serviceName}</span>
-                                <span className="text-lg font-bold text-slate-900">{item.cost.toLocaleString()} ₸</span>
+                                <div className="flex items-center gap-2 flex-1">
+                                  <span className="text-sm text-slate-700 font-medium">{item.serviceName}</span>
+                                  {isManualExpense && (
+                                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Вручную</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-lg font-bold text-slate-900">{item.cost.toLocaleString()} ₸</span>
+                                  {isManualExpense && isEditing && canEdit && !isMonthFrozen && (
+                                    <button
+                                      onClick={() => handleRemoveExpense(serviceId)}
+                                      className="p-1 hover:bg-red-50 text-red-600 rounded transition-colors"
+                                      title="Удалить расход"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                               {isEditing && canEdit && !isMonthFrozen ? (
                                 <div className="space-y-2">
@@ -907,6 +992,18 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                             </div>
                           );
                         })}
+                        {isEditing && canEdit && !isMonthFrozen && (
+                          <button
+                            onClick={() => {
+                              setSelectedCategory({ id: category.id, name: category.name });
+                              setShowAddExpenseModal(true);
+                            }}
+                            className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white p-4 rounded-lg border-2 border-dashed border-blue-400 hover:border-blue-500 transition-all flex items-center justify-center gap-2 font-semibold"
+                          >
+                            <Plus className="w-5 h-5" />
+                            Добавить расход
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -1209,6 +1306,17 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
           setShowSyncPreview(false);
         }}
         syncType={syncType}
+      />
+
+      <AddExpenseModal
+        isOpen={showAddExpenseModal}
+        onClose={() => {
+          setShowAddExpenseModal(false);
+          setSelectedCategory(null);
+        }}
+        categoryId={selectedCategory?.id || ''}
+        categoryName={selectedCategory?.name || ''}
+        onAdd={handleAddExpense}
       />
     </div>
   );
