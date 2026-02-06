@@ -4,13 +4,14 @@ import { getCurrentOrganizationId } from '../utils/organizationContext';
 export interface PlanLimits {
   maxUsers: number | null;
   maxProjects: number | null;
+  maxStorageMb: number | null;
 }
 
 const FALLBACK_LIMITS: Record<string, PlanLimits> = {
-  'Free': { maxUsers: 2, maxProjects: 10 },
-  'Starter': { maxUsers: 10, maxProjects: 100 },
-  'Professional': { maxUsers: 25, maxProjects: null },
-  'Enterprise': { maxUsers: null, maxProjects: null },
+  'FREE': { maxUsers: 2, maxProjects: 10, maxStorageMb: 500 },
+  'STARTER': { maxUsers: 10, maxProjects: 100, maxStorageMb: 5120 },
+  'PROFESSIONAL': { maxUsers: 25, maxProjects: null, maxStorageMb: 10240 },
+  'ENTERPRISE': { maxUsers: null, maxProjects: null, maxStorageMb: null },
 };
 
 let cachedLimits: Record<string, PlanLimits> | null = null;
@@ -21,20 +22,16 @@ async function loadLimitsFromDB(): Promise<Record<string, PlanLimits>> {
   try {
     const { data } = await supabase
       .from('subscription_plans')
-      .select('name, max_users, max_projects')
+      .select('name, max_users, max_projects, max_storage_mb')
       .eq('is_active', true);
 
     if (data && data.length > 0) {
       const map: Record<string, PlanLimits> = {};
       data.forEach((p: any) => {
-        const titleCase = p.name === 'FREE' ? 'Free'
-          : p.name === 'STARTER' ? 'Starter'
-          : p.name === 'PROFESSIONAL' ? 'Professional'
-          : p.name === 'ENTERPRISE' ? 'Enterprise'
-          : p.name;
-        map[titleCase] = {
+        map[p.name.toUpperCase()] = {
           maxUsers: p.max_users,
           maxProjects: p.max_projects,
+          maxStorageMb: p.max_storage_mb,
         };
       });
       cachedLimits = map;
@@ -54,7 +51,8 @@ export const planLimitsService = {
 
   async getPlanLimits(planName: string): Promise<PlanLimits> {
     const limits = await loadLimitsFromDB();
-    return limits[planName] || limits['Free'] || FALLBACK_LIMITS['Free'];
+    const key = (planName || 'FREE').toUpperCase();
+    return limits[key] || limits['FREE'] || FALLBACK_LIMITS['FREE'];
   },
 
   async checkUsersLimit(planName: string): Promise<{ allowed: boolean; current: number; limit: number | null }> {
@@ -104,13 +102,34 @@ export const planLimitsService = {
     return { allowed: current < limit, current, limit };
   },
 
+  async checkStorageLimit(planName: string): Promise<{ allowed: boolean; currentMb: number; limitMb: number | null }> {
+    const organizationId = getCurrentOrganizationId();
+    if (!organizationId) {
+      return { allowed: false, currentMb: 0, limitMb: null };
+    }
+
+    const limits = await this.getPlanLimits(planName);
+
+    const { data } = await supabase.rpc('get_organization_storage_usage_mb', { org_id: organizationId });
+    const currentMb = Number(data) || 0;
+    const limitMb = limits.maxStorageMb;
+
+    if (limitMb === null) {
+      return { allowed: true, currentMb, limitMb };
+    }
+
+    return { allowed: currentMb < limitMb, currentMb, limitMb };
+  },
+
   async getUsageStats(planName: string): Promise<{
     users: { current: number; limit: number | null; percentage: number };
     projects: { current: number; limit: number | null; percentage: number };
+    storage: { currentMb: number; limitMb: number | null; percentage: number };
   }> {
-    const [usersCheck, projectsCheck] = await Promise.all([
+    const [usersCheck, projectsCheck, storageCheck] = await Promise.all([
       this.checkUsersLimit(planName),
-      this.checkProjectsLimit(planName)
+      this.checkProjectsLimit(planName),
+      this.checkStorageLimit(planName),
     ]);
 
     const usersPercentage = usersCheck.limit
@@ -119,6 +138,10 @@ export const planLimitsService = {
 
     const projectsPercentage = projectsCheck.limit
       ? Math.round((projectsCheck.current / projectsCheck.limit) * 100)
+      : 0;
+
+    const storagePercentage = storageCheck.limitMb
+      ? Math.round((storageCheck.currentMb / storageCheck.limitMb) * 100)
       : 0;
 
     return {
@@ -131,6 +154,11 @@ export const planLimitsService = {
         current: projectsCheck.current,
         limit: projectsCheck.limit,
         percentage: projectsPercentage
+      },
+      storage: {
+        currentMb: storageCheck.currentMb,
+        limitMb: storageCheck.limitMb,
+        percentage: storagePercentage
       }
     };
   }

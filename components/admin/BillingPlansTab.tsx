@@ -17,6 +17,7 @@ export interface SubscriptionPlan {
   price_kzt: number;
   max_users: number | null;
   max_projects: number | null;
+  max_storage_mb: number | null;
   additional_user_price_usd: number;
   additional_user_price_kzt: number;
   features_display: PlanFeature[];
@@ -103,6 +104,7 @@ const BillingPlansTab: React.FC<Props> = ({ plans, modules, onReload }) => {
           price_kzt: form.price_kzt,
           max_users: form.max_users,
           max_projects: form.max_projects,
+          max_storage_mb: form.max_storage_mb,
           additional_user_price_usd: form.additional_user_price_usd,
           additional_user_price_kzt: form.additional_user_price_kzt,
           features_display: form.features_display,
@@ -258,7 +260,7 @@ const BillingPlansTab: React.FC<Props> = ({ plans, modules, onReload }) => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
                 <NumberField
                   label="Цена (USD)"
                   value={data.price_monthly}
@@ -288,6 +290,15 @@ const BillingPlansTab: React.FC<Props> = ({ plans, modules, onReload }) => {
                   onChange={v => setForm({ ...form, max_projects: v })}
                   nullable
                   nullLabel="Безлимит"
+                />
+                <NumberField
+                  label="Хранилище (МБ)"
+                  value={data.max_storage_mb}
+                  editing={isEditing}
+                  onChange={v => setForm({ ...form, max_storage_mb: v })}
+                  nullable
+                  nullLabel="Безлимит"
+                  suffix="МБ"
                 />
               </div>
 

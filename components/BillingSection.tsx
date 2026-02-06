@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CreditCard, Check, Zap, TrendingUp, DollarSign, Plus, Loader, Package, Lock, Crown, Users, Briefcase, AlertTriangle } from 'lucide-react';
+import { CreditCard, Check, Zap, TrendingUp, DollarSign, Plus, Loader, Package, Lock, Crown, Users, Briefcase, AlertTriangle, HardDrive } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useOrganization } from './OrganizationProvider';
 import { moduleAccessService, ModuleAccess } from '../services/moduleAccessService';
@@ -30,7 +30,7 @@ interface Plan {
 
 const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
   const { organization } = useOrganization();
-  const [currentPlan, setCurrentPlan] = useState<string>('FREE');
+  const [currentPlan, setCurrentPlan] = useState('Free');
   const [balance, setBalance] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [topUpAmount, setTopUpAmount] = useState('');
@@ -176,6 +176,11 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
     }
   };
 
+  const planNameForDB = (upper: string): string => {
+    const map: Record<string, string> = { FREE: 'Free', STARTER: 'Starter', PROFESSIONAL: 'Professional', ENTERPRISE: 'Enterprise' };
+    return map[upper] || upper;
+  };
+
   const handleSelectPlan = async (planName: string) => {
     if (!organization?.id) return;
 
@@ -184,10 +189,11 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
       const selectedPlan = plans.find(p => p.name === planName);
       if (!selectedPlan) return;
 
+      const dbName = planNameForDB(planName);
       const { error } = await supabase
         .from('organizations')
         .update({
-          plan_name: planName,
+          plan_name: dbName,
           mrr: selectedPlan.priceRu,
           subscription_status: 'active',
           updated_at: new Date().toISOString()
@@ -195,7 +201,7 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
         .eq('id', organization.id);
 
       if (!error) {
-        setCurrentPlan(planName);
+        setCurrentPlan(dbName);
         await loadModules();
         await loadUsageStats();
         alert('Тариф успешно изменен!');
@@ -236,6 +242,7 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
     }
   };
 
+  const currentPlanUpper = currentPlan.toUpperCase();
   const proPlan = plans.find(p => p.name === 'PROFESSIONAL');
   const proPlanPrice = proPlan?.priceMonthly ?? 25;
   const availableModules = modules.filter(m => m.is_available);
@@ -251,7 +258,7 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
               {lockedModules.length === 0 && <Crown className="w-5 h-5 text-yellow-300" />}
               <h3 className="text-base sm:text-lg font-semibold">Текущий тариф</h3>
             </div>
-            <p className="text-xl sm:text-2xl font-bold">{plans.find(p => p.name === currentPlan)?.displayName || 'Бесплатный'}</p>
+            <p className="text-xl sm:text-2xl font-bold">{plans.find(p => p.name === currentPlanUpper)?.displayName || 'Бесплатный'}</p>
           </div>
           <div className="w-full sm:w-auto sm:text-right">
             <h3 className="text-base sm:text-lg font-semibold mb-1">Баланс</h3>
@@ -325,7 +332,7 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
                 className={`bg-white rounded-xl border-2 p-4 sm:p-6 relative transition-all hover:shadow-lg ${
                   plan.isPopular
                     ? 'border-blue-500 shadow-lg'
-                    : currentPlan === plan.name
+                    : currentPlanUpper === plan.name
                     ? 'border-green-500'
                     : 'border-slate-200'
                 }`}
@@ -336,7 +343,7 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
                   </div>
                 )}
 
-                {currentPlan === plan.name && (
+                {currentPlanUpper === plan.name && (
                   <div className="absolute -top-2.5 right-2 sm:right-4 bg-green-500 text-white px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold flex items-center gap-1">
                     <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                     Активен
@@ -386,9 +393,9 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
 
                 <button
                   onClick={() => handleSelectPlan(plan.name)}
-                  disabled={isLoading || currentPlan === plan.name}
+                  disabled={isLoading || currentPlanUpper === plan.name}
                   className={`w-full py-2.5 rounded-lg font-semibold transition-colors ${
-                    currentPlan === plan.name
+                    currentPlanUpper === plan.name
                       ? 'bg-green-100 text-green-700 cursor-default'
                       : plan.isPopular
                       ? 'bg-blue-600 text-white hover:bg-blue-700'
@@ -397,7 +404,7 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
                 >
                   {isLoading ? (
                     <Loader className="w-5 h-5 animate-spin mx-auto" />
-                  ) : currentPlan === plan.name ? (
+                  ) : currentPlanUpper === plan.name ? (
                     'Текущий тариф'
                   ) : (
                     'Выбрать тариф'
@@ -515,7 +522,7 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
                   {(() => {
                     const selected = periodBonuses.find(p => p.id === subscriptionPeriod);
                     if (!selected) return '-';
-                    const currentPlanData = plans.find(p => p.name === currentPlan);
+                    const currentPlanData = plans.find(p => p.name === currentPlanUpper);
                     const monthlyPrice = currentPlanData?.priceMonthly || 0;
                     const total = monthlyPrice * selected.months;
                     return `${total}$ за ${selected.months} мес.`;
@@ -611,7 +618,7 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
             <p className="text-slate-600">Текущее использование вашего тарифа</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-white rounded-xl border border-slate-200 p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -641,15 +648,15 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
               {usageStats.users.limit && usageStats.users.percentage >= 80 && (
                 <div className="flex items-center gap-2 text-sm text-orange-600 mt-3">
                   <AlertTriangle className="w-4 h-4" />
-                  <span>Близко к лимиту. Рассмотрите улучшение тарифа.</span>
+                  <span>Близко к лимиту.</span>
                 </div>
               )}
             </div>
 
             <div className="bg-white rounded-xl border border-slate-200 p-6">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <Briefcase className="w-6 h-6 text-purple-600" />
+                <div className="w-12 h-12 bg-teal-100 rounded-lg flex items-center justify-center">
+                  <Briefcase className="w-6 h-6 text-teal-600" />
                 </div>
                 <div>
                   <h3 className="font-semibold text-slate-800">Проекты</h3>
@@ -675,7 +682,49 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
               {usageStats.projects.limit && usageStats.projects.percentage >= 80 && (
                 <div className="flex items-center gap-2 text-sm text-orange-600 mt-3">
                   <AlertTriangle className="w-4 h-4" />
-                  <span>Близко к лимиту. Рассмотрите улучшение тарифа.</span>
+                  <span>Близко к лимиту.</span>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-200 p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
+                  <HardDrive className="w-6 h-6 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-800">Хранилище</h3>
+                  <p className="text-sm text-slate-500">
+                    {usageStats.storage.currentMb >= 1024
+                      ? `${(usageStats.storage.currentMb / 1024).toFixed(1)} ГБ`
+                      : `${Math.round(usageStats.storage.currentMb)} МБ`
+                    } из {usageStats.storage.limitMb
+                      ? usageStats.storage.limitMb >= 1024
+                        ? `${(usageStats.storage.limitMb / 1024).toFixed(0)} ГБ`
+                        : `${usageStats.storage.limitMb} МБ`
+                      : '∞'
+                    }
+                  </p>
+                </div>
+              </div>
+              <div className="mb-2">
+                <div className="w-full bg-slate-200 rounded-full h-3">
+                  <div
+                    className={`h-3 rounded-full ${
+                      usageStats.storage.percentage >= 90
+                        ? 'bg-red-500'
+                        : usageStats.storage.percentage >= 70
+                        ? 'bg-yellow-500'
+                        : 'bg-green-500'
+                    }`}
+                    style={{ width: `${Math.min(usageStats.storage.percentage, 100)}%` }}
+                  />
+                </div>
+              </div>
+              {usageStats.storage.limitMb && usageStats.storage.percentage >= 80 && (
+                <div className="flex items-center gap-2 text-sm text-orange-600 mt-3">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>Близко к лимиту.</span>
                 </div>
               )}
             </div>
@@ -694,6 +743,17 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
                 <Check className="w-5 h-5 text-green-600" />
                 <span className="text-sm text-slate-700">
                   Проектов: {usageStats.projects.limit || 'Без ограничений'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Check className="w-5 h-5 text-green-600" />
+                <span className="text-sm text-slate-700">
+                  Хранилище: {usageStats.storage.limitMb
+                    ? usageStats.storage.limitMb >= 1024
+                      ? `${(usageStats.storage.limitMb / 1024).toFixed(0)} ГБ`
+                      : `${usageStats.storage.limitMb} МБ`
+                    : 'Без ограничений'
+                  }
                 </span>
               </div>
               <div className="flex items-center gap-2">
