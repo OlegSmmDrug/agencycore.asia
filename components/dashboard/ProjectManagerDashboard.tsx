@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Briefcase, Clock, CheckCircle, AlertCircle, Calendar as CalendarIcon, Play } from 'lucide-react';
+import React from 'react';
+import { Briefcase, Clock, CheckCircle, AlertCircle, Calendar as CalendarIcon } from 'lucide-react';
 import { Client, Project, Task, ProjectStatus, TaskStatus } from '../../types';
 import { MetricCard, AlertBadge } from './DashboardWidgets';
 import ProjectRaceTrack from '../ProjectRaceTrack';
@@ -17,7 +17,6 @@ const ProjectManagerDashboard: React.FC<ProjectManagerDashboardProps> = ({
   tasks,
   currentUserId
 }) => {
-  const [selectedStage, setSelectedStage] = useState<string | null>(null);
 
   const myTasks = tasks.filter(t => t.assigneeId === currentUserId || t.creatorId === currentUserId);
   const myProjectIds = [...new Set(myTasks.map(t => t.projectId).filter(Boolean))];
@@ -50,16 +49,6 @@ const ProjectManagerDashboard: React.FC<ProjectManagerDashboardProps> = ({
 
   const upcomingDeadlines = getUpcomingDeadlines();
 
-  const stages = [
-    { id: 'briefing', name: 'Брифинг', status: [ProjectStatus.KP] },
-    { id: 'production', name: 'Продакшн', status: [ProjectStatus.PRODUCTION] },
-    { id: 'review', name: 'Ревью', status: [ProjectStatus.APPROVAL] },
-    { id: 'active', name: 'Активный', status: [ProjectStatus.IN_WORK, ProjectStatus.ADS_START] }
-  ];
-
-  const getProjectsByStage = (stageStatuses: ProjectStatus[]) => {
-    return myProjects.filter(p => stageStatuses.includes(p.status));
-  };
 
   const getReadyForPayment = () => {
     return myProjectTasks.filter(t => {
@@ -145,86 +134,6 @@ const ProjectManagerDashboard: React.FC<ProjectManagerDashboardProps> = ({
       {/* Project Race Track */}
       <ProjectRaceTrack projects={myProjects} tasks={myProjectTasks} clients={clients} />
 
-      {/* Project Pipeline (Kanban-style) */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-        <div className="flex items-center gap-3 mb-6">
-          <Play className="w-6 h-6 text-blue-600" />
-          <h3 className="text-lg font-bold text-slate-800">Пайплайн проектов</h3>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {stages.map(stage => {
-            const stageProjects = getProjectsByStage(stage.status);
-
-            return (
-              <div key={stage.id} className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                <div className="flex justify-between items-center mb-4">
-                  <h4 className="font-bold text-slate-700 text-sm uppercase tracking-wide">
-                    {stage.name}
-                  </h4>
-                  <span className="bg-slate-200 text-slate-700 px-2 py-1 rounded-full text-xs font-bold">
-                    {stageProjects.length}
-                  </span>
-                </div>
-
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {stageProjects.length > 0 ? (
-                    stageProjects.map(project => {
-                      const client = clients.find(c => c.id === project.clientId);
-                      const projectTasks = myProjectTasks.filter(t => t.projectId === project.id);
-                      const completedTasks = projectTasks.filter(t => t.status === TaskStatus.DONE).length;
-                      const totalTasks = projectTasks.length;
-
-                      return (
-                        <div
-                          key={project.id}
-                          className="bg-white p-3 rounded-lg border border-slate-200 hover:shadow-md transition-shadow cursor-pointer"
-                          onClick={() => setSelectedStage(project.id)}
-                        >
-                          <p className="font-semibold text-slate-800 text-sm leading-tight mb-1">
-                            {project.name}
-                          </p>
-                          <p className="text-xs text-slate-500 mb-2">{client?.company}</p>
-
-                          {totalTasks > 0 && (
-                            <div className="mb-2">
-                              <div className="flex justify-between text-[10px] text-slate-500 mb-1">
-                                <span>Задачи</span>
-                                <span>{completedTasks}/{totalTasks}</span>
-                              </div>
-                              <div className="w-full bg-slate-200 rounded-full h-1.5">
-                                <div
-                                  className="bg-blue-500 h-full rounded-full"
-                                  style={{ width: `${(completedTasks / totalTasks) * 100}%` }}
-                                />
-                              </div>
-                            </div>
-                          )}
-
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-semibold text-slate-600">
-                              {project.budget.toLocaleString('ru-RU')} ₸
-                            </span>
-                            {project.endDate && (
-                              <span className="text-[10px] text-slate-500">
-                                {new Date(project.endDate).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="text-center py-8">
-                      <p className="text-xs text-slate-400">Пусто</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
 
       {/* Bottom Row: Content Calendar + Urgent Items */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
