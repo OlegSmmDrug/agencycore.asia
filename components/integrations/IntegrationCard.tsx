@@ -1,17 +1,19 @@
 import React from 'react';
-import { Settings, Zap, AlertCircle, Clock, CheckCircle, Star } from 'lucide-react';
+import { Settings, Zap, AlertCircle, Clock, CheckCircle, Star, Trash2 } from 'lucide-react';
 import { Integration } from '../../services/integrationService';
 
 interface IntegrationCardProps {
   integration: Integration;
   onConfigure: (integration: Integration) => void;
   onToggle: (integration: Integration) => void;
+  onDelete: (integration: Integration) => void;
 }
 
 export const IntegrationCard: React.FC<IntegrationCardProps> = ({
   integration,
   onConfigure,
   onToggle,
+  onDelete,
 }) => {
   const getStatusBadge = () => {
     switch (integration.status) {
@@ -129,6 +131,13 @@ export const IntegrationCard: React.FC<IntegrationCardProps> = ({
         >
           <Zap className="w-4 h-4" />
           {integration.is_active ? 'Отключить' : 'Активировать'}
+        </button>
+        <button
+          onClick={() => onDelete(integration)}
+          className="px-3 py-2 text-sm border border-red-200 text-red-500 rounded-lg hover:bg-red-50 hover:text-red-700 hover:border-red-300 transition-colors flex items-center justify-center"
+          title="Удалить интеграцию"
+        >
+          <Trash2 className="w-4 h-4" />
         </button>
       </div>
     </div>

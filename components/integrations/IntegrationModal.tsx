@@ -487,9 +487,224 @@ export const IntegrationModal: React.FC<IntegrationModalProps> = ({
         return (
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Настройка Google Ads</h3>
-            <p className="text-sm text-gray-600">
-              Для подключения Google Ads API необходимо создать проект в Google Cloud Console и получить OAuth2 учетные данные.
-            </p>
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">1. Создайте проект в Google Cloud Console</h4>
+                <p className="text-sm text-gray-600">
+                  Перейдите в <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Google Cloud Console</a>, создайте новый проект и включите Google Ads API.
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">2. Настройте OAuth2</h4>
+                <p className="text-sm text-gray-600">
+                  В разделе "APIs & Services" &rarr; "Credentials" создайте OAuth 2.0 Client ID. Скопируйте Client ID и Client Secret.
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">3. Получите Refresh Token</h4>
+                <p className="text-sm text-gray-600">
+                  Используйте OAuth Playground или собственное приложение для получения Refresh Token с правами доступа к Google Ads.
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">4. Найдите Customer ID</h4>
+                <p className="text-sm text-gray-600">
+                  Customer ID (ID аккаунта) указан в верхнем правом углу вашего аккаунта Google Ads в формате XXX-XXX-XXXX (вводите без дефисов).
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      case 'google_analytics':
+        return (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Настройка Google Analytics 4</h3>
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">1. Найдите Property ID</h4>
+                <p className="text-sm text-gray-600">
+                  Откройте <a href="https://analytics.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Google Analytics</a> &rarr; Admin &rarr; Property Settings. Property ID имеет числовой формат (например, 123456789).
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">2. Создайте сервисный аккаунт</h4>
+                <p className="text-sm text-gray-600">
+                  В <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Google Cloud Console</a> создайте сервисный аккаунт и скачайте JSON-ключ.
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">3. Дайте доступ сервисному аккаунту</h4>
+                <p className="text-sm text-gray-600">
+                  В Google Analytics &rarr; Admin &rarr; Property Access Management добавьте email сервисного аккаунта с правами "Viewer".
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">4. Вставьте JSON-ключ</h4>
+                <p className="text-sm text-gray-600">
+                  Скопируйте содержимое скачанного JSON-файла и вставьте в поле "JSON ключ сервисного аккаунта".
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      case 'tiktok_ads':
+        return (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Настройка TikTok Ads</h3>
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">1. Создайте приложение в TikTok for Business</h4>
+                <p className="text-sm text-gray-600">
+                  Перейдите в <a href="https://business-api.tiktok.com/portal/docs" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">TikTok Marketing API</a> и создайте приложение для получения доступа к API.
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">2. Получите Access Token</h4>
+                <p className="text-sm text-gray-600">
+                  После одобрения приложения сгенерируйте долгосрочный Access Token в настройках приложения.
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">3. Найдите Advertiser ID</h4>
+                <p className="text-sm text-gray-600">
+                  Advertiser ID доступен в TikTok Ads Manager &rarr; Settings &rarr; Account Info. Это числовой идентификатор вашего рекламного аккаунта.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      case 'yandex_metrika':
+        return (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Настройка Яндекс.Метрики</h3>
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">1. Найдите ID счетчика</h4>
+                <p className="text-sm text-gray-600">
+                  Откройте <a href="https://metrika.yandex.ru" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Яндекс.Метрику</a> и скопируйте номер счетчика из списка сайтов.
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">2. Получите OAuth-токен</h4>
+                <p className="text-sm text-gray-600">
+                  Перейдите на <a href="https://oauth.yandex.ru" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">oauth.yandex.ru</a>, создайте приложение с правами "metrika:read" и получите токен авторизации.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      case 'yandex_direct':
+        return (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Настройка Яндекс.Директ</h3>
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">1. Укажите логин клиента</h4>
+                <p className="text-sm text-gray-600">
+                  Введите логин рекламного аккаунта Яндекс.Директ (тот, который используется для входа в <a href="https://direct.yandex.ru" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">direct.yandex.ru</a>).
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">2. Получите OAuth-токен</h4>
+                <p className="text-sm text-gray-600">
+                  Создайте приложение на <a href="https://oauth.yandex.ru" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">oauth.yandex.ru</a> с правами "direct:read" и получите токен.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      case 'livedune':
+        return (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Настройка Livedune</h3>
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">1. Получите API-токен</h4>
+                <p className="text-sm text-gray-600">
+                  Зайдите в <a href="https://livedune.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Livedune</a> &rarr; Настройки &rarr; API и скопируйте ваш токен доступа.
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">2. Подключите аккаунты</h4>
+                <p className="text-sm text-gray-600">
+                  Убедитесь, что нужные Instagram-аккаунты добавлены и активны в вашем аккаунте Livedune. Система будет получать аналитику по подключенным аккаунтам.
+                </p>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  Livedune используется для аналитики контента: количество публикаций, охваты, вовлеченность по каждому Instagram-аккаунту проекта.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      case 'telegram':
+        return (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Настройка Telegram Bot</h3>
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">1. Создайте бота</h4>
+                <p className="text-sm text-gray-600">
+                  Откройте <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">@BotFather</a> в Telegram и создайте нового бота командой /newbot. Сохраните полученный токен.
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">2. Возможности</h4>
+                <p className="text-sm text-gray-600">
+                  Telegram-бот может отправлять уведомления о новых задачах, лидах, дедлайнах и других событиях в CRM прямо в ваши чаты или группы.
+                </p>
+              </div>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <p className="text-sm text-yellow-800">
+                  Интеграция находится в разработке. Базовый функционал уведомлений будет доступен в ближайшем обновлении.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      case 'email':
+        return (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Настройка Email рассылок</h3>
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">Возможности</h4>
+                <p className="text-sm text-gray-600">
+                  Автоматическая отправка email-уведомлений клиентам: приветственные письма, напоминания о встречах, отчеты по проектам.
+                </p>
+              </div>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <p className="text-sm text-yellow-800">
+                  Интеграция находится в разработке. Функционал email-рассылок будет доступен в ближайшем обновлении.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      case 'claude_api':
+        return (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Настройка Claude API (Anthropic)</h3>
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">1. Получите API-ключ</h4>
+                <p className="text-sm text-gray-600">
+                  Зарегистрируйтесь на <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">console.anthropic.com</a> и создайте API-ключ в разделе "API Keys".
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">2. Возможности</h4>
+                <p className="text-sm text-gray-600">
+                  ИИ-ассистент помогает автоматически генерировать ответы клиентам, создавать описания задач, анализировать тексты и формировать контент-планы.
+                </p>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  Использование Claude API тарифицируется отдельно через ваш аккаунт Anthropic. Стоимость зависит от объема запросов.
+                </p>
+              </div>
+            </div>
           </div>
         );
       case 'creatium':
@@ -549,9 +764,10 @@ export const IntegrationModal: React.FC<IntegrationModalProps> = ({
         );
       default:
         return (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-sm text-blue-800">
-              Документация для этой интеграции готовится. Скоро будет доступна!
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Документация</h3>
+            <p className="text-sm text-gray-600">
+              Заполните необходимые учетные данные на вкладке "Настройки" и нажмите "Проверить подключение" для проверки работоспособности интеграции.
             </p>
           </div>
         );

@@ -196,6 +196,21 @@ const Integrations: React.FC = () => {
     }
   };
 
+  const handleDeleteIntegration = async (integration: Integration) => {
+    const confirmDelete = window.confirm(
+      `Вы уверены, что хотите удалить интеграцию "${integration.name}"?\n\nВсе учетные данные и история синхронизации будут удалены. Это действие необратимо.`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      await integrationService.deleteIntegration(integration.id);
+      setIntegrations(integrations.filter(i => i.id !== integration.id));
+    } catch (error) {
+      console.error('Failed to delete integration:', error);
+      alert('Не удалось удалить интеграцию');
+    }
+  };
+
   const handleToggleIntegration = async (integration: Integration) => {
     try {
       if (integration.is_active) {
@@ -416,6 +431,7 @@ const Integrations: React.FC = () => {
                       setIsModalOpen(true);
                     }}
                     onToggle={handleToggleIntegration}
+                    onDelete={handleDeleteIntegration}
                   />
                 ))}
               </div>
