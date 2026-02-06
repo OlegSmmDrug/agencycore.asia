@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Save, Plus, Trash2, Check, X, Crown } from 'lucide-react';
+import { Save, Plus, Check, X, Crown, Package } from 'lucide-react';
 
 interface PlanFeature {
   text: string;
@@ -25,16 +25,44 @@ export interface SubscriptionPlan {
   sort_order: number;
 }
 
+export interface PlatformModuleItem {
+  slug: string;
+  name: string;
+}
+
 interface Props {
   plans: SubscriptionPlan[];
+  modules: PlatformModuleItem[];
   onReload: () => void;
 }
 
-const BillingPlansTab: React.FC<Props> = ({ plans, onReload }) => {
+const BillingPlansTab: React.FC<Props> = ({ plans, modules, onReload }) => {
   const [editingPlan, setEditingPlan] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<SubscriptionPlan>>({});
   const [saving, setSaving] = useState(false);
   const [newFeature, setNewFeature] = useState('');
+  const [planModules, setPlanModules] = useState<Record<string, Set<string>>>({});
+
+  useEffect(() => {
+    loadPlanModules();
+  }, []);
+
+  const loadPlanModules = async () => {
+    try {
+      const { data } = await supabase
+        .from('plan_included_modules')
+        .select('plan_name, module_slug');
+
+      const map: Record<string, Set<string>> = {};
+      (data || []).forEach((row: any) => {
+        if (!map[row.plan_name]) map[row.plan_name] = new Set();
+        map[row.plan_name].add(row.module_slug);
+      });
+      setPlanModules(map);
+    } catch (err) {
+      console.error('Error loading plan modules:', err);
+    }
+  };
 
   const startEdit = (plan: SubscriptionPlan) => {
     setEditingPlan(plan.id);
@@ -45,10 +73,25 @@ const BillingPlansTab: React.FC<Props> = ({ plans, onReload }) => {
   const cancelEdit = () => {
     setEditingPlan(null);
     setForm({});
+    loadPlanModules();
+  };
+
+  const togglePlanModule = (planName: string, moduleSlug: string) => {
+    setPlanModules(prev => {
+      const next = { ...prev };
+      const set = new Set(next[planName] || []);
+      if (set.has(moduleSlug)) {
+        set.delete(moduleSlug);
+      } else {
+        set.add(moduleSlug);
+      }
+      next[planName] = set;
+      return next;
+    });
   };
 
   const handleSave = async () => {
-    if (!editingPlan) return;
+    if (!editingPlan || !form.name) return;
     setSaving(true);
     try {
       const { error } = await supabase
@@ -68,8 +111,29 @@ const BillingPlansTab: React.FC<Props> = ({ plans, onReload }) => {
         .eq('id', editingPlan);
 
       if (error) throw error;
+
+      const upperName = form.name.toUpperCase();
+      const currentSlugs = planModules[upperName] || new Set();
+
+      await supabase
+        .from('plan_included_modules')
+        .delete()
+        .eq('plan_name', upperName);
+
+      if (currentSlugs.size > 0) {
+        const rows = Array.from(currentSlugs).map(slug => ({
+          plan_name: upperName,
+          module_slug: slug,
+        }));
+        const { error: insertError } = await supabase
+          .from('plan_included_modules')
+          .insert(rows);
+        if (insertError) throw insertError;
+      }
+
       setEditingPlan(null);
       onReload();
+      loadPlanModules();
     } catch (err) {
       console.error('Error saving plan:', err);
       alert('Ошибка сохранения');
@@ -112,7 +176,7 @@ const BillingPlansTab: React.FC<Props> = ({ plans, onReload }) => {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-bold text-slate-800">Тарифные планы</h3>
-          <p className="text-sm text-slate-500">Настройте цены, лимиты и описания для каждого тарифа</p>
+          <p className="text-sm text-slate-500">Настройте цены, лимиты, модули и описания для каждого тарифа</p>
         </div>
       </div>
 
@@ -121,6 +185,8 @@ const BillingPlansTab: React.FC<Props> = ({ plans, onReload }) => {
           const isEditing = editingPlan === plan.id;
           const data = isEditing ? form : plan;
           const colors = planColors[plan.name] || planColors['FREE'];
+          const upperName = plan.name.toUpperCase();
+          const includedModules = planModules[upperName] || new Set<string>();
 
           return (
             <div
@@ -253,6 +319,36 @@ const BillingPlansTab: React.FC<Props> = ({ plans, onReload }) => {
                   </button>
                 </div>
               )}
+
+              <div className="mb-4">
+                <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                  Включенные модули ({includedModules.size} / {modules.length})
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {modules.map((mod) => {
+                    const included = includedModules.has(mod.slug);
+                    return (
+                      <button
+                        key={mod.slug}
+                        onClick={() => isEditing && togglePlanModule(upperName, mod.slug)}
+                        disabled={!isEditing}
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                          included
+                            ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                            : 'bg-slate-50 text-slate-400 border border-slate-100'
+                        } ${isEditing ? 'cursor-pointer hover:shadow-sm' : 'cursor-default'}`}
+                      >
+                        {included ? (
+                          <Check className="w-3 h-3" />
+                        ) : (
+                          <Package className="w-3 h-3" />
+                        )}
+                        {mod.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
               <div>
                 <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Фичи</label>

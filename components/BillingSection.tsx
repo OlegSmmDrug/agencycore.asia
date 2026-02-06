@@ -44,10 +44,12 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
   const [periodBonuses, setPeriodBonuses] = useState<{ id: string; label: string; months: number; bonusMonths: number }[]>([]);
   const [additionalUserPriceUsd, setAdditionalUserPriceUsd] = useState(3);
   const [additionalUserPriceKzt, setAdditionalUserPriceKzt] = useState(1350);
+  const [modulePriceUsd, setModulePriceUsd] = useState(5);
 
   useEffect(() => {
     loadPlansFromDB();
     loadPeriodBonuses();
+    loadModulePricing();
   }, []);
 
   useEffect(() => {
@@ -113,6 +115,19 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
       }
     } catch (err) {
       console.error('Error loading period bonuses:', err);
+    }
+  };
+
+  const loadModulePricing = async () => {
+    try {
+      const { data } = await supabase
+        .from('platform_modules')
+        .select('price')
+        .eq('is_active', true)
+        .limit(1);
+      if (data?.[0]) setModulePriceUsd(Number(data[0].price) || 5);
+    } catch (err) {
+      console.error('Error loading module pricing:', err);
     }
   };
 
@@ -221,7 +236,8 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
     }
   };
 
-  const isPremium = currentPlan === 'Professional' || currentPlan === 'Enterprise';
+  const proPlan = plans.find(p => p.name === 'PROFESSIONAL');
+  const proPlanPrice = proPlan?.priceMonthly ?? 25;
   const availableModules = modules.filter(m => m.is_available);
   const lockedModules = modules.filter(m => !m.is_available);
 
@@ -232,7 +248,7 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="w-full sm:w-auto">
             <div className="flex items-center gap-2 mb-1">
-              {isPremium && <Crown className="w-5 h-5 text-yellow-300" />}
+              {lockedModules.length === 0 && <Crown className="w-5 h-5 text-yellow-300" />}
               <h3 className="text-base sm:text-lg font-semibold">Текущий тариф</h3>
             </div>
             <p className="text-xl sm:text-2xl font-bold">{plans.find(p => p.name === currentPlan)?.displayName || 'Бесплатный'}</p>
@@ -553,14 +569,14 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
             </div>
           )}
 
-          {lockedModules.length > 0 && !isPremium && (
+          {lockedModules.length > 0 && (
             <div>
               <h3 className="text-lg font-semibold text-slate-800 mb-4">Заблокированные модули</h3>
               <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-4">
                 <div className="flex items-center gap-3">
                   <Zap className="w-5 h-5 text-orange-600" />
                   <p className="text-sm text-slate-700">
-                    Разблокируйте больше модулей: по $5 за модуль или улучшите тариф до Professional ($25) и получите все модули
+                    Разблокируйте больше модулей: по ${modulePriceUsd}$ за модуль или улучшите тариф до Professional (${proPlanPrice}$) и получите все модули
                   </p>
                 </div>
               </div>
@@ -577,7 +593,7 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
                     <h4 className="font-semibold text-slate-800 mb-2 pr-8">{module.module_name}</h4>
                     <p className="text-sm text-slate-600 mb-3">{module.module_description}</p>
                     <button className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-                      Разблокировать за $5/мес
+                      Разблокировать за {modulePriceUsd}$/мес
                     </button>
                   </div>
                 ))}

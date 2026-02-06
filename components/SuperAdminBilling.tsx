@@ -81,7 +81,7 @@ const SuperAdminBilling: React.FC<Props> = ({ currentUserId }) => {
         ))}
       </div>
 
-      {subTab === 'plans' && <BillingPlansTab plans={plans} onReload={loadAll} />}
+      {subTab === 'plans' && <BillingPlansTab plans={plans} modules={modules.map(m => ({ slug: m.slug, name: m.name }))} onReload={loadAll} />}
       {subTab === 'modules' && <BillingModulesTab modules={modules} onReload={loadAll} />}
       {subTab === 'periods' && <BillingPeriodsTab periods={periods} onReload={loadAll} />}
       {subTab === 'balance' && <BillingBalanceTab adminUserId={currentUserId} />}

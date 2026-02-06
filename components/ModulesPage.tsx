@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Package, Check, Lock, Crown, Zap, ArrowRight, Shield, DollarSign } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { useOrganization } from './OrganizationProvider';
 import { moduleAccessService, ModuleAccess } from '../services/moduleAccessService';
 
@@ -7,12 +8,52 @@ const ModulesPage: React.FC = () => {
   const { organization } = useOrganization();
   const [modules, setModules] = useState<ModuleAccess[]>([]);
   const [loading, setLoading] = useState(true);
+  const [modulePrice, setModulePrice] = useState(5);
+  const [planDisplayName, setPlanDisplayName] = useState('');
+  const [planPrice, setPlanPrice] = useState(0);
+  const [proPlanPrice, setProPlanPrice] = useState(25);
+
+  useEffect(() => {
+    loadPricing();
+  }, []);
 
   useEffect(() => {
     if (organization) {
       loadModules();
+      loadCurrentPlanInfo();
     }
   }, [organization]);
+
+  const loadPricing = async () => {
+    try {
+      const [moduleRes, proRes] = await Promise.all([
+        supabase.from('platform_modules').select('price').eq('is_active', true).limit(1),
+        supabase.from('subscription_plans').select('price_monthly').eq('name', 'PROFESSIONAL').maybeSingle(),
+      ]);
+      if (moduleRes.data?.[0]) setModulePrice(Number(moduleRes.data[0].price) || 5);
+      if (proRes.data) setProPlanPrice(Number(proRes.data.price_monthly) || 25);
+    } catch (err) {
+      console.error('Error loading pricing:', err);
+    }
+  };
+
+  const loadCurrentPlanInfo = async () => {
+    if (!organization) return;
+    const upperPlan = (organization.plan_name || 'Free').toUpperCase();
+    try {
+      const { data } = await supabase
+        .from('subscription_plans')
+        .select('display_name_ru, display_name, price_monthly')
+        .eq('name', upperPlan)
+        .maybeSingle();
+      if (data) {
+        setPlanDisplayName(data.display_name_ru || data.display_name || organization.plan_name || 'Free');
+        setPlanPrice(Number(data.price_monthly) || 0);
+      }
+    } catch (err) {
+      console.error('Error loading plan info:', err);
+    }
+  };
 
   const loadModules = async () => {
     if (!organization) return;
@@ -39,19 +80,9 @@ const ModulesPage: React.FC = () => {
     );
   }
 
-  const planName = organization?.plan_name || 'Free';
-  const isPremium = planName === 'Professional' || planName === 'Enterprise';
   const availableModules = modules.filter(m => m.is_available);
   const lockedModules = modules.filter(m => !m.is_available);
-
-  const plans = [
-    { id: 'Free', name: 'Бесплатный', price: 0, color: 'slate' },
-    { id: 'Starter', name: 'Стартовый', price: 10, color: 'blue' },
-    { id: 'Professional', name: 'Профессионал', price: 25, color: 'purple' },
-    { id: 'Enterprise', name: 'Корпоративный', price: 50, color: 'orange' },
-  ];
-
-  const currentPlanInfo = plans.find(p => p.id === planName);
+  const hasAllModules = lockedModules.length === 0;
 
   return (
     <div className="space-y-8">
@@ -63,18 +94,18 @@ const ModulesPage: React.FC = () => {
           <div className="flex items-start justify-between mb-6">
             <div>
               <div className="flex items-center gap-3 mb-2">
-                {isPremium && <Crown className="w-6 h-6 text-yellow-300" />}
-                <h1 className="text-3xl font-bold">Ваш тариф: {currentPlanInfo?.name}</h1>
+                {hasAllModules && <Crown className="w-6 h-6 text-yellow-300" />}
+                <h1 className="text-3xl font-bold">Ваш тариф: {planDisplayName || organization?.plan_name || 'Free'}</h1>
               </div>
               <p className="text-blue-100 text-lg">
-                {isPremium
+                {hasAllModules
                   ? 'У вас доступны все модули платформы'
                   : 'Вы можете разблокировать дополнительные модули или улучшить тариф'
                 }
               </p>
             </div>
             <div className="text-right">
-              <div className="text-5xl font-bold mb-1">${currentPlanInfo?.price}</div>
+              <div className="text-5xl font-bold mb-1">${planPrice}</div>
               <div className="text-blue-100">в месяц</div>
             </div>
           </div>
@@ -148,7 +179,7 @@ const ModulesPage: React.FC = () => {
                 <div className="flex items-center gap-2 text-sm">
                   {module.is_unlocked ? (
                     <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">
-                      Куплен отдельно ($5/мес)
+                      Куплен отдельно (${modulePrice}/мес)
                     </span>
                   ) : (
                     <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium">
@@ -162,7 +193,7 @@ const ModulesPage: React.FC = () => {
         </div>
       )}
 
-      {lockedModules.length > 0 && !isPremium && (
+      {lockedModules.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold text-slate-800">
@@ -184,16 +215,16 @@ const ModulesPage: React.FC = () => {
                   Разблокируйте больше возможностей
                 </h3>
                 <p className="text-sm text-slate-600 mb-4">
-                  Каждый модуль можно купить отдельно за $5/месяц, или улучшите тариф до Professional и получите все модули
+                  Каждый модуль можно купить отдельно за ${modulePrice}/месяц, или улучшите тариф до Professional и получите все модули
                 </p>
                 <div className="flex gap-3">
                   <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-slate-200">
                     <DollarSign className="w-4 h-4 text-slate-600" />
-                    <span className="text-sm font-medium text-slate-700">$5 за модуль</span>
+                    <span className="text-sm font-medium text-slate-700">${modulePrice} за модуль</span>
                   </div>
                   <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-slate-200">
                     <Crown className="w-4 h-4 text-yellow-600" />
-                    <span className="text-sm font-medium text-slate-700">Или $25 за все</span>
+                    <span className="text-sm font-medium text-slate-700">Или ${proPlanPrice} за все</span>
                   </div>
                 </div>
               </div>
@@ -217,7 +248,7 @@ const ModulesPage: React.FC = () => {
                 <h3 className="text-xl font-bold text-slate-800 mb-2 pr-8">{module.module_name}</h3>
                 <p className="text-sm text-slate-600 mb-6">{module.module_description}</p>
                 <button className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl font-medium hover:from-blue-700 hover:to-blue-800 transition-all flex items-center justify-center gap-2 group">
-                  <span>Разблокировать за $5/мес</span>
+                  <span>Разблокировать за ${modulePrice}/мес</span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </button>
               </div>
@@ -226,7 +257,7 @@ const ModulesPage: React.FC = () => {
         </div>
       )}
 
-      {!isPremium && (
+      {lockedModules.length > 0 && (
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-8 text-white relative overflow-hidden">
           <div className="absolute top-0 right-0 w-96 h-96 bg-yellow-500 opacity-10 rounded-full -mr-48 -mt-48"></div>
           <div className="absolute bottom-0 left-0 w-64 h-64 bg-yellow-500 opacity-10 rounded-full -ml-32 -mb-32"></div>
@@ -238,7 +269,7 @@ const ModulesPage: React.FC = () => {
             <div className="flex-1">
               <h3 className="text-3xl font-bold mb-3">Улучшите до Professional</h3>
               <p className="text-slate-300 text-lg mb-6">
-                Получите доступ ко всем {modules.length} модулям платформы, безлимитным пользователям и VIP поддержке 24/7 всего за $25/месяц
+                Получите доступ ко всем {modules.length} модулям платформы, безлимитным пользователям и VIP поддержке 24/7 всего за ${proPlanPrice}/месяц
               </p>
               <div className="flex items-center gap-4">
                 <button className="px-8 py-4 bg-gradient-to-r from-yellow-400 to-yellow-500 text-slate-900 rounded-xl font-bold hover:from-yellow-500 hover:to-yellow-600 transition-all flex items-center gap-3 shadow-lg">
@@ -247,7 +278,7 @@ const ModulesPage: React.FC = () => {
                 </button>
                 <div className="text-slate-400">
                   <div className="text-sm">Экономия до</div>
-                  <div className="text-2xl font-bold text-white">${lockedModules.length * 5 - 25}/мес</div>
+                  <div className="text-2xl font-bold text-white">${lockedModules.length * modulePrice - proPlanPrice}/мес</div>
                 </div>
               </div>
             </div>

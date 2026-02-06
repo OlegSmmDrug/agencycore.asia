@@ -2,52 +2,59 @@ import { supabase } from '../lib/supabase';
 import { getCurrentOrganizationId } from '../utils/organizationContext';
 
 export interface PlanLimits {
-  maxUsers: number | null;  // null = unlimited
-  maxProjects: number | null; // null = unlimited
-  hasAnalytics: boolean;
-  hasAPIIntegration: boolean;
-  hasPayroll: boolean;
-  hasAllModules: boolean;
+  maxUsers: number | null;
+  maxProjects: number | null;
 }
 
-const PLAN_LIMITS: Record<string, PlanLimits> = {
-  'Free': {
-    maxUsers: 2,
-    maxProjects: 10,
-    hasAnalytics: false,
-    hasAPIIntegration: false,
-    hasPayroll: false,
-    hasAllModules: false
-  },
-  'Starter': {
-    maxUsers: 10,
-    maxProjects: 100,
-    hasAnalytics: false,
-    hasAPIIntegration: false,
-    hasPayroll: true,
-    hasAllModules: false
-  },
-  'Professional': {
-    maxUsers: 25,
-    maxProjects: null,
-    hasAnalytics: true,
-    hasAPIIntegration: true,
-    hasPayroll: true,
-    hasAllModules: true
-  },
-  'Enterprise': {
-    maxUsers: null,
-    maxProjects: null,
-    hasAnalytics: true,
-    hasAPIIntegration: true,
-    hasPayroll: true,
-    hasAllModules: true
-  }
+const FALLBACK_LIMITS: Record<string, PlanLimits> = {
+  'Free': { maxUsers: 2, maxProjects: 10 },
+  'Starter': { maxUsers: 10, maxProjects: 100 },
+  'Professional': { maxUsers: 25, maxProjects: null },
+  'Enterprise': { maxUsers: null, maxProjects: null },
 };
 
+let cachedLimits: Record<string, PlanLimits> | null = null;
+
+async function loadLimitsFromDB(): Promise<Record<string, PlanLimits>> {
+  if (cachedLimits) return cachedLimits;
+
+  try {
+    const { data } = await supabase
+      .from('subscription_plans')
+      .select('name, max_users, max_projects')
+      .eq('is_active', true);
+
+    if (data && data.length > 0) {
+      const map: Record<string, PlanLimits> = {};
+      data.forEach((p: any) => {
+        const titleCase = p.name === 'FREE' ? 'Free'
+          : p.name === 'STARTER' ? 'Starter'
+          : p.name === 'PROFESSIONAL' ? 'Professional'
+          : p.name === 'ENTERPRISE' ? 'Enterprise'
+          : p.name;
+        map[titleCase] = {
+          maxUsers: p.max_users,
+          maxProjects: p.max_projects,
+        };
+      });
+      cachedLimits = map;
+      return map;
+    }
+  } catch (err) {
+    console.error('Error loading plan limits from DB:', err);
+  }
+
+  return FALLBACK_LIMITS;
+}
+
 export const planLimitsService = {
-  getPlanLimits(planName: string): PlanLimits {
-    return PLAN_LIMITS[planName] || PLAN_LIMITS['Free'];
+  invalidateCache() {
+    cachedLimits = null;
+  },
+
+  async getPlanLimits(planName: string): Promise<PlanLimits> {
+    const limits = await loadLimitsFromDB();
+    return limits[planName] || limits['Free'] || FALLBACK_LIMITS['Free'];
   },
 
   async checkUsersLimit(planName: string): Promise<{ allowed: boolean; current: number; limit: number | null }> {
@@ -56,7 +63,7 @@ export const planLimitsService = {
       return { allowed: false, current: 0, limit: null };
     }
 
-    const limits = this.getPlanLimits(planName);
+    const limits = await this.getPlanLimits(planName);
 
     const { count } = await supabase
       .from('users')
@@ -79,7 +86,7 @@ export const planLimitsService = {
       return { allowed: false, current: 0, limit: null };
     }
 
-    const limits = this.getPlanLimits(planName);
+    const limits = await this.getPlanLimits(planName);
 
     const { count } = await supabase
       .from('projects')

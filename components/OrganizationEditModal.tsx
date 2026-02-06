@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Building2, DollarSign, Users, Calendar, Lock, Unlock, Plus, Minus, Check, Package } from 'lucide-react';
+import { X, Save, Building2, Users, Lock, Unlock, Plus, Minus, Check, Package } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface ModuleAccess {
@@ -10,6 +10,29 @@ interface ModuleAccess {
   is_available: boolean;
   is_unlocked: boolean;
   requires_unlock: boolean;
+}
+
+interface DBPlan {
+  name: string;
+  display_name_ru: string;
+  display_name: string;
+  price_monthly: number;
+  price_kzt: number;
+  additional_user_price_usd: number;
+  additional_user_price_kzt: number;
+}
+
+interface DBPeriod {
+  period_key: string;
+  period_label: string;
+  months: number;
+  bonus_months: number;
+}
+
+interface DBModulePrice {
+  slug: string;
+  price: number;
+  price_kzt: number;
 }
 
 interface OrganizationEditModalProps {
@@ -43,13 +66,10 @@ const OrganizationEditModal: React.FC<OrganizationEditModalProps> = ({ organizat
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [modules, setModules] = useState<ModuleAccess[]>([]);
   const [unlockedModules, setUnlockedModules] = useState<Set<string>>(new Set());
-
-  const plans = [
-    { id: 'Free', name: 'Бесплатный', price: 0 },
-    { id: 'Starter', name: 'Стартовый', price: 10 },
-    { id: 'Professional', name: 'Профессионал', price: 25 },
-    { id: 'Enterprise', name: 'Корпоративный', price: 50 },
-  ];
+  const [dbPlans, setDbPlans] = useState<DBPlan[]>([]);
+  const [dbPeriods, setDbPeriods] = useState<DBPeriod[]>([]);
+  const [modulePrice, setModulePrice] = useState({ usd: 5, kzt: 2250 });
+  const [planModuleInclusions, setPlanModuleInclusions] = useState<Record<string, Set<string>>>({});
 
   const statuses = [
     { id: 'active', name: 'Активен', color: 'bg-green-100 text-green-700' },
@@ -59,17 +79,42 @@ const OrganizationEditModal: React.FC<OrganizationEditModalProps> = ({ organizat
     { id: 'trial_expired', name: 'Триал истек', color: 'bg-slate-100 text-slate-700' },
   ];
 
-  const periods = [
-    { id: '1month', name: '1 месяц', bonus: 0 },
-    { id: '6months', name: '6 месяцев', bonus: 1 },
-    { id: '9months', name: '9 месяцев', bonus: 1 },
-    { id: '1year', name: '1 год', bonus: 2 },
-    { id: '2years', name: '2 года', bonus: 6 },
-  ];
+  useEffect(() => {
+    loadDbData();
+  }, []);
 
   useEffect(() => {
     loadModules();
   }, [formData.plan_name]);
+
+  const loadDbData = async () => {
+    try {
+      const [plansRes, periodsRes, modulePriceRes, inclusionsRes] = await Promise.all([
+        supabase.from('subscription_plans').select('name, display_name_ru, display_name, price_monthly, price_kzt, additional_user_price_usd, additional_user_price_kzt').eq('is_active', true).order('sort_order'),
+        supabase.from('subscription_period_bonuses').select('period_key, period_label, months, bonus_months').eq('is_active', true).order('sort_order'),
+        supabase.from('platform_modules').select('slug, price, price_kzt').eq('is_active', true).limit(1),
+        supabase.from('plan_included_modules').select('plan_name, module_slug'),
+      ]);
+
+      if (plansRes.data) setDbPlans(plansRes.data);
+      if (periodsRes.data) setDbPeriods(periodsRes.data);
+      if (modulePriceRes.data?.[0]) {
+        setModulePrice({
+          usd: Number(modulePriceRes.data[0].price) || 5,
+          kzt: Number(modulePriceRes.data[0].price_kzt) || 2250,
+        });
+      }
+
+      const inclMap: Record<string, Set<string>> = {};
+      (inclusionsRes.data || []).forEach((row: any) => {
+        if (!inclMap[row.plan_name]) inclMap[row.plan_name] = new Set();
+        inclMap[row.plan_name].add(row.module_slug);
+      });
+      setPlanModuleInclusions(inclMap);
+    } catch (err) {
+      console.error('Error loading DB data:', err);
+    }
+  };
 
   const loadModules = async () => {
     try {
@@ -104,15 +149,42 @@ const OrganizationEditModal: React.FC<OrganizationEditModalProps> = ({ organizat
     });
   };
 
-  const calculateMRR = () => {
-    const selectedPlan = plans.find(p => p.id === formData.plan_name);
-    const baseMRR = selectedPlan ? selectedPlan.price : 0;
-    const additionalUsersMRR = formData.additional_users_count * 3;
+  const getPlanDisplayName = (planName: string) => {
+    const p = dbPlans.find(p => p.name === planName.toUpperCase() || p.name === planName);
+    return p?.display_name_ru || p?.display_name || planName;
+  };
 
-    const unlockedModulesCount = formData.plan_name === 'Professional' || formData.plan_name === 'Enterprise'
+  const getPlanPrice = (planName: string) => {
+    const p = dbPlans.find(p => p.name === planName.toUpperCase() || p.name === planName);
+    return Number(p?.price_monthly) || 0;
+  };
+
+  const getAdditionalUserPrice = (planName: string) => {
+    const p = dbPlans.find(p => p.name === planName.toUpperCase() || p.name === planName);
+    return Number(p?.additional_user_price_usd) || 3;
+  };
+
+  const isModuleIncludedInPlan = (planName: string, moduleSlug: string) => {
+    const upperPlan = planName.toUpperCase();
+    return planModuleInclusions[upperPlan]?.has(moduleSlug) || false;
+  };
+
+  const allModulesIncluded = () => {
+    const upperPlan = formData.plan_name.toUpperCase();
+    const included = planModuleInclusions[upperPlan];
+    if (!included) return false;
+    return modules.every(m => included.has(m.module_slug));
+  };
+
+  const calculateMRR = () => {
+    const baseMRR = getPlanPrice(formData.plan_name);
+    const addUserPrice = getAdditionalUserPrice(formData.plan_name);
+    const additionalUsersMRR = formData.additional_users_count * addUserPrice;
+
+    const unlockedCount = allModulesIncluded()
       ? 0
-      : unlockedModules.size;
-    const modulesMRR = unlockedModulesCount * 5;
+      : Array.from(unlockedModules).filter(slug => !isModuleIncludedInPlan(formData.plan_name, slug)).length;
+    const modulesMRR = unlockedCount * modulePrice.usd;
 
     return baseMRR + additionalUsersMRR + modulesMRR;
   };
@@ -121,8 +193,8 @@ const OrganizationEditModal: React.FC<OrganizationEditModalProps> = ({ organizat
     setIsLoading(true);
     try {
       const mrr = calculateMRR();
-      const selectedPeriod = periods.find(p => p.id === formData.subscription_period);
-      const bonusMonths = selectedPeriod?.bonus || 0;
+      const selectedPeriod = dbPeriods.find(p => p.period_key === formData.subscription_period);
+      const bonusMonths = selectedPeriod?.bonus_months || 0;
 
       const { error: orgError } = await supabase
         .from('organizations')
@@ -181,6 +253,36 @@ const OrganizationEditModal: React.FC<OrganizationEditModalProps> = ({ organizat
     }
   };
 
+  const planNames = dbPlans.length > 0
+    ? dbPlans.map(p => ({
+        id: p.name === 'FREE' ? 'Free' : p.name === 'STARTER' ? 'Starter' : p.name === 'PROFESSIONAL' ? 'Professional' : p.name === 'ENTERPRISE' ? 'Enterprise' : p.name,
+        name: p.display_name_ru || p.display_name,
+        price: Number(p.price_monthly) || 0,
+      }))
+    : [
+        { id: 'Free', name: 'Бесплатный', price: 0 },
+        { id: 'Starter', name: 'Стартовый', price: 10 },
+        { id: 'Professional', name: 'Профессионал', price: 25 },
+        { id: 'Enterprise', name: 'Корпоративный', price: 50 },
+      ];
+
+  const periodOptions = dbPeriods.length > 0
+    ? dbPeriods.map(p => ({
+        id: p.period_key,
+        name: p.period_label,
+        bonus: p.bonus_months,
+      }))
+    : [
+        { id: '1month', name: '1 месяц', bonus: 0 },
+        { id: '6months', name: '6 месяцев', bonus: 1 },
+        { id: '9months', name: '9 месяцев', bonus: 1 },
+        { id: '1year', name: '1 год', bonus: 2 },
+        { id: '2years', name: '2 года', bonus: 6 },
+      ];
+
+  const addUserPrice = getAdditionalUserPrice(formData.plan_name);
+  const isAllIncluded = allModulesIncluded();
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -225,7 +327,7 @@ const OrganizationEditModal: React.FC<OrganizationEditModalProps> = ({ organizat
               Тарифный план
             </label>
             <div className="grid grid-cols-2 gap-3">
-              {plans.map((plan) => (
+              {planNames.map((plan) => (
                 <button
                   key={plan.id}
                   onClick={() => setFormData(prev => ({ ...prev, plan_name: plan.id }))}
@@ -270,7 +372,7 @@ const OrganizationEditModal: React.FC<OrganizationEditModalProps> = ({ organizat
               Период подписки
             </label>
             <div className="grid grid-cols-2 gap-3">
-              {periods.map((period) => (
+              {periodOptions.map((period) => (
                 <button
                   key={period.id}
                   onClick={() => setFormData(prev => ({ ...prev, subscription_period: period.id }))}
@@ -291,7 +393,7 @@ const OrganizationEditModal: React.FC<OrganizationEditModalProps> = ({ organizat
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-3">
-              Дополнительные пользователи (3$ за пользователя)
+              Дополнительные пользователи (${addUserPrice} за пользователя)
             </label>
             <div className="flex items-center gap-4">
               <button
@@ -319,7 +421,7 @@ const OrganizationEditModal: React.FC<OrganizationEditModalProps> = ({ organizat
               <label className="text-sm font-medium text-slate-700">
                 Доступные модули
               </label>
-              {(formData.plan_name === 'Professional' || formData.plan_name === 'Enterprise') && (
+              {isAllIncluded && (
                 <span className="text-xs text-green-600 font-medium px-2 py-1 bg-green-50 rounded-full">
                   Все модули включены
                 </span>
@@ -327,21 +429,21 @@ const OrganizationEditModal: React.FC<OrganizationEditModalProps> = ({ organizat
             </div>
             <div className="grid grid-cols-2 gap-3">
               {modules.map((module) => {
-                const isAutoIncluded = formData.plan_name === 'Professional' || formData.plan_name === 'Enterprise';
+                const includedInPlan = isModuleIncludedInPlan(formData.plan_name, module.module_slug);
                 const isUnlocked = unlockedModules.has(module.module_slug);
 
                 return (
                   <button
                     key={module.module_slug}
-                    onClick={() => !isAutoIncluded && toggleModule(module.module_slug)}
-                    disabled={isAutoIncluded}
+                    onClick={() => !includedInPlan && toggleModule(module.module_slug)}
+                    disabled={includedInPlan}
                     className={`p-3 rounded-lg border-2 transition-all text-left relative ${
-                      isAutoIncluded || isUnlocked
+                      includedInPlan || isUnlocked
                         ? 'border-green-500 bg-green-50'
                         : 'border-slate-200 hover:border-slate-300'
-                    } ${isAutoIncluded ? 'opacity-75' : ''}`}
+                    } ${includedInPlan ? 'opacity-75' : ''}`}
                   >
-                    {(isAutoIncluded || isUnlocked) && (
+                    {(includedInPlan || isUnlocked) && (
                       <div className="absolute top-2 right-2 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
                         <Check className="w-3 h-3 text-white" />
                       </div>
@@ -351,8 +453,8 @@ const OrganizationEditModal: React.FC<OrganizationEditModalProps> = ({ organizat
                       <div>
                         <div className="font-semibold text-slate-800 text-sm">{module.module_name}</div>
                         <div className="text-xs text-slate-500 mt-0.5">{module.module_description}</div>
-                        {!isAutoIncluded && (
-                          <div className="text-xs text-blue-600 font-medium mt-1">$5/мес</div>
+                        {!includedInPlan && (
+                          <div className="text-xs text-blue-600 font-medium mt-1">${modulePrice.usd}/мес</div>
                         )}
                       </div>
                     </div>
@@ -365,16 +467,20 @@ const OrganizationEditModal: React.FC<OrganizationEditModalProps> = ({ organizat
           <div className="bg-green-50 rounded-lg p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-slate-700">Базовый план:</span>
-              <span className="text-lg font-bold text-slate-800">${plans.find(p => p.id === formData.plan_name)?.price || 0}</span>
+              <span className="text-lg font-bold text-slate-800">${getPlanPrice(formData.plan_name)}</span>
             </div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-slate-700">Дополнительные пользователи:</span>
-              <span className="text-lg font-bold text-slate-800">${formData.additional_users_count * 3}</span>
+              <span className="text-lg font-bold text-slate-800">${formData.additional_users_count * addUserPrice}</span>
             </div>
-            {!(formData.plan_name === 'Professional' || formData.plan_name === 'Enterprise') && (
+            {!isAllIncluded && (
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-slate-700">Дополнительные модули ({unlockedModules.size}):</span>
-                <span className="text-lg font-bold text-slate-800">${unlockedModules.size * 5}</span>
+                <span className="text-sm font-medium text-slate-700">
+                  Дополнительные модули ({Array.from(unlockedModules).filter(slug => !isModuleIncludedInPlan(formData.plan_name, slug)).length}):
+                </span>
+                <span className="text-lg font-bold text-slate-800">
+                  ${Array.from(unlockedModules).filter(slug => !isModuleIncludedInPlan(formData.plan_name, slug)).length * modulePrice.usd}
+                </span>
               </div>
             )}
             <div className="h-px bg-green-200 my-2"></div>
