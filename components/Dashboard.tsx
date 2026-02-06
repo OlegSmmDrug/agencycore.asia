@@ -76,7 +76,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         <ProjectManagerDashboard
           clients={clients}
           projects={projects}
-          tasks={nonContentTasks}
+          tasks={tasks}
           currentUserId={currentUser.id}
         />
       );

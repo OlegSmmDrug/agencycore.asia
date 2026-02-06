@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Lock, CheckCircle2, Play } from 'lucide-react';
+import { Lock, CheckCircle2, Play, ChevronDown, ChevronUp } from 'lucide-react';
 import { Project, Task, TaskStatus, Client, ProjectStatus, Level1StageStatus } from '../types';
 import { level1StageService } from '../services/level1StageService';
 import { supabase } from '../lib/supabase';
@@ -10,9 +10,12 @@ interface ProjectRaceTrackProps {
   clients: Client[];
 }
 
+const COLLAPSED_COUNT = 5;
+
 const ProjectRaceTrack: React.FC<ProjectRaceTrackProps> = ({ projects, tasks, clients }) => {
   const [projectStageStatuses, setProjectStageStatuses] = useState<Record<string, Level1StageStatus[]>>({});
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   const loadAllProjectStatuses = async () => {
     try {
@@ -137,7 +140,6 @@ const ProjectRaceTrack: React.FC<ProjectRaceTrackProps> = ({ projects, tasks, cl
         </div>
 
         <div className="p-6 overflow-x-auto">
-            {/* Stage Headers */}
             <div className="grid grid-cols-4 gap-4 mb-4 min-w-[700px]">
                 {stages.map(stage => (
                     <div key={stage.id} className="text-center">
@@ -147,58 +149,79 @@ const ProjectRaceTrack: React.FC<ProjectRaceTrackProps> = ({ projects, tasks, cl
                 ))}
             </div>
 
-            {/* Track Grid */}
-            <div className="relative min-w-[700px] space-y-3">
-                {/* Background Grid Lines */}
-                <div className="absolute inset-0 grid grid-cols-4 gap-4 pointer-events-none">
-                    <div className="border-r border-slate-100 border-dashed"></div>
-                    <div className="border-r border-slate-100 border-dashed"></div>
-                    <div className="border-r border-slate-100 border-dashed"></div>
-                    <div></div>
-                </div>
+            <div className="relative min-w-[700px]">
+                <div className="relative space-y-3" style={!expanded && racers.length > COLLAPSED_COUNT ? { maxHeight: `${COLLAPSED_COUNT * 68}px`, overflow: 'hidden' } : undefined}>
+                    <div className="absolute inset-0 grid grid-cols-4 gap-4 pointer-events-none">
+                        <div className="border-r border-slate-100 border-dashed"></div>
+                        <div className="border-r border-slate-100 border-dashed"></div>
+                        <div className="border-r border-slate-100 border-dashed"></div>
+                        <div></div>
+                    </div>
 
-                {racers.map((racer) => (
-                    <div key={racer.id} className="relative h-14 bg-slate-50/50 rounded-xl border border-slate-100 flex items-center px-2">
-                        {/* Progress Bar Background for the specific stage */}
-                        <div 
-                            className="absolute top-0 bottom-0 left-0 bg-blue-50/50 rounded-xl transition-all duration-1000"
-                            style={{ 
-                                width: `calc(${((racer.currentStage - 1) * 25)}% + ${racer.stageProgress / 4}%)` 
-                            }}
-                        ></div>
+                    {racers.map((racer) => (
+                        <div key={racer.id} className="relative h-14 bg-slate-50/50 rounded-xl border border-slate-100 flex items-center px-2">
+                            <div
+                                className="absolute top-0 bottom-0 left-0 bg-blue-50/50 rounded-xl transition-all duration-1000"
+                                style={{
+                                    width: `calc(${((racer.currentStage - 1) * 25)}% + ${racer.stageProgress / 4}%)`
+                                }}
+                            ></div>
 
-                        {/* Car / Avatar */}
-                        <div 
-                            className="absolute z-10 transition-all duration-1000 ease-out flex items-center"
-                            style={{ 
-                                left: `calc(${((racer.currentStage - 1) * 25)}% + ${(racer.stageProgress * 0.20)}%)`, // 0.20 to stay within the 25% block mostly
-                                transform: 'translateX(10px)'
-                            }}
-                        >
-                            <div className={`w-10 h-10 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs ${racer.imageUrl ? 'bg-white' : racer.color} relative group cursor-pointer overflow-hidden`}>
-                                {racer.imageUrl ? (
-                                    <img src={racer.imageUrl} alt={racer.name} className="w-full h-full object-cover" />
-                                ) : (
-                                    racer.name.charAt(0)
-                                )}
-
-                                {/* Tooltip */}
-                                <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-40 bg-slate-800 text-white text-xs rounded-lg p-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-xl z-20 text-center">
-                                    <p className="font-bold mb-1 line-clamp-1">{racer.name}</p>
-                                    <p className="text-slate-300">Этап {racer.currentStage}: {Math.round(racer.stageProgress)}%</p>
+                            <div
+                                className="absolute z-10 transition-all duration-1000 ease-out flex items-center"
+                                style={{
+                                    left: `calc(${((racer.currentStage - 1) * 25)}% + ${(racer.stageProgress * 0.20)}%)`,
+                                    transform: 'translateX(10px)'
+                                }}
+                            >
+                                <div className={`w-10 h-10 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs ${racer.imageUrl ? 'bg-white' : racer.color} relative group cursor-pointer overflow-hidden`}>
+                                    {racer.imageUrl ? (
+                                        <img src={racer.imageUrl} alt={racer.name} className="w-full h-full object-cover" />
+                                    ) : (
+                                        racer.name.charAt(0)
+                                    )}
+                                    <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-40 bg-slate-800 text-white text-xs rounded-lg p-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-xl z-20 text-center">
+                                        <p className="font-bold mb-1 line-clamp-1">{racer.name}</p>
+                                        <p className="text-slate-300">Этап {racer.currentStage}: {Math.round(racer.stageProgress)}%</p>
+                                    </div>
+                                </div>
+                                <div className="ml-3">
+                                    <p className="text-xs font-bold text-slate-700 w-32 truncate">{racer.clientName}</p>
+                                    <p className="text-[10px] text-slate-400 truncate w-32">{racer.name}</p>
                                 </div>
                             </div>
-                            <div className="ml-3">
-                                <p className="text-xs font-bold text-slate-700 w-32 truncate">{racer.clientName}</p>
-                                <p className="text-[10px] text-slate-400 truncate w-32">{racer.name}</p>
-                            </div>
                         </div>
-                    </div>
-                ))}
+                    ))}
 
-                {racers.length === 0 && (
-                    <div className="text-center py-8 text-slate-400 text-sm">
-                        Нет активных проектов в работе.
+                    {racers.length === 0 && (
+                        <div className="text-center py-8 text-slate-400 text-sm">
+                            Нет активных проектов в работе.
+                        </div>
+                    )}
+
+                    {!expanded && racers.length > COLLAPSED_COUNT && (
+                        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-white via-white/90 to-transparent pointer-events-none rounded-b-xl" />
+                    )}
+                </div>
+
+                {racers.length > COLLAPSED_COUNT && (
+                    <div className="flex justify-center mt-2 pt-1">
+                        <button
+                            onClick={() => setExpanded(!expanded)}
+                            className="flex items-center gap-1.5 px-5 py-2 text-sm font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all hover:shadow-sm"
+                        >
+                            {expanded ? (
+                                <>
+                                    <ChevronUp className="w-4 h-4" />
+                                    Свернуть
+                                </>
+                            ) : (
+                                <>
+                                    <ChevronDown className="w-4 h-4" />
+                                    Развернуть список ({racers.length - COLLAPSED_COUNT} ещё)
+                                </>
+                            )}
+                        </button>
                     </div>
                 )}
             </div>
