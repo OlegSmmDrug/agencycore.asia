@@ -292,6 +292,10 @@ const Integrations: React.FC = () => {
         return ['client_login', 'oauth_token'];
       case 'claude_api':
         return ['api_key'];
+      case 'telegram':
+        return ['bot_token'];
+      case 'email':
+        return ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'from_email'];
       case 'creatium':
       case 'webhook':
         return [];
