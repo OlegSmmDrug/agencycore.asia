@@ -1598,7 +1598,7 @@ const App: React.FC = () => {
       case 'whatsapp':
         return <WhatsAppManager currentUser={currentUser!} users={users} />;
       case 'ai-agents':
-        return <AIAgentsModule />;
+        return <AIAgentsModule onNavigateToIntegrations={() => setActiveTab('integrations')} />;
       case 'settings':
         return (
           <ProfileSettingsPage

@@ -12,8 +12,16 @@ import { aiLeadService } from '../services/aiLeadService';
 import { aiActionService } from '../services/aiActionService';
 import { aiKnowledgeService } from '../services/aiKnowledgeService';
 import { aiUsageService } from '../services/aiUsageService';
+import { integrationCredentialService } from '../services/integrationCredentialService';
+import { Key, Settings } from 'lucide-react';
 
-const AIAgentsModule: React.FC = () => {
+const CLAUDE_INTEGRATION_ID = 'e109a03d-7c0a-4819-8c03-0afdc253678d';
+
+interface AIAgentsModuleProps {
+  onNavigateToIntegrations?: () => void;
+}
+
+const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegrations }) => {
   const [view, setView] = useState<'hub' | 'agents' | 'review' | 'kb' | 'analytics'>('hub');
   const [agents, setAgents] = useState<AIAgent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
@@ -26,10 +34,30 @@ const AIAgentsModule: React.FC = () => {
     successRate: 100
   });
   const [loading, setLoading] = useState(true);
+  const [apiKeyConfigured, setApiKeyConfigured] = useState<boolean | null>(null);
 
   useEffect(() => {
+    checkClaudeApiKey();
     loadData();
   }, []);
+
+  const checkClaudeApiKey = async () => {
+    const envKey = import.meta.env.VITE_CLAUDE_API_KEY || '';
+    if (envKey) {
+      setApiKeyConfigured(true);
+      return;
+    }
+
+    try {
+      const hasKey = await integrationCredentialService.hasCredentials(
+        CLAUDE_INTEGRATION_ID,
+        ['api_key']
+      );
+      setApiKeyConfigured(hasKey);
+    } catch {
+      setApiKeyConfigured(false);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -158,8 +186,74 @@ const AIAgentsModule: React.FC = () => {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
           <p className="text-sm font-bold text-gray-600">Загрузка AI-агентов...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (apiKeyConfigured === false) {
+    return (
+      <div className="relative h-screen overflow-hidden">
+        <div className="absolute inset-0 blur-sm opacity-40 pointer-events-none select-none">
+          <div className="flex flex-col md:flex-row h-full bg-[#f8f9fa] text-gray-900 font-sans">
+            <aside className="w-full md:w-64 border-r bg-white shrink-0">
+              <div className="p-6 border-b">
+                <h2 className="text-xl font-black text-gray-900">ИИ-Агенты</h2>
+                <p className="text-xs text-gray-500 mt-1">AI Operations Center</p>
+              </div>
+              <nav className="p-4 space-y-2">
+                <div className="px-4 py-3 rounded-xl bg-blue-50 text-blue-600 font-bold text-sm">Центр управления</div>
+                <div className="px-4 py-3 rounded-xl text-gray-400 font-bold text-sm">База знаний</div>
+                <div className="px-4 py-3 rounded-xl text-gray-400 font-bold text-sm">Аналитика</div>
+                <div className="px-4 py-3 rounded-xl text-gray-400 font-bold text-sm">Панель контроля</div>
+              </nav>
+              <div className="p-4 border-t">
+                <p className="text-xs font-bold text-gray-400 uppercase mb-3">Агенты (6)</p>
+                <div className="space-y-2">
+                  {['Продавец', 'Проектописатель', 'ТЗ-составитель', 'Контролёр', 'Финализатор', 'Отзывник'].map((name) => (
+                    <div key={name} className="px-3 py-2 rounded-xl text-xs font-medium text-gray-400 flex items-center justify-between">
+                      <span>{name}</span>
+                      <span className="w-2 h-2 rounded-full bg-gray-300"></span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </aside>
+            <main className="flex-1 p-10">
+              <div className="grid grid-cols-4 gap-6 mb-8">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="bg-white rounded-2xl p-6 h-28 border border-gray-100"></div>
+                ))}
+              </div>
+              <div className="grid grid-cols-3 gap-6">
+                {[1, 2, 3, 4, 5, 6].map(i => (
+                  <div key={i} className="bg-white rounded-2xl p-6 h-40 border border-gray-100"></div>
+                ))}
+              </div>
+            </main>
+          </div>
+        </div>
+
+        <div className="absolute inset-0 flex items-center justify-center z-10 bg-slate-900/20 backdrop-blur-[2px]">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-8 max-w-md w-full mx-4 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mx-auto mb-5">
+              <Key className="w-8 h-8 text-amber-500" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-800 mb-2">Подключите Claude API</h2>
+            <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+              Для работы ИИ-агентов необходим ключ Claude API от Anthropic.
+              Подключите его в разделе Интеграции, чтобы активировать модуль.
+            </p>
+            <button
+              onClick={() => onNavigateToIntegrations?.()}
+              className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+              Перейти в Интеграции
+            </button>
+          </div>
         </div>
       </div>
     );
