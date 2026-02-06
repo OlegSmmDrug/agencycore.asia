@@ -1,20 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { authService } from '../services/authService';
-import { BarChart3, Users, TrendingUp, TrendingDown, DollarSign, Activity, Search, Building2, Plus, Edit, LogOut, Gift, Link2, UserCheck, Clock, CheckCircle, Ban, Trash2, Server, FileText } from 'lucide-react';
+import { BarChart3, Users, DollarSign, Search, Building2, Plus, Edit, LogOut, Gift, Link2, UserCheck, Clock, CheckCircle, Ban, Trash2, Server, FileText } from 'lucide-react';
 import OrganizationEditModal from './OrganizationEditModal';
 import SystemMetricsPanel from './SystemMetricsPanel';
 import LegalPagesAdmin from './LegalPagesAdmin';
-
-interface PlatformStats {
-  total_mrr: number;
-  active_users: number;
-  total_organizations: number;
-  active_organizations: number;
-  new_organizations_last_month: number;
-  churned_organizations_last_month: number;
-  churn_rate: number;
-}
+import SuperAdminOverview from './SuperAdminOverview';
 
 interface Organization {
   id: string;
@@ -74,7 +65,6 @@ interface AffiliateAdminStats {
 
 const SuperAdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'affiliate' | 'legal' | 'system'>('overview');
-  const [stats, setStats] = useState<PlatformStats | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -100,31 +90,15 @@ const SuperAdminDashboard: React.FC = () => {
 
   useEffect(() => {
     if (currentUserId) {
-      loadPlatformStats();
       if (activeTab === 'tenants') {
         loadOrganizations();
       }
       if (activeTab === 'affiliate') {
         loadAffiliateData();
       }
-    }
-  }, [activeTab, currentUserId]);
-
-  const loadPlatformStats = async () => {
-    if (!currentUserId) return;
-
-    try {
-      const { data, error } = await supabase.rpc('get_platform_statistics', {
-        user_id: currentUserId
-      });
-      if (error) throw error;
-      setStats(data);
-    } catch (error) {
-      console.error('Error loading platform stats:', error);
-    } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab, currentUserId]);
 
   const loadOrganizations = async () => {
     if (!currentUserId) return;
@@ -377,123 +351,11 @@ const SuperAdminDashboard: React.FC = () => {
           </button>
         </div>
 
-        {activeTab === 'overview' && (
-          <div className="space-y-6">
-            {stats ? (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <p className="text-xs font-medium text-slate-500 mb-1">Общий MRR</p>
-                        <h3 className="text-2xl font-bold text-slate-800">${stats.total_mrr.toLocaleString()}</h3>
-                      </div>
-                      <div className="p-2 bg-green-100 rounded-lg">
-                        <DollarSign className="w-5 h-5 text-green-600" />
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-500">Ежемесячный доход</p>
-                  </div>
-
-                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <p className="text-xs font-medium text-slate-500 mb-1">Активные пользователи</p>
-                        <h3 className="text-2xl font-bold text-slate-800">{stats.active_users.toLocaleString()}</h3>
-                      </div>
-                      <div className="p-2 bg-blue-100 rounded-lg">
-                        <Users className="w-5 h-5 text-blue-600" />
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-500">Всего пользователей</p>
-                  </div>
-
-                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <p className="text-xs font-medium text-slate-500 mb-1">Компании</p>
-                        <h3 className="text-2xl font-bold text-slate-800">{stats.active_organizations}/{stats.total_organizations}</h3>
-                      </div>
-                      <div className="p-2 bg-orange-100 rounded-lg">
-                        <Building2 className="w-5 h-5 text-orange-600" />
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-500">Активных из общего числа</p>
-                  </div>
-
-                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <p className="text-xs font-medium text-slate-500 mb-1">Отток</p>
-                        <h3 className="text-2xl font-bold text-slate-800">{stats.churn_rate}%</h3>
-                      </div>
-                      <div className="p-2 bg-red-100 rounded-lg">
-                        <TrendingDown className="w-5 h-5 text-red-600" />
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-500">Churn rate за месяц</p>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-                  <h3 className="text-lg font-bold text-slate-800 mb-6">Статистика платформы</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="flex items-center justify-between py-4 border-b border-slate-100">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-green-100 rounded-lg">
-                          <TrendingUp className="w-4 h-4 text-green-600" />
-                        </div>
-                        <span className="text-sm text-slate-600">Новых компаний за месяц</span>
-                      </div>
-                      <span className="text-lg font-bold text-slate-800">+{stats.new_organizations_last_month}</span>
-                    </div>
-
-                    <div className="flex items-center justify-between py-4 border-b border-slate-100">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-red-100 rounded-lg">
-                          <TrendingDown className="w-4 h-4 text-red-600" />
-                        </div>
-                        <span className="text-sm text-slate-600">Отток за месяц</span>
-                      </div>
-                      <span className="text-lg font-bold text-slate-800">-{stats.churned_organizations_last_month}</span>
-                    </div>
-
-                    <div className="flex items-center justify-between py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-emerald-100 rounded-lg">
-                          <Activity className="w-4 h-4 text-emerald-600" />
-                        </div>
-                        <span className="text-sm text-slate-600">Здоровье системы</span>
-                      </div>
-                      <span className="text-lg font-bold text-emerald-600">99.98%</span>
-                    </div>
-
-                    <div className="flex items-center justify-between py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-100 rounded-lg">
-                          <DollarSign className="w-4 h-4 text-blue-600" />
-                        </div>
-                        <span className="text-sm text-slate-600">Средний доход на пользователя</span>
-                      </div>
-                      <span className="text-lg font-bold text-slate-800">$17.50</span>
-                    </div>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="bg-white p-12 rounded-2xl shadow-sm border border-slate-200 text-center">
-                <div className="max-w-md mx-auto">
-                  <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <BarChart3 className="w-8 h-8 text-slate-400" />
-                  </div>
-                  <h3 className="text-xl font-bold text-slate-800 mb-2">Нет данных</h3>
-                  <p className="text-slate-600">
-                    Статистика появится после создания первых компаний и пользователей в системе.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
+        {activeTab === 'overview' && currentUserId && (
+          <SuperAdminOverview
+            currentUserId={currentUserId}
+            onNavigateToTab={setActiveTab}
+          />
         )}
 
         {activeTab === 'tenants' && (
@@ -851,7 +713,6 @@ const SuperAdminDashboard: React.FC = () => {
           onClose={() => setSelectedOrganization(null)}
           onUpdate={() => {
             loadOrganizations();
-            loadPlatformStats();
           }}
         />
       )}
