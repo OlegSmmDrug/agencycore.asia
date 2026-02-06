@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Document, User, SystemRole } from '../types';
 import { noteImageService } from '../services/noteImageService';
 import UserAvatar from './UserAvatar';
@@ -27,8 +27,8 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
   const [showNesting, setShowNesting] = useState(true);
   const [showCover, setShowCover] = useState(false);
 
-  const [activeColorMenu, setActiveColorMenu] = useState<'text' | 'highlight' | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+  const editorWrapperRef = useRef<HTMLDivElement>(null);
 
   const [localTitle, setLocalTitle] = useState('');
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -36,6 +36,12 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
   const [uploadingImage, setUploadingImage] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [floatingToolbar, setFloatingToolbar] = useState<{ show: boolean; top: number; left: number }>({ show: false, top: 0, left: 0 });
+  const [blockMenuOpen, setBlockMenuOpen] = useState(false);
+  const [blockMenuPos, setBlockMenuPos] = useState({ top: 0, left: 0 });
+  const floatingToolbarRef = useRef<HTMLDivElement>(null);
+  const savedSelectionRef = useRef<Range | null>(null);
 
   const handleSelectDoc = (docId: string) => {
     setSelectedDocId(docId);
@@ -73,19 +79,56 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
       };
   }, []);
 
-  // Click outside listener for color menus
-  useEffect(() => {
-      const handleClickOutside = (event: MouseEvent) => {
-          if (activeColorMenu && !(event.target as Element).closest('.color-menu-container')) {
-              setActiveColorMenu(null);
-          }
-      };
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [activeColorMenu]);
-
   const selectedDoc = documents.find(d => d.id === selectedDocId);
   const author = users.find(u => u.id === selectedDoc?.authorId);
+
+  const saveSelection = useCallback(() => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
+    }
+  }, []);
+
+  const restoreSelection = useCallback(() => {
+    if (savedSelectionRef.current) {
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(savedSelectionRef.current);
+    }
+  }, []);
+
+  const updateFloatingToolbar = useCallback(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount || !editorRef.current || !editorWrapperRef.current) {
+      setFloatingToolbar(prev => ({ ...prev, show: false }));
+      return;
+    }
+
+    const range = sel.getRangeAt(0);
+    if (!editorRef.current.contains(range.commonAncestorContainer)) {
+      setFloatingToolbar(prev => ({ ...prev, show: false }));
+      return;
+    }
+
+    const rect = range.getBoundingClientRect();
+    const wrapperRect = editorWrapperRef.current.getBoundingClientRect();
+
+    const toolbarWidth = 320;
+    let left = rect.left + rect.width / 2 - wrapperRect.left - toolbarWidth / 2;
+    left = Math.max(0, Math.min(left, wrapperRect.width - toolbarWidth));
+    const top = rect.top - wrapperRect.top - 48;
+
+    saveSelection();
+    setFloatingToolbar({ show: true, top, left });
+  }, [saveSelection]);
+
+  useEffect(() => {
+    const onSelectionChange = () => {
+      updateFloatingToolbar();
+    };
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () => document.removeEventListener('selectionchange', onSelectionChange);
+  }, [updateFloatingToolbar]);
 
   // --- ACCESS CONTROL ---
   const hasAccess = (doc: Document) => {
@@ -97,26 +140,22 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
 
   // --- EDITOR LOGIC ---
   const execCmd = (command: string, value: string | undefined = undefined) => {
+      restoreSelection();
       document.execCommand(command, false, value);
       if (editorRef.current) {
-          editorRef.current.focus();
           handleUpdateContent(editorRef.current.innerHTML);
       }
-  };
-
-  const applyColor = (type: 'text' | 'highlight', color: string) => {
-      // Prevent losing focus is handled by onMouseDown preventDefault on buttons
-      if (type === 'text') {
-          execCmd('foreColor', color);
-      } else {
-          execCmd('hiliteColor', color); // Use 'hiliteColor' for background
-      }
-      setActiveColorMenu(null);
+      setTimeout(updateFloatingToolbar, 10);
   };
 
   const handleInsertLink = () => {
+      saveSelection();
       const url = prompt("Введите URL ссылки:", "https://");
-      if (url) execCmd('createLink', url);
+      if (url) {
+        restoreSelection();
+        document.execCommand('createLink', false, url);
+        if (editorRef.current) handleUpdateContent(editorRef.current.innerHTML);
+      }
   };
 
   const insertImageAtCursor = (imageUrl: string) => {
@@ -420,164 +459,67 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
       );
   };
 
-  // --- CONSTANTS FOR COLORS ---
-  const textColors = [
-      { name: 'Default', color: 'inherit' },
-      { name: 'Gray', color: '#6B7280' },
-      { name: 'Red', color: '#EF4444' },
-      { name: 'Orange', color: '#F97316' },
-      { name: 'Yellow', color: '#EAB308' },
-      { name: 'Green', color: '#22C55E' },
-      { name: 'Blue', color: '#3B82F6' },
-      { name: 'Purple', color: '#A855F7' },
-      { name: 'Pink', color: '#EC4899' },
+  const blockMenuItems = [
+    { label: 'Заголовок 1', icon: 'H1', action: () => execCmd('formatBlock', 'H1') },
+    { label: 'Заголовок 2', icon: 'H2', action: () => execCmd('formatBlock', 'H2') },
+    { label: 'Заголовок 3', icon: 'H3', action: () => execCmd('formatBlock', 'H3') },
+    { label: 'Обычный текст', icon: 'P', action: () => execCmd('formatBlock', 'P') },
+    { label: 'Маркированный список', icon: 'list', action: () => execCmd('insertUnorderedList') },
+    { label: 'Нумерованный список', icon: 'olist', action: () => execCmd('insertOrderedList') },
+    { label: 'Чек-лист', icon: 'check', action: () => handleInsertChecklist() },
+    { label: 'Цитата', icon: 'quote', action: () => execCmd('formatBlock', 'BLOCKQUOTE') },
+    { label: 'Разделитель', icon: 'hr', action: () => execCmd('insertHorizontalRule') },
+    { label: 'Код', icon: 'code', action: () => handleInsertCode() },
+    { label: 'Таблица', icon: 'table', action: () => handleInsertTable() },
+    { label: 'Изображение', icon: 'img', action: () => handleInsertImage() },
+    { label: 'Ссылка', icon: 'link', action: () => handleInsertLink() },
   ];
 
-  const highlightColors = [
-      { name: 'Default', color: 'transparent' },
-      { name: 'Gray', color: '#F3F4F6' },
-      { name: 'Red', color: '#FEE2E2' },
-      { name: 'Orange', color: '#FFEDD5' },
-      { name: 'Yellow', color: '#FEF9C3' },
-      { name: 'Green', color: '#DCFCE7' },
-      { name: 'Blue', color: '#DBEAFE' },
-      { name: 'Purple', color: '#F3E8FF' },
-      { name: 'Pink', color: '#FCE7F3' },
-  ];
+  const openBlockMenu = () => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && editorWrapperRef.current) {
+      const range = sel.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      const wrapperRect = editorWrapperRef.current.getBoundingClientRect();
+      setBlockMenuPos({
+        top: rect.bottom - wrapperRect.top + 8,
+        left: rect.left - wrapperRect.left,
+      });
+    }
+    setBlockMenuOpen(true);
+  };
 
-  // --- TOOLBAR ---
-  const Toolbar = () => (
-      <div className="flex flex-wrap items-center gap-1 border-b border-slate-100 p-1.5 md:p-2 mb-4 sticky top-0 bg-white z-10 text-slate-600">
-          {/* Undo/Redo */}
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd('undo')} className="p-1.5 hover:bg-slate-100 rounded text-slate-500" title="Отменить"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg></button>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd('redo')} className="p-1.5 hover:bg-slate-100 rounded text-slate-500" title="Повторить"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" /></svg></button>
-          <div className="w-px h-5 bg-slate-200 mx-2"></div>
-          
-          {/* Headings */}
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd('formatBlock', 'H1')} className="p-1.5 hover:bg-slate-100 rounded font-bold text-sm px-2 text-slate-700 hover:text-blue-600">H1</button>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd('formatBlock', 'H2')} className="p-1.5 hover:bg-slate-100 rounded font-bold text-sm px-2 text-slate-700 hover:text-blue-600">H2</button>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd('formatBlock', 'H3')} className="p-1.5 hover:bg-slate-100 rounded font-bold text-sm px-2 text-slate-700 hover:text-blue-600">H3</button>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd('formatBlock', 'P')} className="p-1.5 hover:bg-slate-100 rounded font-bold text-sm px-2 text-slate-700 hover:text-blue-600">P</button>
-          <div className="w-px h-5 bg-slate-200 mx-2"></div>
-
-          {/* BIUS */}
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd('bold')} className="p-1.5 hover:bg-slate-100 rounded font-bold text-slate-700 px-2" title="Жирный">B</button>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd('italic')} className="p-1.5 hover:bg-slate-100 rounded italic font-serif px-2" title="Курсив">I</button>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd('underline')} className="p-1.5 hover:bg-slate-100 rounded underline px-2" title="Подчеркнутый">U</button>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd('strikeThrough')} className="p-1.5 hover:bg-slate-100 rounded line-through px-2" title="Зачеркнутый">S</button>
-          <div className="w-px h-5 bg-slate-200 mx-2"></div>
-
-          {/* COLORS */}
-          <div className="relative color-menu-container">
-              <button 
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setActiveColorMenu(activeColorMenu === 'highlight' ? null : 'highlight')}
-                  className={`p-1.5 hover:bg-slate-100 rounded flex items-center space-x-0.5 ${activeColorMenu === 'highlight' ? 'bg-slate-100' : ''}`}
-                  title="Цвет выделения"
-              >
-                   <div className="flex flex-col items-center justify-center">
-                        <svg className="w-4 h-4 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                        <div className="w-4 h-1 bg-yellow-300 rounded-full mt-0.5"></div>
-                   </div>
-                   <svg className="w-2.5 h-2.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" /></svg>
-              </button>
-              
-              {activeColorMenu === 'highlight' && (
-                  <div className="absolute top-full left-0 mt-2 bg-white border border-slate-200 shadow-xl rounded-lg p-2 grid grid-cols-3 gap-2 z-50 w-40">
-                      {highlightColors.map(c => (
-                          <button 
-                            key={c.name}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => applyColor('highlight', c.color)}
-                            className="w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform flex items-center justify-center"
-                            style={{ backgroundColor: c.color }}
-                            title={c.name}
-                          >
-                              {c.name === 'Default' && <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>}
-                          </button>
-                      ))}
-                  </div>
-              )}
-          </div>
-
-          <div className="relative color-menu-container">
-              <button 
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setActiveColorMenu(activeColorMenu === 'text' ? null : 'text')}
-                  className={`p-1.5 hover:bg-slate-100 rounded flex items-center space-x-0.5 ${activeColorMenu === 'text' ? 'bg-slate-100' : ''}`}
-                  title="Цвет текста"
-              >
-                   <div className="flex flex-col items-center justify-center">
-                        <span className="font-serif font-bold text-lg leading-none text-slate-700">A</span>
-                        <div className="w-4 h-1 bg-red-500 rounded-full"></div>
-                   </div>
-                   <svg className="w-2.5 h-2.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" /></svg>
-              </button>
-
-              {activeColorMenu === 'text' && (
-                  <div className="absolute top-full left-0 mt-2 bg-white border border-slate-200 shadow-xl rounded-lg p-2 grid grid-cols-3 gap-2 z-50 w-40">
-                      {textColors.map(c => (
-                          <button 
-                            key={c.name}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => applyColor('text', c.color)}
-                            className="w-8 h-8 rounded-full border border-slate-100 hover:scale-110 transition-transform flex items-center justify-center"
-                            style={{ backgroundColor: c.color }}
-                            title={c.name}
-                          >
-                              {c.name === 'Default' && <span className="text-black font-bold">A</span>}
-                          </button>
-                      ))}
-                  </div>
-              )}
-          </div>
-          <div className="w-px h-5 bg-slate-200 mx-2"></div>
-
-          {/* Lists */}
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd('insertUnorderedList')} className="p-1.5 hover:bg-slate-100 rounded" title="Маркированный список"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg></button>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd('insertOrderedList')} className="p-1.5 hover:bg-slate-100 rounded" title="Нумерованный список"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" /></svg></button>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={handleInsertChecklist} className="p-1.5 hover:bg-slate-100 rounded" title="Чек-лист"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg></button>
-          <div className="w-px h-5 bg-slate-200 mx-2"></div>
-
-          {/* Align */}
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd('justifyLeft')} className="p-1.5 hover:bg-slate-100 rounded" title="По левому краю"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h10M4 18h16" /></svg></button>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd('justifyCenter')} className="p-1.5 hover:bg-slate-100 rounded" title="По центру"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M7 12h10M4 18h16" /></svg></button>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd('formatBlock', 'BLOCKQUOTE')} className="p-1.5 hover:bg-slate-100 rounded font-serif font-bold text-lg leading-none" title="Цитата">“</button>
-          
-          <div className="w-px h-5 bg-slate-200 mx-2"></div>
-
-          {/* Insert */}
-          <button onMouseDown={(e) => e.preventDefault()} onClick={handleInsertLink} className="p-1.5 hover:bg-slate-100 rounded" title="Ссылка"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg></button>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={handleInsertTable} className="p-1.5 hover:bg-slate-100 rounded flex items-center" title="Таблица">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M3 14h18m-9-4v8m-7-4h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2v-8a2 2 0 012-2z" /></svg>
-          </button> 
-          
-          <div className="w-px h-5 bg-slate-200 mx-2"></div>
-          
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd('insertHorizontalRule')} className="p-1.5 hover:bg-slate-100 rounded" title="Разделитель"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4" /></svg></button>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={handleInsertCode} className="p-1.5 hover:bg-slate-100 rounded" title="Код"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg></button> 
-          
-          <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={handleInsertImage}
-              disabled={uploadingImage}
-              className="p-1.5 hover:bg-slate-100 rounded flex items-center disabled:opacity-50"
-              title="Изображение"
-          >
-              {uploadingImage ? (
-                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-              ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-              )}
-          </button>
-      </div>
-  );
+  const renderBlockIcon = (icon: string) => {
+    switch (icon) {
+      case 'H1': return <span className="font-bold text-sm">H1</span>;
+      case 'H2': return <span className="font-bold text-sm">H2</span>;
+      case 'H3': return <span className="font-bold text-sm">H3</span>;
+      case 'P': return <span className="font-medium text-sm">T</span>;
+      case 'list': return <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>;
+      case 'olist': return <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" /></svg>;
+      case 'check': return <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>;
+      case 'quote': return <span className="font-serif font-bold text-base">"</span>;
+      case 'hr': return <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4" /></svg>;
+      case 'code': return <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>;
+      case 'table': return <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M3 14h18m-9-4v8m-7-4h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2v-8a2 2 0 012-2z" /></svg>;
+      case 'img': return <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>;
+      case 'link': return <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>;
+      default: return null;
+    }
+  };
 
   return (
     <div className="flex h-full bg-white md:bg-slate-50 overflow-hidden font-sans relative">
+        <style>{`
+            .kb-editor blockquote { border-left: 4px solid #e2e8f0; padding-left: 1rem; font-style: italic; color: #64748b; }
+            .kb-editor ul { list-style-type: disc; padding-left: 1.5rem; }
+            .kb-editor ol { list-style-type: decimal; padding-left: 1.5rem; }
+            .kb-editor h1 { font-size: 2rem; font-weight: 800; margin: 1.5rem 0 0.75rem; }
+            .kb-editor h2 { font-size: 1.5rem; font-weight: 700; margin: 1.25rem 0 0.5rem; }
+            .kb-editor h3 { font-size: 1.25rem; font-weight: 600; margin: 1rem 0 0.5rem; }
+            @keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+            .animate-fade-in { animation: fade-in 0.15s ease-out; }
+        `}</style>
         {/* LEFT SIDEBAR (TREE) */}
         <div className={`w-full md:w-72 lg:w-80 flex-shrink-0 bg-white md:bg-slate-50 border-r border-slate-200 flex flex-col pt-4 ${mobileView === 'editor' ? 'hidden md:flex' : 'flex'}`}>
             <div className="px-6 py-6 md:px-4 md:py-0 md:mb-4 shrink-0">
@@ -749,8 +691,6 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
                             </div>
                         </div>
 
-                        <div className="hidden md:block"><Toolbar /></div>
-
                         {/* Nested Pages List */}
                         {showNesting && documents.some(d => d.parentId === selectedDoc.id && !d.isArchived) && (
                             <div className="mb-4 space-y-1">
@@ -768,17 +708,74 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
                         )}
 
                         <input
-                            className="text-2xl md:text-4xl font-bold text-slate-900 border-none focus:ring-0 w-full p-0 mb-4 md:mb-6 placeholder-slate-300 bg-transparent outline-none"
+                            className="w-full text-3xl md:text-4xl font-black md:font-bold text-slate-900 border-none focus:ring-0 p-0 mb-6 placeholder-slate-200 md:placeholder-slate-300 bg-transparent outline-none tracking-tight"
                             value={localTitle}
                             onChange={(e) => handleUpdateTitle(e.target.value)}
                             placeholder="Без названия"
                         />
 
-                        {/* Editable Content */}
-                        <div className="relative">
+                        {/* Editor area with floating toolbar */}
+                        <div className="relative" ref={editorWrapperRef}>
+                            {/* Floating Selection Toolbar (Notion-style) */}
+                            {floatingToolbar.show && (
+                                <div
+                                    ref={floatingToolbarRef}
+                                    className="absolute z-50 animate-fade-in"
+                                    style={{ top: `${floatingToolbar.top}px`, left: `${floatingToolbar.left}px` }}
+                                >
+                                    <div className="bg-slate-900 text-white rounded-xl px-1.5 py-1 flex items-center shadow-2xl border border-white/10 backdrop-blur-xl">
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('bold')} className="px-2.5 py-1.5 hover:bg-white/10 rounded-lg font-bold text-sm transition-colors">B</button>
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('italic')} className="px-2.5 py-1.5 hover:bg-white/10 rounded-lg italic font-serif text-sm transition-colors">I</button>
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('underline')} className="px-2.5 py-1.5 hover:bg-white/10 rounded-lg underline text-sm transition-colors">U</button>
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('strikeThrough')} className="px-2.5 py-1.5 hover:bg-white/10 rounded-lg line-through text-sm transition-colors">S</button>
+                                        <div className="w-px h-5 bg-white/15 mx-0.5"></div>
+                                        <button onMouseDown={e => e.preventDefault()} onClick={handleInsertLink} className="px-2 py-1.5 hover:bg-white/10 rounded-lg transition-colors">
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                                        </button>
+                                        <div className="w-px h-5 bg-white/15 mx-0.5"></div>
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('formatBlock', 'H2')} className="px-2 py-1.5 hover:bg-white/10 rounded-lg text-xs font-bold transition-colors">H2</button>
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('formatBlock', 'H3')} className="px-2 py-1.5 hover:bg-white/10 rounded-lg text-xs font-bold transition-colors">H3</button>
+                                        <div className="w-px h-5 bg-white/15 mx-0.5"></div>
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => { restoreSelection(); document.execCommand('hiliteColor', false, '#FEF9C3'); if (editorRef.current) handleUpdateContent(editorRef.current.innerHTML); }} className="px-2 py-1.5 hover:bg-white/10 rounded-lg transition-colors flex items-center" title="Выделить">
+                                            <div className="w-4 h-4 rounded bg-yellow-200 border border-yellow-300"></div>
+                                        </button>
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => { restoreSelection(); document.execCommand('hiliteColor', false, '#DBEAFE'); if (editorRef.current) handleUpdateContent(editorRef.current.innerHTML); }} className="px-2 py-1.5 hover:bg-white/10 rounded-lg transition-colors flex items-center" title="Выделить">
+                                            <div className="w-4 h-4 rounded bg-blue-200 border border-blue-300"></div>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Block Menu ("+" button) */}
+                            {blockMenuOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-40" onClick={() => setBlockMenuOpen(false)} />
+                                    <div
+                                        className="absolute z-50 bg-white rounded-xl shadow-2xl border border-slate-200 w-56 max-h-80 overflow-y-auto animate-fade-in"
+                                        style={{ top: `${blockMenuPos.top}px`, left: `${blockMenuPos.left}px` }}
+                                    >
+                                        <div className="p-1">
+                                            <p className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Блоки</p>
+                                            {blockMenuItems.map((item) => (
+                                                <button
+                                                    key={item.label}
+                                                    onClick={() => { item.action(); setBlockMenuOpen(false); }}
+                                                    className="flex items-center w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg transition-colors text-left"
+                                                >
+                                                    <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center mr-3 text-slate-500 flex-shrink-0">
+                                                        {renderBlockIcon(item.icon)}
+                                                    </span>
+                                                    {item.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+
                             <div
                                 ref={editorRef}
-                                className="prose prose-slate max-w-none focus:outline-none min-h-[400px] pb-20"
+                                className="kb-editor prose prose-slate prose-lg max-w-none focus:outline-none min-h-[50vh] pb-20 text-slate-700 leading-relaxed"
                                 contentEditable
                                 suppressContentEditableWarning
                                 onInput={(e) => handleUpdateContent(e.currentTarget.innerHTML)}
@@ -813,23 +810,14 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
                         />
                     </div>
 
-                    {/* Mobile Floating Toolbar */}
-                    <div className="md:hidden fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white rounded-[2rem] px-6 py-3.5 flex items-center space-x-6 shadow-2xl z-40 border border-white/10 backdrop-blur-xl">
-                        <button onClick={() => execCmd('bold')} className="font-black text-lg hover:text-blue-400 transition-colors">B</button>
-                        <button onClick={() => execCmd('italic')} className="italic serif text-lg hover:text-blue-400 transition-colors">I</button>
-                        <button onClick={() => execCmd('insertUnorderedList')} className="hover:text-blue-400 transition-colors"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg></button>
-                        <div className="h-6 w-px bg-white/10"></div>
-                        <button onClick={() => execCmd('formatBlock', 'H2')} className="text-sm font-black text-slate-400 hover:text-white">H2</button>
+                    {/* Floating "+" Block Menu Button */}
+                    <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-40 flex items-center space-x-3">
                         <button
-                            onClick={() => fileInputRef.current?.click()}
-                            className="hover:text-blue-400 transition-colors"
-                            disabled={uploadingImage}
+                            onClick={openBlockMenu}
+                            className="w-10 h-10 bg-slate-900 hover:bg-slate-800 text-white rounded-full shadow-2xl flex items-center justify-center transition-all active:scale-95 border border-white/10"
+                            title="Добавить блок"
                         >
-                            {uploadingImage ? (
-                                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                            ) : (
-                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                            )}
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path d="M12 4v16m8-8H4" /></svg>
                         </button>
                     </div>
                 </>
