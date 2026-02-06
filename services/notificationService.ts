@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { SystemNotification } from '../types';
+import { telegramNotificationService } from './telegramNotificationService';
 
 export const notificationService = {
   async getByUserId(userId: string): Promise<SystemNotification[]> {
@@ -75,6 +76,10 @@ export const notificationService = {
       console.error('Error creating notification:', error);
       throw error;
     }
+
+    telegramNotificationService
+      .sendNotification(notification.userId, notification.title, notification.message, notification.type)
+      .catch(err => console.error('Telegram notification failed:', err));
 
     return {
       id: data.id,

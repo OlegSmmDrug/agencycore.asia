@@ -1,9 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { User, Mail, Lock, Camera, Save, Shield, UserIcon, CheckCircle, AlertCircle, Eye, EyeOff, CreditCard, Gift } from 'lucide-react';
+import { User, Mail, Lock, Camera, Save, Shield, UserIcon, CheckCircle, AlertCircle, Eye, EyeOff, CreditCard, Gift, Bell } from 'lucide-react';
 import { User as UserType, SystemRole } from '../types';
 import { supabase } from '../lib/supabase';
 import BillingSection from './BillingSection';
 import { AffiliateProgram } from './affiliate/AffiliateProgram';
+import { NotificationsTab } from './NotificationsTab';
 import UserAvatar from './UserAvatar';
 
 interface ProfileSettingsPageProps {
@@ -12,7 +13,7 @@ interface ProfileSettingsPageProps {
 }
 
 export const ProfileSettingsPage: React.FC<ProfileSettingsPageProps> = ({ user, onUpdate }) => {
-    const [activeTab, setActiveTab] = useState<'personal' | 'contact' | 'security' | 'billing' | 'affiliate'>('personal');
+    const [activeTab, setActiveTab] = useState<'personal' | 'contact' | 'notifications' | 'security' | 'billing' | 'affiliate'>('personal');
     const isAdmin = user.systemRole === SystemRole.ADMIN;
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -246,6 +247,17 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsPageProps> = ({ user, 
                             <span className="text-sm lg:text-base">Контактная информация</span>
                         </button>
                         <button
+                            onClick={() => setActiveTab('notifications')}
+                            className={`flex-shrink-0 lg:w-full flex items-center gap-2 lg:gap-3 px-3 lg:px-4 py-2 lg:py-3 rounded-lg text-left transition-colors whitespace-nowrap ${
+                                activeTab === 'notifications'
+                                    ? 'bg-blue-50 text-blue-700 font-medium'
+                                    : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                        >
+                            <Bell className="w-5 h-5 flex-shrink-0" />
+                            <span className="text-sm lg:text-base">Уведомления</span>
+                        </button>
+                        <button
                             onClick={() => setActiveTab('security')}
                             className={`flex-shrink-0 lg:w-full flex items-center gap-2 lg:gap-3 px-3 lg:px-4 py-2 lg:py-3 rounded-lg text-left transition-colors whitespace-nowrap ${
                                 activeTab === 'security'
@@ -398,6 +410,19 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsPageProps> = ({ user, 
                                     {isLoading ? 'Сохранение...' : 'Сохранить изменения'}
                                 </button>
                             </div>
+                        )}
+
+                        {activeTab === 'notifications' && (
+                            <NotificationsTab
+                                userId={user.id}
+                                userEmail={user.email}
+                                organizationId={(() => {
+                                    try {
+                                        const stored = localStorage.getItem('currentUser');
+                                        return stored ? JSON.parse(stored).organizationId : '';
+                                    } catch { return ''; }
+                                })()}
+                            />
                         )}
 
                         {activeTab === 'security' && (
