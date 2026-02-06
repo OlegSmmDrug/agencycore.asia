@@ -397,6 +397,126 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
               </div>
             ))}
           </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+            <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <Plus className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-slate-800">Дополнительные пользователи</h3>
+                  <p className="text-xs sm:text-sm text-slate-500">3$ за пользователя в месяц</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-3">
+                    Количество пользователей:
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setAdditionalUsers(Math.max(0, additionalUsers - 1))}
+                      disabled={additionalUsers === 0}
+                      className="w-10 h-10 rounded-lg border-2 border-slate-300 flex items-center justify-center hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <span className="text-xl font-semibold text-slate-600">&minus;</span>
+                    </button>
+                    <input
+                      type="number"
+                      value={additionalUsers}
+                      onChange={(e) => setAdditionalUsers(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="flex-1 text-center text-2xl font-bold border-2 border-slate-200 rounded-lg py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      min="0"
+                    />
+                    <button
+                      onClick={() => setAdditionalUsers(additionalUsers + 1)}
+                      className="w-10 h-10 rounded-lg border-2 border-blue-500 bg-blue-500 text-white flex items-center justify-center hover:bg-blue-600 transition-colors"
+                    >
+                      <span className="text-xl font-semibold">+</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm text-slate-600">Стоимость:</span>
+                    <span className="text-lg font-bold text-blue-600">{additionalUsers * 3}$ / месяц</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-600">В тенге:</span>
+                    <span className="text-lg font-bold text-blue-600">{(additionalUsers * 3 * 450).toLocaleString()} ₸ / месяц</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                  <TrendingUp className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-slate-800">Период подписки</h3>
+                  <p className="text-xs sm:text-sm text-slate-500">Получите бонусные месяцы</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {[
+                  { id: '6months', label: '6 месяцев', bonus: '+1 месяц в подарок', months: 6, bonusMonths: 1 },
+                  { id: '9months', label: '9 месяцев', bonus: '+1 месяц в подарок', months: 9, bonusMonths: 1 },
+                  { id: '1year', label: '1 год', bonus: '+2 месяца в подарок', months: 12, bonusMonths: 2 },
+                  { id: '2years', label: '2 года', bonus: '+6 месяцев в подарок', months: 24, bonusMonths: 6 },
+                ].map((period) => (
+                  <button
+                    key={period.id}
+                    onClick={() => setSubscriptionPeriod(period.id as any)}
+                    className={`w-full text-left p-3 sm:p-4 rounded-lg border-2 transition-all ${
+                      subscriptionPeriod === period.id
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                            subscriptionPeriod === period.id
+                              ? 'border-blue-500 bg-blue-500'
+                              : 'border-slate-300'
+                          }`}>
+                            {subscriptionPeriod === period.id && (
+                              <div className="w-2.5 h-2.5 rounded-full bg-white"></div>
+                            )}
+                          </div>
+                          <span className="font-semibold text-slate-800 text-sm sm:text-base">{period.label}</span>
+                        </div>
+                        <p className="text-xs sm:text-sm text-blue-600 font-medium ml-7 mt-1">{period.bonus}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-4 bg-green-50 rounded-lg p-4">
+                <div className="text-sm text-slate-600 mb-1">Итого к оплате:</div>
+                <div className="text-2xl font-bold text-green-600">
+                  {(() => {
+                    const periods: Record<string, { months: number; price: number }> = {
+                      '6months': { months: 6, price: 6 },
+                      '9months': { months: 9, price: 9 },
+                      '1year': { months: 12, price: 12 },
+                      '2years': { months: 24, price: 24 }
+                    };
+                    const selected = periods[subscriptionPeriod];
+                    return `${selected.price * 10}$ за ${selected.months} мес.`;
+                  })()}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
