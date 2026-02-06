@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { authService } from '../services/authService';
-import { BarChart3, Users, TrendingUp, TrendingDown, DollarSign, Activity, Search, Building2, Plus, Edit, LogOut } from 'lucide-react';
+import { BarChart3, Users, TrendingUp, TrendingDown, DollarSign, Activity, Search, Building2, Plus, Edit, LogOut, Gift, Link2, UserCheck, Clock, CheckCircle, Ban, Trash2 } from 'lucide-react';
 import OrganizationEditModal from './OrganizationEditModal';
 
 interface PlatformStats {
@@ -31,14 +31,60 @@ interface Organization {
   subscription_end_date?: string;
 }
 
+interface AffiliatePromoCode {
+  id: string;
+  code: string;
+  org_name: string;
+  user_name: string;
+  registrations_count: number;
+  payments_count: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+interface AffiliateReferral {
+  id: string;
+  referrer_org_name: string;
+  referred_org_name: string;
+  level: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+interface AffiliatePayout {
+  id: string;
+  user_name: string;
+  org_name: string;
+  amount: number;
+  status: string;
+  bank_details: string;
+  requested_at: string;
+  processed_at: string | null;
+}
+
+interface AffiliateAdminStats {
+  totalPromoCodes: number;
+  totalReferrals: number;
+  activeReferrals: number;
+  pendingPayouts: number;
+  totalCommissions: number;
+}
+
 const SuperAdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'tenants'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'affiliate'>('overview');
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
+
+  const [affPromoCodes, setAffPromoCodes] = useState<AffiliatePromoCode[]>([]);
+  const [affReferrals, setAffReferrals] = useState<AffiliateReferral[]>([]);
+  const [affPayouts, setAffPayouts] = useState<AffiliatePayout[]>([]);
+  const [affStats, setAffStats] = useState<AffiliateAdminStats>({ totalPromoCodes: 0, totalReferrals: 0, activeReferrals: 0, pendingPayouts: 0, totalCommissions: 0 });
+  const [affLoading, setAffLoading] = useState(false);
+  const [affSubTab, setAffSubTab] = useState<'codes' | 'referrals' | 'payouts'>('codes');
 
   useEffect(() => {
     const loadCurrentUser = async () => {
@@ -55,6 +101,9 @@ const SuperAdminDashboard: React.FC = () => {
       loadPlatformStats();
       if (activeTab === 'tenants') {
         loadOrganizations();
+      }
+      if (activeTab === 'affiliate') {
+        loadAffiliateData();
       }
     }
   }, [activeTab, currentUserId]);
@@ -93,6 +142,106 @@ const SuperAdminDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadAffiliateData = async () => {
+    setAffLoading(true);
+    try {
+      const { data: codes } = await supabase
+        .from('promo_codes')
+        .select('*, users!promo_codes_user_id_fkey(name), organizations!promo_codes_organization_id_fkey(name)')
+        .order('created_at', { ascending: false });
+
+      const mappedCodes: AffiliatePromoCode[] = (codes || []).map((c: any) => ({
+        id: c.id,
+        code: c.code,
+        org_name: c.organizations?.name || '-',
+        user_name: c.users?.name || '-',
+        registrations_count: c.registrations_count || 0,
+        payments_count: c.payments_count || 0,
+        is_active: c.is_active,
+        created_at: c.created_at,
+      }));
+      setAffPromoCodes(mappedCodes);
+
+      const { data: regs } = await supabase
+        .from('referral_registrations')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      const regOrgIds = [...new Set((regs || []).flatMap((r: any) => [r.referrer_org_id, r.referred_org_id]))];
+      const orgMap: Record<string, string> = {};
+      if (regOrgIds.length > 0) {
+        const { data: orgs } = await supabase.from('organizations').select('id, name').in('id', regOrgIds);
+        (orgs || []).forEach((o: any) => { orgMap[o.id] = o.name; });
+      }
+
+      const mappedRefs: AffiliateReferral[] = (regs || []).map((r: any) => ({
+        id: r.id,
+        referrer_org_name: orgMap[r.referrer_org_id] || '-',
+        referred_org_name: orgMap[r.referred_org_id] || '-',
+        level: r.level,
+        is_active: r.is_active,
+        created_at: r.created_at,
+      }));
+      setAffReferrals(mappedRefs);
+
+      const { data: payouts } = await supabase
+        .from('referral_payouts')
+        .select('*, users!referral_payouts_user_id_fkey(name), organizations!referral_payouts_organization_id_fkey(name)')
+        .order('requested_at', { ascending: false });
+
+      const mappedPayouts: AffiliatePayout[] = (payouts || []).map((p: any) => ({
+        id: p.id,
+        user_name: p.users?.name || '-',
+        org_name: p.organizations?.name || '-',
+        amount: Number(p.amount),
+        status: p.status,
+        bank_details: p.bank_details || '',
+        requested_at: p.requested_at,
+        processed_at: p.processed_at,
+      }));
+      setAffPayouts(mappedPayouts);
+
+      const { count: totalCodes } = await supabase.from('promo_codes').select('id', { count: 'exact', head: true });
+      const { count: totalRefs } = await supabase.from('referral_registrations').select('id', { count: 'exact', head: true }).eq('level', 1);
+      const { count: activeRefs } = await supabase.from('referral_registrations').select('id', { count: 'exact', head: true }).eq('level', 1).eq('is_active', true);
+      const { count: pendingPay } = await supabase.from('referral_payouts').select('id', { count: 'exact', head: true }).eq('status', 'pending');
+      const { data: commData } = await supabase.from('referral_transactions').select('commission_amount');
+      const totalComm = (commData || []).reduce((s: number, t: any) => s + Number(t.commission_amount), 0);
+
+      setAffStats({
+        totalPromoCodes: totalCodes || 0,
+        totalReferrals: totalRefs || 0,
+        activeReferrals: activeRefs || 0,
+        pendingPayouts: pendingPay || 0,
+        totalCommissions: totalComm,
+      });
+    } catch (err) {
+      console.error('Error loading affiliate data:', err);
+    } finally {
+      setAffLoading(false);
+    }
+  };
+
+  const handlePayoutAction = async (payoutId: string, action: 'paid' | 'rejected') => {
+    await supabase
+      .from('referral_payouts')
+      .update({ status: action, processed_at: new Date().toISOString() })
+      .eq('id', payoutId);
+    loadAffiliateData();
+  };
+
+  const handleDeletePromoCode = async (id: string) => {
+    if (!confirm('Удалить промокод?')) return;
+    await supabase.from('promo_codes').delete().eq('id', id);
+    loadAffiliateData();
+  };
+
+  const handleTogglePromoCode = async (id: string, currentActive: boolean) => {
+    await supabase.from('promo_codes').update({ is_active: !currentActive }).eq('id', id);
+    loadAffiliateData();
   };
 
   const handleSearch = () => {
@@ -183,6 +332,19 @@ const SuperAdminDashboard: React.FC = () => {
             <div className="flex items-center gap-2">
               <Building2 className="w-4 h-4" />
               Компании
+            </div>
+          </button>
+          <button
+            onClick={() => setActiveTab('affiliate')}
+            className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+              activeTab === 'affiliate'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Gift className="w-4 h-4" />
+              Партнерская программа
             </div>
           </button>
         </div>
@@ -398,6 +560,254 @@ const SuperAdminDashboard: React.FC = () => {
                   </button>
                 </div>
               </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'affiliate' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-xs font-medium text-slate-500 mb-1">Промокодов</p>
+                    <h3 className="text-2xl font-bold text-slate-800">{affStats.totalPromoCodes}</h3>
+                  </div>
+                  <div className="p-2 bg-blue-100 rounded-lg"><Link2 className="w-4 h-4 text-blue-600" /></div>
+                </div>
+              </div>
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-xs font-medium text-slate-500 mb-1">Всего рефералов</p>
+                    <h3 className="text-2xl font-bold text-slate-800">{affStats.totalReferrals}</h3>
+                  </div>
+                  <div className="p-2 bg-emerald-100 rounded-lg"><Users className="w-4 h-4 text-emerald-600" /></div>
+                </div>
+              </div>
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-xs font-medium text-slate-500 mb-1">Активных рефералов</p>
+                    <h3 className="text-2xl font-bold text-slate-800">{affStats.activeReferrals}</h3>
+                  </div>
+                  <div className="p-2 bg-green-100 rounded-lg"><UserCheck className="w-4 h-4 text-green-600" /></div>
+                </div>
+              </div>
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-xs font-medium text-slate-500 mb-1">Заявок на вывод</p>
+                    <h3 className="text-2xl font-bold text-slate-800">{affStats.pendingPayouts}</h3>
+                  </div>
+                  <div className="p-2 bg-amber-100 rounded-lg"><Clock className="w-4 h-4 text-amber-600" /></div>
+                </div>
+              </div>
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-xs font-medium text-slate-500 mb-1">Всего комиссий</p>
+                    <h3 className="text-2xl font-bold text-slate-800">{affStats.totalCommissions.toLocaleString('ru-RU')} тг</h3>
+                  </div>
+                  <div className="p-2 bg-teal-100 rounded-lg"><DollarSign className="w-4 h-4 text-teal-600" /></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              {(['codes', 'referrals', 'payouts'] as const).map((tab) => {
+                const labels = { codes: 'Промокоды', referrals: 'Рефералы', payouts: 'Выплаты' };
+                return (
+                  <button
+                    key={tab}
+                    onClick={() => setAffSubTab(tab)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      affSubTab === tab ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    {labels[tab]}
+                  </button>
+                );
+              })}
+            </div>
+
+            {affLoading ? (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : (
+              <>
+                {affSubTab === 'codes' && (
+                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-slate-50 border-b border-slate-200">
+                          <tr>
+                            <th className="px-5 py-3 text-left text-xs font-medium text-slate-600">Код</th>
+                            <th className="px-5 py-3 text-left text-xs font-medium text-slate-600">Организация</th>
+                            <th className="px-5 py-3 text-left text-xs font-medium text-slate-600">Владелец</th>
+                            <th className="px-5 py-3 text-center text-xs font-medium text-slate-600">Регистрации</th>
+                            <th className="px-5 py-3 text-center text-xs font-medium text-slate-600">Оплаты</th>
+                            <th className="px-5 py-3 text-center text-xs font-medium text-slate-600">Статус</th>
+                            <th className="px-5 py-3 text-left text-xs font-medium text-slate-600">Создан</th>
+                            <th className="px-5 py-3 w-20"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {affPromoCodes.length === 0 ? (
+                            <tr><td colSpan={8} className="py-10 text-center text-sm text-slate-400">Промокодов пока нет</td></tr>
+                          ) : (
+                            affPromoCodes.map((pc) => (
+                              <tr key={pc.id} className="border-b border-slate-100 hover:bg-slate-50">
+                                <td className="px-5 py-3 font-mono text-sm font-semibold text-slate-800">{pc.code}</td>
+                                <td className="px-5 py-3 text-sm text-slate-600">{pc.org_name}</td>
+                                <td className="px-5 py-3 text-sm text-slate-600">{pc.user_name}</td>
+                                <td className="px-5 py-3 text-center text-sm font-medium text-slate-800">{pc.registrations_count}</td>
+                                <td className="px-5 py-3 text-center text-sm font-medium text-slate-800">{pc.payments_count}</td>
+                                <td className="px-5 py-3 text-center">
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${pc.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                    {pc.is_active ? 'Активен' : 'Отключен'}
+                                  </span>
+                                </td>
+                                <td className="px-5 py-3 text-sm text-slate-500">{new Date(pc.created_at).toLocaleDateString('ru-RU')}</td>
+                                <td className="px-5 py-3">
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      onClick={() => handleTogglePromoCode(pc.id, pc.is_active)}
+                                      className={`p-1.5 rounded-lg transition-colors ${pc.is_active ? 'hover:bg-amber-50 text-amber-500' : 'hover:bg-green-50 text-green-500'}`}
+                                      title={pc.is_active ? 'Отключить' : 'Включить'}
+                                    >
+                                      {pc.is_active ? <Ban className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeletePromoCode(pc.id)}
+                                      className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 transition-colors"
+                                      title="Удалить"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {affSubTab === 'referrals' && (
+                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-slate-50 border-b border-slate-200">
+                          <tr>
+                            <th className="px-5 py-3 text-left text-xs font-medium text-slate-600">Реферер (кто привел)</th>
+                            <th className="px-5 py-3 text-left text-xs font-medium text-slate-600">Реферал (кого привели)</th>
+                            <th className="px-5 py-3 text-center text-xs font-medium text-slate-600">Уровень</th>
+                            <th className="px-5 py-3 text-center text-xs font-medium text-slate-600">Статус</th>
+                            <th className="px-5 py-3 text-left text-xs font-medium text-slate-600">Дата</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {affReferrals.length === 0 ? (
+                            <tr><td colSpan={5} className="py-10 text-center text-sm text-slate-400">Рефералов пока нет</td></tr>
+                          ) : (
+                            affReferrals.map((ref) => (
+                              <tr key={ref.id} className="border-b border-slate-100 hover:bg-slate-50">
+                                <td className="px-5 py-3 text-sm font-medium text-slate-800">{ref.referrer_org_name}</td>
+                                <td className="px-5 py-3 text-sm text-slate-600">{ref.referred_org_name}</td>
+                                <td className="px-5 py-3 text-center">
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                                    ref.level === 1 ? 'bg-blue-100 text-blue-700' :
+                                    ref.level === 2 ? 'bg-amber-100 text-amber-700' :
+                                    'bg-slate-100 text-slate-600'
+                                  }`}>
+                                    {ref.level}-й уровень
+                                  </span>
+                                </td>
+                                <td className="px-5 py-3 text-center">
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${ref.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                                    {ref.is_active ? 'Активен' : 'Неактивен'}
+                                  </span>
+                                </td>
+                                <td className="px-5 py-3 text-sm text-slate-500">{new Date(ref.created_at).toLocaleDateString('ru-RU')}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {affSubTab === 'payouts' && (
+                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-slate-50 border-b border-slate-200">
+                          <tr>
+                            <th className="px-5 py-3 text-left text-xs font-medium text-slate-600">Пользователь</th>
+                            <th className="px-5 py-3 text-left text-xs font-medium text-slate-600">Организация</th>
+                            <th className="px-5 py-3 text-left text-xs font-medium text-slate-600">Сумма</th>
+                            <th className="px-5 py-3 text-center text-xs font-medium text-slate-600">Статус</th>
+                            <th className="px-5 py-3 text-left text-xs font-medium text-slate-600">Реквизиты</th>
+                            <th className="px-5 py-3 text-left text-xs font-medium text-slate-600">Дата заявки</th>
+                            <th className="px-5 py-3 w-28"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {affPayouts.length === 0 ? (
+                            <tr><td colSpan={7} className="py-10 text-center text-sm text-slate-400">Заявок на выплату пока нет</td></tr>
+                          ) : (
+                            affPayouts.map((p) => (
+                              <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50">
+                                <td className="px-5 py-3 text-sm font-medium text-slate-800">{p.user_name}</td>
+                                <td className="px-5 py-3 text-sm text-slate-600">{p.org_name}</td>
+                                <td className="px-5 py-3 text-sm font-semibold text-slate-800">{p.amount.toLocaleString('ru-RU')} тг</td>
+                                <td className="px-5 py-3 text-center">
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                                    p.status === 'paid' ? 'bg-green-100 text-green-700' :
+                                    p.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                    p.status === 'processing' ? 'bg-blue-100 text-blue-700' :
+                                    'bg-amber-100 text-amber-700'
+                                  }`}>
+                                    {p.status === 'paid' ? 'Выплачено' :
+                                     p.status === 'rejected' ? 'Отклонено' :
+                                     p.status === 'processing' ? 'В обработке' :
+                                     'Ожидание'}
+                                  </span>
+                                </td>
+                                <td className="px-5 py-3 text-xs text-slate-500 max-w-[200px] truncate">{p.bank_details || '-'}</td>
+                                <td className="px-5 py-3 text-sm text-slate-500">{new Date(p.requested_at).toLocaleDateString('ru-RU')}</td>
+                                <td className="px-5 py-3">
+                                  {p.status === 'pending' && (
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        onClick={() => handlePayoutAction(p.id, 'paid')}
+                                        className="px-2.5 py-1 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 transition-colors font-medium"
+                                      >
+                                        Выплатить
+                                      </button>
+                                      <button
+                                        onClick={() => handlePayoutAction(p.id, 'rejected')}
+                                        className="px-2.5 py-1 bg-red-100 text-red-600 text-xs rounded-lg hover:bg-red-200 transition-colors font-medium"
+                                      >
+                                        Отклонить
+                                      </button>
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
