@@ -259,7 +259,9 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
       if (result?.success) {
         setCurrentPlan(result.plan);
         setBalance(Number(result.balance_after));
-        setTrialInfo({ isTrial: false, trialEndDate: null, subscriptionEndDate: null });
+        const endDate = new Date();
+        endDate.setDate(endDate.getDate() + 30);
+        setTrialInfo({ isTrial: false, trialEndDate: null, subscriptionEndDate: endDate.toISOString() });
         await loadModules();
         await loadUsageStats();
         alert(`Тариф "${selectedPlan.displayName}" успешно активирован!`);
@@ -308,6 +310,12 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
               <p className="text-sm text-blue-100 mt-1">
                 Пробный период до {new Date(trialInfo.trialEndDate).toLocaleDateString('ru-RU')}
                 {' '}({Math.max(0, Math.ceil((new Date(trialInfo.trialEndDate).getTime() - Date.now()) / 86400000))} дн. осталось)
+              </p>
+            )}
+            {!trialInfo.isTrial && trialInfo.subscriptionEndDate && currentPlanUpper !== 'FREE' && (
+              <p className="text-sm text-blue-100 mt-1">
+                Оплачен до {new Date(trialInfo.subscriptionEndDate).toLocaleDateString('ru-RU')}
+                {' '}({Math.max(0, Math.ceil((new Date(trialInfo.subscriptionEndDate).getTime() - Date.now()) / 86400000))} дн. осталось)
               </p>
             )}
           </div>

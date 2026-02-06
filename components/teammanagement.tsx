@@ -5,6 +5,8 @@ import PayrollBoard from './payrollboard';
 import UserModal from './UserModal';
 import SalarySchemes from './salaryschemes';
 import UserAvatar from './UserAvatar';
+import { useOrganization } from './OrganizationProvider';
+import { planLimitsService } from '../services/planLimitsService';
 
 interface TeamManagementProps {
     users: User[];
@@ -32,6 +34,18 @@ const TeamManagement: React.FC<TeamManagementProps> = ({
     const [searchQuery, setSearchQuery] = useState('');
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+    const { organization } = useOrganization();
+
+    const handleOpenNewUser = async () => {
+        const planName = organization?.plan_name || 'Free';
+        const check = await planLimitsService.checkUsersLimit(planName);
+        if (!check.allowed) {
+            alert(`Лимит пользователей исчерпан (${check.current}/${check.limit}). Перейдите на более высокий тариф для добавления сотрудников.`);
+            return;
+        }
+        setEditingUser(null);
+        setIsUserModalOpen(true);
+    };
 
     const isCeo = currentUser.jobTitle === 'CEO';
 
@@ -251,7 +265,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({
                             <svg className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                         </div>
                         {isCeo && (
-                            <button onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }} className="bg-slate-900 text-white px-4 md:px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all whitespace-nowrap">+ <span className="hidden sm:inline">Новый </span>Сотрудник</button>
+                            <button onClick={handleOpenNewUser} className="bg-slate-900 text-white px-4 md:px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all whitespace-nowrap">+ <span className="hidden sm:inline">Новый </span>Сотрудник</button>
                         )}
                     </div>
                 </div>

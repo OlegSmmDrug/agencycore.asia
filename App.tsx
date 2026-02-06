@@ -30,6 +30,7 @@ import { GuestProjectView } from './components/GuestProjectView';
 import PublicDocumentView from './components/PublicDocumentView';
 import LegalPageView from './components/LegalPageView';
 import { CLIENT_STATUS_LABELS } from './constants';
+import { useOrganization } from './components/OrganizationProvider';
 import { User, Client, Project, Task, Role, Notification, ProjectStatus, ClientStatus, TaskStatus, Document, Transaction, PaymentType, Note, Service, PayrollRecord, SalaryScheme } from './types';
 import { suggestProjectTasks } from './services/geminiService';
 import { clientService } from './services/clientService';
@@ -45,6 +46,9 @@ import { salarySchemeService } from './services/salarySchemeService';
 import { jobTitleService } from './services/jobTitleService';
 import { activityLogService, ActivityLog } from './services/activityLogService';
 import { authService, type AuthUser } from './services/authService';
+import { moduleAccessService, ModuleAccess } from './services/moduleAccessService';
+import { planLimitsService } from './services/planLimitsService';
+import ModuleGate from './components/ModuleGate';
 import { supabase } from './lib/supabase';
 
 // Helper for safe local storage loading with migrations
@@ -85,6 +89,33 @@ const App: React.FC = () => {
   const [jobTitles, setJobTitles] = useState<string[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const [moduleAccess, setModuleAccess] = useState<ModuleAccess[]>([]);
+
+  const { organization } = useOrganization();
+
+  useEffect(() => {
+    if (!organization?.id) return;
+    const loadModuleAccess = async () => {
+      const data = await moduleAccessService.getOrganizationModules(
+        organization.id,
+        organization.plan_name || 'Free'
+      );
+      setModuleAccess(data);
+    };
+    loadModuleAccess();
+  }, [organization?.id, organization?.plan_name]);
+
+  const isModuleAvailable = (tabId: string): boolean => {
+    if (moduleAccess.length === 0) return true;
+    const mod = moduleAccess.find(m => m.module_slug === tabId);
+    if (!mod) return true;
+    return mod.is_available;
+  };
+
+  const getModuleName = (tabId: string): string => {
+    const mod = moduleAccess.find(m => m.module_slug === tabId);
+    return mod?.module_name || tabId;
+  };
 
   // Check auth session on mount
   useEffect(() => {
@@ -1184,6 +1215,21 @@ const App: React.FC = () => {
   }
 
   const renderContent = () => {
+    const alwaysAvailableTabs = ['dashboard', 'settings'];
+    if (!alwaysAvailableTabs.includes(activeTab) && !isModuleAvailable(activeTab)) {
+      return (
+        <ModuleGate
+          moduleSlug={activeTab}
+          moduleName={getModuleName(activeTab)}
+          isAvailable={false}
+          currentPlan={organization?.plan_name || 'Free'}
+          onNavigateToBilling={() => setActiveTab('settings')}
+        >
+          <div />
+        </ModuleGate>
+      );
+    }
+
     switch (activeTab) {
       case 'dashboard':
         return (
@@ -1369,7 +1415,16 @@ const App: React.FC = () => {
                 setFormData({ ...p, duration: p.duration || 30 });
                 setIsModalOpen(true);
             }}
-            onAddProject={() => {
+            onAddProject={async () => {
+                const planName = organization?.plan_name || 'Free';
+                const check = await planLimitsService.checkProjectsLimit(planName);
+                if (!check.allowed) {
+                    addNotification(
+                      `Лимит проектов исчерпан (${check.current}/${check.limit}). Перейдите на более высокий тариф.`,
+                      'warning'
+                    );
+                    return;
+                }
                 const dbUser = users.find(u => u.email === currentUser.email);
                 setModalType('project');
                 setFormData({
