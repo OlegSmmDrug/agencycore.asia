@@ -41,12 +41,12 @@ const ChatTester: React.FC<ChatTesterProps> = ({ agent, onAIResponse }) => {
       if (onAIResponse) {
         onAIResponse(result);
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error('[ChatTester] Error:', e);
       const errorMsg: Message = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: "Ошибка соединения с ИИ. Проверьте API ключ.",
+        content: `Ошибка: ${e.message || 'Неизвестная ошибка соединения с ИИ'}`,
         timestamp: Date.now()
       };
       setMessages(prev => [...prev, errorMsg]);
