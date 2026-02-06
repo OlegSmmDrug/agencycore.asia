@@ -12,10 +12,9 @@ import { aiLeadService } from '../services/aiLeadService';
 import { aiActionService } from '../services/aiActionService';
 import { aiKnowledgeService } from '../services/aiKnowledgeService';
 import { aiUsageService } from '../services/aiUsageService';
-import { integrationCredentialService } from '../services/integrationCredentialService';
+import { supabase } from '../lib/supabase';
+import { getCurrentOrganizationId } from '../utils/organizationContext';
 import { Key, Settings } from 'lucide-react';
-
-const CLAUDE_INTEGRATION_ID = 'e109a03d-7c0a-4819-8c03-0afdc253678d';
 
 interface AIAgentsModuleProps {
   onNavigateToIntegrations?: () => void;
@@ -42,18 +41,22 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
   }, []);
 
   const checkClaudeApiKey = async () => {
-    const envKey = import.meta.env.VITE_CLAUDE_API_KEY || '';
-    if (envKey) {
-      setApiKeyConfigured(true);
-      return;
-    }
-
     try {
-      const hasKey = await integrationCredentialService.hasCredentials(
-        CLAUDE_INTEGRATION_ID,
-        ['api_key']
-      );
-      setApiKeyConfigured(hasKey);
+      const organizationId = getCurrentOrganizationId();
+      if (!organizationId) {
+        setApiKeyConfigured(false);
+        return;
+      }
+
+      const { data } = await supabase
+        .from('integrations')
+        .select('id, is_active')
+        .eq('organization_id', organizationId)
+        .eq('integration_type', 'claude_api')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      setApiKeyConfigured(!!data);
     } catch {
       setApiKeyConfigured(false);
     }
