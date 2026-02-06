@@ -2,12 +2,31 @@ import { supabase } from '../lib/supabase';
 import { SystemNotification } from '../types';
 import { telegramNotificationService } from './telegramNotificationService';
 
+function getCurrentOrganizationId(): string | null {
+  const orgStr = localStorage.getItem('currentOrganization');
+  if (!orgStr) return null;
+  try {
+    const org = JSON.parse(orgStr);
+    return org?.id || null;
+  } catch {
+    return null;
+  }
+}
+
 export const notificationService = {
   async getByUserId(userId: string): Promise<SystemNotification[]> {
-    const { data, error } = await supabase
+    const organizationId = getCurrentOrganizationId();
+
+    let query = supabase
       .from('notifications')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', userId);
+
+    if (organizationId) {
+      query = query.eq('organization_id', organizationId);
+    }
+
+    const { data, error } = await query
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -30,11 +49,19 @@ export const notificationService = {
   },
 
   async getUnreadCount(userId: string): Promise<number> {
-    const { count, error } = await supabase
+    const organizationId = getCurrentOrganizationId();
+
+    let query = supabase
       .from('notifications')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId)
       .eq('is_read', false);
+
+    if (organizationId) {
+      query = query.eq('organization_id', organizationId);
+    }
+
+    const { count, error } = await query;
 
     if (error) {
       console.error('Error fetching unread count:', error);
@@ -107,11 +134,19 @@ export const notificationService = {
   },
 
   async markAllAsRead(userId: string): Promise<void> {
-    const { error } = await supabase
+    const organizationId = getCurrentOrganizationId();
+
+    let query = supabase
       .from('notifications')
       .update({ is_read: true })
       .eq('user_id', userId)
       .eq('is_read', false);
+
+    if (organizationId) {
+      query = query.eq('organization_id', organizationId);
+    }
+
+    const { error } = await query;
 
     if (error) {
       console.error('Error marking all notifications as read:', error);

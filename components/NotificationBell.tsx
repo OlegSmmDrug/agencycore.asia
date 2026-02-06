@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { SystemNotification, User } from '../types';
 import { notificationService } from '../services/notificationService';
+import { browserNotificationService } from '../services/browserNotificationService';
 
 interface NotificationBellProps {
   currentUser: User;
@@ -13,10 +14,15 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNoti
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const previousUnreadCountRef = useRef(0);
 
   useEffect(() => {
+    browserNotificationService.requestPermission().catch(err =>
+      console.error('Failed to request notification permission:', err)
+    );
+
     loadNotifications();
-    const interval = setInterval(loadUnreadCount, 30000);
+    const interval = setInterval(checkForNewNotifications, 15000);
     return () => clearInterval(interval);
   }, [currentUser.id]);
 
@@ -49,6 +55,30 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNoti
       setUnreadCount(count);
     } catch (error) {
       console.error('Error loading unread count:', error);
+    }
+  };
+
+  const checkForNewNotifications = async () => {
+    try {
+      const count = await notificationService.getUnreadCount(currentUser.id);
+      const previousCount = previousUnreadCountRef.current;
+
+      if (count > previousCount) {
+        const data = await notificationService.getByUserId(currentUser.id);
+        const newNotifications = data.filter(n => !n.isRead).slice(0, count - previousCount);
+
+        if (newNotifications.length > 0 && browserNotificationService.getPermissionStatus() === 'granted') {
+          const latest = newNotifications[0];
+          await browserNotificationService.show(latest.title, latest.message);
+        }
+
+        setNotifications(data);
+      }
+
+      setUnreadCount(count);
+      previousUnreadCountRef.current = count;
+    } catch (error) {
+      console.error('Error checking for new notifications:', error);
     }
   };
 
