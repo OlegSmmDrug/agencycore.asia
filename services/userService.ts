@@ -33,6 +33,7 @@ export const userService = {
       teamLeadId: row.team_lead_id || undefined,
       salary: Number(row.salary) || 0,
       iin: row.iin || '',
+      birthday: row.birthday || undefined,
       balance: Number(row.balance) || 0
     }));
   },
@@ -63,6 +64,7 @@ export const userService = {
       teamLeadId: data.team_lead_id || undefined,
       salary: Number(data.salary) || 0,
       iin: data.iin || '',
+      birthday: data.birthday || undefined,
       balance: Number(data.balance) || 0
     };
   },
@@ -86,6 +88,7 @@ export const userService = {
         team_lead_id: user.teamLeadId || null,
         salary: user.salary,
         iin: user.iin || null,
+        birthday: user.birthday || null,
         balance: user.balance || 0
       })
       .eq('id', user.id)
@@ -110,6 +113,7 @@ export const userService = {
       teamLeadId: data.team_lead_id || undefined,
       salary: Number(data.salary) || 0,
       iin: data.iin || '',
+      birthday: data.birthday || undefined,
       balance: Number(data.balance) || 0
     };
   },
@@ -133,6 +137,7 @@ export const userService = {
         team_lead_id: user.teamLeadId || null,
         salary: user.salary,
         iin: user.iin || null,
+        birthday: user.birthday || null,
         balance: user.balance || 0,
         organization_id: organizationId
       })
@@ -156,6 +161,7 @@ export const userService = {
       teamLeadId: data.team_lead_id || undefined,
       salary: Number(data.salary) || 0,
       iin: data.iin || '',
+      birthday: data.birthday || undefined,
       balance: Number(data.balance) || 0
     };
   },
@@ -248,6 +254,7 @@ export const userService = {
       teamLeadId: data.team_lead_id || undefined,
       salary: Number(data.salary) || 0,
       iin: data.iin || '',
+      birthday: data.birthday || undefined,
       balance: Number(data.balance) || 0
     };
   },
@@ -277,6 +284,7 @@ export const userService = {
       teamLeadId: data.team_lead_id || undefined,
       salary: Number(data.salary) || 0,
       iin: data.iin || '',
+      birthday: data.birthday || undefined,
       balance: Number(data.balance) || 0
     };
   },

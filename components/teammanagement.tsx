@@ -35,6 +35,34 @@ const TeamManagement: React.FC<TeamManagementProps> = ({
 
     const isCeo = currentUser.jobTitle === 'CEO';
 
+    const getDaysUntilBirthday = (birthday?: string): { text: string; isToday: boolean; days: number } | null => {
+        if (!birthday) return null;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const birth = new Date(birthday + 'T00:00:00');
+        let next = new Date(today.getFullYear(), birth.getMonth(), birth.getDate());
+        next.setHours(0, 0, 0, 0);
+
+        const diffMs = next.getTime() - today.getTime();
+        const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 0) return { text: 'Сегодня!', isToday: true, days: 0 };
+        if (diffDays < 0) {
+            const nextYear = new Date(today.getFullYear() + 1, birth.getMonth(), birth.getDate());
+            nextYear.setHours(0, 0, 0, 0);
+            const d = Math.round((nextYear.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            return { text: `${d} дн.`, isToday: false, days: d };
+        }
+        return { text: `${diffDays} дн.`, isToday: false, days: diffDays };
+    };
+
+    const formatBirthdayShort = (birthday?: string): string | null => {
+        if (!birthday) return null;
+        const d = new Date(birthday + 'T00:00:00');
+        const months = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+        return `${d.getDate()} ${months[d.getMonth()]}`;
+    };
+
     useEffect(() => {
         if (activeTab === 'payroll') setActiveSubTab('calc');
         else if (activeTab === 'team') setActiveSubTab('members');
@@ -134,6 +162,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({
                                                 <th className="px-4 md:px-8 py-4 md:py-5">Сотрудник</th>
                                                 <th className="px-4 md:px-8 py-4 md:py-5">Должность</th>
                                                 <th className="px-4 md:px-8 py-4 md:py-5">ИИН</th>
+                                                <th className="px-4 md:px-8 py-4 md:py-5 text-center">День рождения</th>
                                                 <th className="px-4 md:px-8 py-4 md:py-5 text-right">Оклад (Фикс)</th>
                                                 <th className="px-4 md:px-8 py-4 md:py-5 text-center">Действия</th>
                                             </tr>
@@ -151,6 +180,27 @@ const TeamManagement: React.FC<TeamManagementProps> = ({
                                                         <span className="inline-flex px-2 md:px-3 py-1 bg-blue-50 text-blue-700 text-[9px] md:text-[10px] font-black rounded-lg border border-blue-100 uppercase tracking-wider">{user.jobTitle}</span>
                                                     </td>
                                                     <td className="px-4 md:px-8 py-4 md:py-5"><p className="text-xs font-mono text-slate-500 font-bold">{user.iin || '—'}</p></td>
+                                                    <td className="px-4 md:px-8 py-4 md:py-5 text-center">
+                                                        {(() => {
+                                                            const bd = formatBirthdayShort(user.birthday);
+                                                            const info = getDaysUntilBirthday(user.birthday);
+                                                            if (!bd || !info) return <span className="text-xs text-slate-300">—</span>;
+                                                            return (
+                                                                <div className="flex flex-col items-center gap-0.5">
+                                                                    <span className="text-xs text-slate-600 font-medium">{bd}</span>
+                                                                    {info.isToday ? (
+                                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-600 text-[10px] font-black rounded-full border border-amber-200 animate-pulse">
+                                                                            <span>&#127881;</span> Сегодня!
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className={`text-[10px] font-bold ${info.days <= 7 ? 'text-amber-500' : info.days <= 30 ? 'text-blue-500' : 'text-slate-400'}`}>
+                                                                            через {info.text}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                    </td>
                                                     <td className="px-4 md:px-8 py-4 md:py-5 text-right"><p className="text-xs md:text-sm font-black text-slate-900">{(user.salary || 0).toLocaleString()} ₸</p></td>
                                                     <td className="px-4 md:px-8 py-4 md:py-5 text-center">
                                                         {isCeo && (

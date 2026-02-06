@@ -144,6 +144,7 @@ export interface User {
 
   salary: number;
   iin?: string;
+  birthday?: string;
   balance?: number;
   isSuperAdmin?: boolean;
 }

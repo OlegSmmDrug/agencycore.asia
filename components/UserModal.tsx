@@ -19,6 +19,52 @@ interface PlatformModule {
   description: string;
 }
 
+const parseBirthdayFromIIN = (iin: string): string | null => {
+  const digits = iin.replace(/\D/g, '');
+  if (digits.length < 7) return null;
+
+  const yy = parseInt(digits.substring(0, 2), 10);
+  const mm = parseInt(digits.substring(2, 4), 10);
+  const dd = parseInt(digits.substring(4, 6), 10);
+  const century = parseInt(digits.substring(6, 7), 10);
+
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+
+  let year: number;
+  if (century >= 1 && century <= 6) {
+    if (century <= 2) year = 1800 + yy;
+    else if (century <= 4) year = 1900 + yy;
+    else year = 2000 + yy;
+  } else {
+    year = yy >= 50 ? 1900 + yy : 2000 + yy;
+  }
+
+  const monthStr = String(mm).padStart(2, '0');
+  const dayStr = String(dd).padStart(2, '0');
+
+  const testDate = new Date(year, mm - 1, dd);
+  if (testDate.getFullYear() !== year || testDate.getMonth() !== mm - 1 || testDate.getDate() !== dd) {
+    return null;
+  }
+
+  return `${year}-${monthStr}-${dayStr}`;
+};
+
+const formatBirthdayDisplay = (dateStr: string): string => {
+  const d = new Date(dateStr + 'T00:00:00');
+  const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+};
+
+const getAgeFromBirthday = (dateStr: string): number => {
+  const today = new Date();
+  const birth = new Date(dateStr + 'T00:00:00');
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+};
+
 const UserModal: React.FC<UserModalProps> = ({ isOpen, user, onClose, onSave, isCeo, availableJobTitles = [], onAddJobTitle }) => {
   const [formData, setFormData] = useState<Partial<User>>({});
   const [isAddingNewTitle, setIsAddingNewTitle] = useState(false);
@@ -83,6 +129,12 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, user, onClose, onSave, is
       setIsAddingNewTitle(false);
       setNewJobTitle('');
     }
+  };
+
+  const handleIINChange = (value: string) => {
+    const cleaned = value.replace(/[^0-9\s]/g, '');
+    const birthday = parseBirthdayFromIIN(cleaned);
+    setFormData({ ...formData, iin: cleaned, birthday: birthday || formData.birthday });
   };
 
   return (
@@ -200,9 +252,24 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, user, onClose, onSave, is
               <input
                 type="text"
                 value={formData.iin || ''}
-                onChange={e => setFormData({ ...formData, iin: e.target.value })}
+                onChange={e => handleIINChange(e.target.value)}
+                placeholder="Введите ИИН"
                 className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500"
               />
+              {formData.birthday && (
+                <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-100 rounded-lg">
+                  <svg className="w-4 h-4 text-emerald-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  <span className="text-sm text-emerald-700 font-medium">
+                    {formatBirthdayDisplay(formData.birthday)}
+                  </span>
+                  <span className="text-xs text-emerald-500">
+                    ({getAgeFromBirthday(formData.birthday)} лет)
+                  </span>
+                </div>
+              )}
+              {formData.iin && formData.iin.replace(/\D/g, '').length >= 7 && !parseBirthdayFromIIN(formData.iin) && (
+                <p className="mt-1 text-xs text-red-500">Некорректный ИИН -- не удалось определить дату рождения</p>
+              )}
             </div>
           </div>
 
