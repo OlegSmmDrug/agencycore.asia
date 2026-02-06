@@ -4,6 +4,7 @@ import { User as UserType, SystemRole } from '../types';
 import { supabase } from '../lib/supabase';
 import BillingSection from './BillingSection';
 import { AffiliateProgram } from './affiliate/AffiliateProgram';
+import UserAvatar from './UserAvatar';
 
 interface ProfileSettingsPageProps {
     user: UserType;
@@ -291,13 +292,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsPageProps> = ({ user, 
                                     <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
                                         <div className="relative flex-shrink-0">
                                             <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                                                {formData.avatar ? (
-                                                    <img src={formData.avatar} alt={formData.name} className="w-full h-full object-cover" />
-                                                ) : (
-                                                    <span className="text-white text-xl sm:text-2xl font-bold">
-                                                        {formData.name.charAt(0).toUpperCase()}
-                                                    </span>
-                                                )}
+                                                <UserAvatar src={formData.avatar} name={formData.name} size="xl" className="!w-full !h-full !text-2xl" />
                                             </div>
                                             <button
                                                 onClick={handleAvatarClick}

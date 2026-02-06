@@ -28,6 +28,7 @@ import { syncAllProjectKpis, shouldSyncKpis } from '../services/kpiSyncService';
 import { autoCalculateContentForProject, shouldCalculateContent } from '../services/contentCalculationService';
 import { projectLegalDocumentsService, ProjectLegalDocument } from '../services/projectLegalDocumentsService';
 import { generatedDocumentService, GeneratedDocument } from '../services/generatedDocumentService';
+import UserAvatar from './UserAvatar';
 
 interface ProjectDetailsProps {
   project: Project;
@@ -2401,7 +2402,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {projectMembers.map(member => (
           <div key={member.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex items-center gap-4">
-            <img src={member.avatar} alt={member.name} className="w-16 h-16 rounded-full object-cover border-2 border-slate-100" />
+            <UserAvatar src={member.avatar} name={member.name} size="xl" className="!w-16 !h-16 !text-xl" borderClassName="border-2 border-slate-100" />
             <div>
               <h3 className="font-bold text-slate-800">{member.name}</h3>
               <p className="text-sm text-slate-600 font-medium">{member.jobTitle}</p>

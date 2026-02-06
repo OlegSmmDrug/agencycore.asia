@@ -8,6 +8,7 @@ import { Client, User, Task, Project, Transaction, ProjectStatus, ClientStatus, 
 import FinancialModel from './FinancialModel';
 import TransactionJournal from './TransactionJournal';
 import { supabase } from '../lib/supabase';
+import UserAvatar from './UserAvatar';
 
 interface AnalyticsProps {
     clients: Client[];
@@ -888,16 +889,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
                                     <div key={i} className="group">
                                         <div className="flex justify-between items-center mb-3">
                                             <div className="flex items-center gap-3">
-                                                {u.avatar ? (
-                                                    <img src={u.avatar} className="w-8 h-8 rounded-xl object-cover" alt="" onError={(e) => {
-                                                        const target = e.target as HTMLImageElement;
-                                                        target.style.display = 'none';
-                                                    }} />
-                                                ) : (
-                                                    <div className="w-8 h-8 rounded-xl bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-xs">
-                                                        {u.name.charAt(0).toUpperCase()}
-                                                    </div>
-                                                )}
+                                                <UserAvatar src={u.avatar} name={u.name} size="md" className="rounded-xl" />
                                                 <div>
                                                     <span className="font-black text-slate-800 text-sm">{u.name}</span>
                                                     <p className="text-[9px] text-slate-400 font-bold uppercase">{u.role || 'Сотрудник'}</p>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Document, User } from '../types';
 import { documentService } from '../services/documentService';
 import { userService } from '../services/userService';
+import UserAvatar from './UserAvatar';
 
 interface PublicDocumentViewProps {
   documentId: string;
@@ -94,7 +95,7 @@ const PublicDocumentView: React.FC<PublicDocumentViewProps> = ({ documentId }) =
                   <h1 className="text-3xl font-bold text-slate-900">{document.title}</h1>
                   {author && (
                     <div className="flex items-center space-x-2 mt-2">
-                      <img src={author.avatar} className="w-6 h-6 rounded-full border border-slate-200" alt={author.name} />
+                      <UserAvatar src={author.avatar} name={author.name} size="sm" borderClassName="border border-slate-200" />
                       <span className="text-sm text-slate-600">{author.name}</span>
                       <span className="text-slate-300">•</span>
                       <span className="text-xs text-slate-400">Обновлен {formatDate(document.updatedAt)}</span>

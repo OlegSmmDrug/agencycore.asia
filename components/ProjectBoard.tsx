@@ -5,6 +5,7 @@ import { Project, ProjectStatus, Client, Task, User, TaskStatus, Level1StageStat
 import { DEFAULT_SERVICES } from '../constants';
 import { level1StageService } from '../services/level1StageService';
 import { roadmapService, RoadmapStageLevel1 } from '../services/roadmapService';
+import UserAvatar from './UserAvatar';
 
 interface ProjectBoardProps {
   projects: Project[];
@@ -415,12 +416,12 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
                                         <div className="flex items-center justify-between">
                                           <div className="flex -space-x-2">
                                             {team.slice(0, 4).map(member => (
-                                              <img
+                                              <UserAvatar
                                                 key={member.id}
                                                 src={member.avatar}
-                                                alt={member.name}
-                                                title={member.name}
-                                                className="w-6 h-6 rounded-full border-2 border-white object-cover"
+                                                name={member.name}
+                                                size="sm"
+                                                borderClassName="border-2 border-white"
                                               />
                                             ))}
                                             {team.length > 4 && (
@@ -560,7 +561,7 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
                         {team.length > 0 && (
                           <div className="flex -space-x-2 mt-2">
                             {team.slice(0, 3).map(member => (
-                              <img key={member.id} src={member.avatar} alt={member.name} title={member.name} className="w-6 h-6 rounded-full border-2 border-white object-cover" />
+                              <UserAvatar key={member.id} src={member.avatar} name={member.name} size="sm" borderClassName="border-2 border-white" />
                             ))}
                           </div>
                         )}
@@ -639,7 +640,7 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
                       {team.length > 0 && (
                         <div className="flex -space-x-2">
                           {team.slice(0, 3).map(member => (
-                            <img key={member.id} src={member.avatar} alt={member.name} title={member.name} className="w-6 h-6 rounded-full border-2 border-white object-cover" />
+                            <UserAvatar key={member.id} src={member.avatar} name={member.name} size="sm" borderClassName="border-2 border-white" />
                           ))}
                         </div>
                       )}
@@ -766,12 +767,12 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
                                     {team.length > 0 ? (
                                         <div className="flex -space-x-2">
                                             {team.slice(0, 3).map(member => (
-                                                <img
+                                                <UserAvatar
                                                     key={member.id}
                                                     src={member.avatar}
-                                                    alt={member.name}
-                                                    title={member.name}
-                                                    className="w-6 h-6 rounded-full border-2 border-white object-cover"
+                                                    name={member.name}
+                                                    size="sm"
+                                                    borderClassName="border-2 border-white"
                                                 />
                                             ))}
                                             {team.length > 3 && (

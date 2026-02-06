@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { User, SystemRole } from '../types';
+import UserAvatar from './UserAvatar';
 
 interface SidebarProps {
   activeTab: string;
@@ -193,11 +194,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, currentUser,
                         title="Настройки профиля"
                       >
                           <div className="relative flex-shrink-0">
-                              <img
-                                src={currentUser.avatar}
-                                alt="Avatar"
-                                className="w-9 h-9 rounded-full border border-slate-600 object-cover group-hover:border-blue-500 transition-colors"
-                              />
+                              <UserAvatar src={currentUser.avatar} name={currentUser.name} className="border border-slate-600 group-hover:border-blue-500 transition-colors" size="md" />
                               <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-slate-800 rounded-full"></div>
                           </div>
                           <div className="overflow-hidden text-left">

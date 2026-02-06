@@ -7,6 +7,7 @@ import { calculatorService } from '../services/calculatorService';
 import { taskTypeService, DynamicTaskType, StaticTaskType } from '../services/taskTypeService';
 import { calculatorCategoryHelper, CalculatorCategoryInfo } from '../services/calculatorCategoryHelper';
 import { useNumberInput } from '../hooks/useNumberInput';
+import UserAvatar from './UserAvatar';
 
 interface SalarySchemesProps {
     users: User[];
@@ -185,7 +186,7 @@ const SalarySchemes: React.FC<SalarySchemesProps> = ({ users, schemes, onUpdateS
                                 onClick={() => setActiveTarget(u.id)}
                                 className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${activeTarget === u.id ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50 text-slate-600'}`}
                             >
-                                <img src={u.avatar} className="w-6 h-6 rounded-full" />
+                                <UserAvatar src={u.avatar} name={u.name} size="sm" />
                                 <span className="truncate">{u.name}</span>
                             </button>
                         ))

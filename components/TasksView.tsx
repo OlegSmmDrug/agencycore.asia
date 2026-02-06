@@ -3,6 +3,7 @@ import { Task, TaskStatus, User, Project, Client, SystemRole } from '../types';
 import NewTaskBoard from './taskboard';
 import TaskCalendar from './taskcalendar';
 import TaskGantt from './taskgantt';
+import UserAvatar from './UserAvatar';
 
 type ViewMode = 'board' | 'calendar' | 'gantt' | 'workload';
 type TaskFilter = 'my' | 'all' | 'team' | string;
@@ -321,10 +322,12 @@ const WorkloadView: React.FC<WorkloadViewProps> = ({ workloadData, onTaskClick, 
                                 }`}
                             >
                                 <div className="flex items-center gap-4">
-                                    <img
+                                    <UserAvatar
                                         src={user.avatar}
-                                        alt={user.name}
-                                        className="w-10 h-10 rounded-xl object-cover border-2 border-white shadow"
+                                        name={user.name}
+                                        size="lg"
+                                        className="!rounded-xl"
+                                        borderClassName="border-2 border-white shadow"
                                     />
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center justify-between">
@@ -371,10 +374,11 @@ const WorkloadView: React.FC<WorkloadViewProps> = ({ workloadData, onTaskClick, 
             {selectedUserData && (
                 <div className="w-96 bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm shrink-0">
                     <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
-                        <img
+                        <UserAvatar
                             src={selectedUserData.user.avatar}
-                            alt={selectedUserData.user.name}
-                            className="w-8 h-8 rounded-lg object-cover"
+                            name={selectedUserData.user.name}
+                            size="md"
+                            className="!rounded-lg"
                         />
                         <div>
                             <h3 className="text-sm font-bold text-slate-800">{selectedUserData.user.name}</h3>

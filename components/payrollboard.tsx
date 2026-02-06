@@ -5,6 +5,7 @@ import Modal from './Modal';
 import { calculateUserStats } from '../services/payrollService';
 import { BonusCalculationDetail } from '../services/bonusCalculationService';
 import { useNumberInput } from '../hooks/useNumberInput';
+import UserAvatar from './UserAvatar';
 
 interface PayrollBoardProps {
     users: User[];
@@ -100,7 +101,7 @@ const PayrollRow: React.FC<PayrollRowProps> = React.memo(({
         <tr className="hover:bg-slate-50/50">
             <td className="px-3 md:px-6 py-3 md:py-4">
                 <div className="flex items-center gap-2 md:gap-3">
-                    <img src={user.avatar} className="w-8 h-8 md:w-10 md:h-10 rounded-xl object-cover" />
+                    <UserAvatar src={user.avatar} name={user.name} size="md" className="!rounded-xl md:!w-10 md:!h-10" />
                     <div>
                         <p className="text-xs md:text-sm font-black text-slate-800">{user.name}</p>
                         <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase">{user.jobTitle}</p>

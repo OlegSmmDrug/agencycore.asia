@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { User, Mail, Lock, Camera, Save, X, Shield, UserIcon, CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { User as UserType } from '../types';
 import { supabase } from '../lib/supabase';
+import UserAvatar from './UserAvatar';
 
 interface UserProfileModalProps {
     user: UserType;
@@ -315,11 +316,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                         <div className="space-y-6 sm:space-y-8">
                             <div className="flex flex-col items-center py-8 sm:py-10 bg-gradient-to-br from-slate-50 to-slate-100 rounded-3xl border-2 border-slate-200">
                                 <div className="relative group">
-                                    <img
-                                        src={formData.avatar}
-                                        alt={formData.name}
-                                        className="w-32 h-32 sm:w-40 sm:h-40 rounded-full object-cover border-4 border-white shadow-2xl"
-                                    />
+                                    <UserAvatar src={formData.avatar} name={formData.name} size="xl" className="!w-32 !h-32 sm:!w-40 sm:!h-40 !text-2xl" borderClassName="border-4 border-white shadow-2xl" />
                                     <button
                                         onClick={handleAvatarClick}
                                         disabled={isLoading}

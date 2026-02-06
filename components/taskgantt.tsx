@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Task, Project, User, TaskStatus } from '../types';
+import UserAvatar from './UserAvatar';
 
 interface TaskGanttProps {
   tasks: Task[];
@@ -389,13 +390,7 @@ const TaskGantt: React.FC<TaskGanttProps> = ({ tasks, projects, users, onTaskCli
                 <div key={group.id} className="border-b border-slate-50 last:border-b-0">
                   <div className="flex items-stretch bg-slate-50/30" style={{ minHeight: `${groupHeight}px` }}>
                     <div className="w-60 shrink-0 px-4 py-3 border-r border-slate-100 flex items-center gap-3">
-                      {group.avatar ? (
-                        <img src={group.avatar} className="w-9 h-9 rounded-lg object-cover border-2 border-white shadow" />
-                      ) : (
-                        <div className={`w-9 h-9 rounded-lg ${group.color} flex items-center justify-center`}>
-                          <span className="text-white text-sm font-bold">{group.name.charAt(0)}</span>
-                        </div>
-                      )}
+                      <UserAvatar src={group.avatar} name={group.name} size="md" className="!w-9 !h-9 !rounded-lg" borderClassName="border-2 border-white shadow" />
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-slate-800 truncate">{group.name}</p>
                         <p className="text-[10px] text-slate-400">{group.tasks.length} задач</p>

@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Document, User, SystemRole } from '../types';
 import { noteImageService } from '../services/noteImageService';
+import UserAvatar from './UserAvatar';
 
 interface KnowledgeBaseProps {
   documents: Document[];
@@ -733,7 +734,7 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
                             <div className="flex items-center space-x-3">
                                 {author && (
                                     <div className="flex items-center space-x-2">
-                                        <img src={author.avatar} className="w-6 h-6 rounded-full border border-slate-200" alt={author.name} />
+                                        <UserAvatar src={author.avatar} name={author.name} size="sm" borderClassName="border border-slate-200" />
                                         <span className="text-sm text-slate-700 font-medium">{author.name}</span>
                                     </div>
                                 )}
@@ -885,7 +886,7 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
                                     return (
                                         <div key={user.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg transition-colors">
                                             <div className="flex items-center space-x-3">
-                                                <img src={user.avatar} className="w-8 h-8 rounded-full" alt="" />
+                                                <UserAvatar src={user.avatar} name={user.name} size="md" />
                                                 <div>
                                                     <p className="text-sm font-medium text-slate-700">{user.name}</p>
                                                     <p className="text-[10px] text-slate-400">{user.jobTitle}</p>

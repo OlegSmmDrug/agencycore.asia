@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Task, User, TaskStatus, Project } from '../types';
+import UserAvatar from './UserAvatar';
 
 interface TaskCalendarProps {
   tasks: Task[];
@@ -394,8 +395,8 @@ const TaskCalendar: React.FC<TaskCalendarProps> = ({ tasks, users, projects, onT
                                   </p>
                                 )}
                               </div>
-                              {assignee?.avatar && (
-                                <img src={assignee.avatar} className="w-8 h-8 rounded-lg border-2 border-white shadow object-cover shrink-0" />
+                              {assignee && (
+                                <UserAvatar src={assignee.avatar} name={assignee.name} size="md" className="!rounded-lg shrink-0" borderClassName="border-2 border-white shadow" />
                               )}
                             </div>
                           </div>

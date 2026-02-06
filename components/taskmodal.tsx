@@ -4,6 +4,7 @@ import { Task, Project, User, Client, TaskStatus, TaskType, TaskPriority, Subtas
 import { roadmapService, RoadmapStageLevel1, RoadmapStageLevel2 } from '../services/roadmapService';
 import { level1StageService } from '../services/level1StageService';
 import { taskTypeService, DynamicTaskType, StaticTaskType } from '../services/taskTypeService';
+import UserAvatar from './UserAvatar';
 
 interface TaskModalProps {
   isOpen: boolean;
@@ -500,7 +501,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
                                     const user = users.find(u => u.id === userId);
                                     return user ? (
                                         <div key={userId} className="flex items-center gap-2 bg-rose-50 border border-rose-100 rounded-lg px-3 py-1.5">
-                                            <img src={user.avatar} className="w-5 h-5 rounded-full" alt="" />
+                                            <UserAvatar src={user.avatar} name={user.name} size="xs" />
                                             <span className="text-xs font-bold text-rose-700">{user.name}</span>
                                             <button type="button" onClick={() => removeParticipant(userId)} className="text-rose-400 hover:text-rose-600">
                                                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M6 18L18 6M6 6l12 12" /></svg>
@@ -527,7 +528,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
                                                 onClick={() => addParticipant(user.id)}
                                                 className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors text-left"
                                             >
-                                                <img src={user.avatar} className="w-8 h-8 rounded-full" alt="" />
+                                                <UserAvatar src={user.avatar} name={user.name} size="md" />
                                                 <div>
                                                     <p className="text-sm font-bold text-slate-700">{user.name}</p>
                                                     <p className="text-[10px] text-slate-400">{user.jobTitle}</p>
@@ -636,7 +637,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
                                     const user = users.find(u => u.id === userId);
                                     return user ? (
                                         <div key={userId} className="flex items-center gap-2 bg-amber-50 border border-amber-100 rounded-lg px-3 py-1.5">
-                                            <img src={user.avatar} className="w-5 h-5 rounded-full" alt="" />
+                                            <UserAvatar src={user.avatar} name={user.name} size="xs" />
                                             <span className="text-xs font-bold text-amber-700">{user.name}</span>
                                             <button type="button" onClick={() => removeParticipant(userId)} className="text-amber-400 hover:text-amber-600">
                                                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M6 18L18 6M6 6l12 12" /></svg>
@@ -663,7 +664,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
                                                 onClick={() => addParticipant(user.id)}
                                                 className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors text-left"
                                             >
-                                                <img src={user.avatar} className="w-8 h-8 rounded-full" alt="" />
+                                                <UserAvatar src={user.avatar} name={user.name} size="md" />
                                                 <div>
                                                     <p className="text-sm font-bold text-slate-700">{user.name}</p>
                                                     <p className="text-[10px] text-slate-400">{user.jobTitle}</p>
@@ -735,7 +736,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
                                     const user = users.find(u => u.id === userId);
                                     return user ? (
                                         <div key={userId} className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-1.5">
-                                            <img src={user.avatar} className="w-5 h-5 rounded-full" alt="" />
+                                            <UserAvatar src={user.avatar} name={user.name} size="xs" />
                                             <span className="text-xs font-bold text-emerald-700">{user.name}</span>
                                             <button type="button" onClick={() => removeParticipant(userId)} className="text-emerald-400 hover:text-emerald-600">
                                                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M6 18L18 6M6 6l12 12" /></svg>
@@ -762,7 +763,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
                                                 onClick={() => addParticipant(user.id)}
                                                 className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors text-left"
                                             >
-                                                <img src={user.avatar} className="w-8 h-8 rounded-full" alt="" />
+                                                <UserAvatar src={user.avatar} name={user.name} size="md" />
                                                 <div>
                                                     <p className="text-sm font-bold text-slate-700">{user.name}</p>
                                                     <p className="text-[10px] text-slate-400">{user.jobTitle}</p>

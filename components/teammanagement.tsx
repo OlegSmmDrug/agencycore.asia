@@ -4,6 +4,7 @@ import { User, Task, Project, PayrollRecord, SalaryScheme } from '../types';
 import PayrollBoard from './payrollboard';
 import UserModal from './UserModal';
 import SalarySchemes from './salaryschemes';
+import UserAvatar from './UserAvatar';
 
 interface TeamManagementProps {
     users: User[];
@@ -142,7 +143,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({
                                                 <tr key={user.id} className="hover:bg-slate-50/50 transition-colors group">
                                                     <td className="px-4 md:px-8 py-4 md:py-5">
                                                         <div className="flex items-center space-x-3 md:space-x-4">
-                                                            <img src={user.avatar} className="w-10 h-10 md:w-12 md:h-12 rounded-2xl object-cover border-2 border-white shadow-sm" alt="" />
+                                                            <UserAvatar src={user.avatar} name={user.name} size="lg" className="!rounded-2xl md:!w-12 md:!h-12" borderClassName="border-2 border-white shadow-sm" />
                                                             <div><p className="text-xs md:text-sm font-black text-slate-800 leading-tight">{user.name}</p><p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase mt-0.5">{user.email}</p></div>
                                                         </div>
                                                     </td>

@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Task, TaskStatus, User, TaskType, Project } from '../types';
 import { parseQuickTask } from '../services/geminiService';
+import UserAvatar from './UserAvatar';
 
 interface TaskBoardProps {
   tasks: Task[];
@@ -332,11 +333,13 @@ const TaskCard = ({ task, users, currentUser, projects, onClick, onAccept, onSta
 
                 <div className="flex items-center justify-between pt-3 border-t border-slate-100/60">
                     <div className="flex items-center gap-2">
-                        {assignee?.avatar && (
-                            <img
+                        {assignee && (
+                            <UserAvatar
                                 src={assignee.avatar}
-                                className="w-8 h-8 rounded-lg object-cover border-2 border-blue-200 shadow-sm"
-                                title={`Исполнитель: ${assignee.name}`}
+                                name={assignee.name}
+                                size="md"
+                                className="!rounded-lg"
+                                borderClassName="border-2 border-blue-200 shadow-sm"
                             />
                         )}
                         <div className="flex flex-col">
@@ -350,12 +353,13 @@ const TaskCard = ({ task, users, currentUser, projects, onClick, onAccept, onSta
                                 <span className="text-[10px] font-medium text-slate-600">{creator.name?.split(' ')[0]}</span>
                                 <span className="text-[8px] text-slate-400">поставил</span>
                             </div>
-                            {creator.avatar && (
-                                <img
-                                    src={creator.avatar}
-                                    className="w-6 h-6 rounded object-cover border border-slate-200"
-                                />
-                            )}
+                            <UserAvatar
+                                src={creator.avatar}
+                                name={creator.name}
+                                size="sm"
+                                className="!rounded"
+                                borderClassName="border border-slate-200"
+                            />
                         </div>
                     )}
                 </div>
