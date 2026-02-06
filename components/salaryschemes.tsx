@@ -56,6 +56,7 @@ const SalarySchemes: React.FC<SalarySchemesProps> = ({ users, schemes, onUpdateS
     const [dynamicTypes, setDynamicTypes] = useState<DynamicTaskType[]>([]);
     const [isLoadingTypes, setIsLoadingTypes] = useState(true);
     const [categories, setCategories] = useState<CalculatorCategoryInfo[]>([]);
+    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
 
     const allTaskTypes = [...STATIC_TASK_TYPES, ...dynamicTypes.map(dt => dt.name as TaskType)];
 
@@ -151,9 +152,16 @@ const SalarySchemes: React.FC<SalarySchemesProps> = ({ users, schemes, onUpdateS
     };
 
     return (
-        <div className="flex h-full bg-white animate-fade-in">
-            {/* Sidebar Targets */}
-            <div className="w-72 border-r border-slate-100 flex flex-col shrink-0">
+        <div className="flex h-full bg-white animate-fade-in relative">
+            {mobileSidebarOpen && (
+              <div className="fixed inset-0 bg-black/20 z-30 md:hidden" onClick={() => setMobileSidebarOpen(false)} />
+            )}
+            <div className={`
+              fixed inset-y-0 left-0 z-40 w-72 md:static md:z-auto
+              border-r border-slate-100 flex flex-col shrink-0 bg-white
+              transition-transform duration-200 ease-in-out
+              ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+            `}>
                 <div className="p-4 flex bg-slate-50 border-b border-slate-100">
                     <button
                         onClick={() => { setSelectedTab('titles'); setActiveTarget(jobTitles[0]); }}
@@ -171,9 +179,9 @@ const SalarySchemes: React.FC<SalarySchemesProps> = ({ users, schemes, onUpdateS
                 <div className="flex-1 overflow-y-auto p-2 space-y-1">
                     {selectedTab === 'titles' ? (
                         jobTitles.map(t => (
-                            <button 
-                                key={t} 
-                                onClick={() => setActiveTarget(t)}
+                            <button
+                                key={t}
+                                onClick={() => { setActiveTarget(t); setMobileSidebarOpen(false); }}
                                 className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTarget === t ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50 text-slate-600'}`}
                             >
                                 {t}
@@ -181,9 +189,9 @@ const SalarySchemes: React.FC<SalarySchemesProps> = ({ users, schemes, onUpdateS
                         ))
                     ) : (
                         users.map(u => (
-                            <button 
-                                key={u.id} 
-                                onClick={() => setActiveTarget(u.id)}
+                            <button
+                                key={u.id}
+                                onClick={() => { setActiveTarget(u.id); setMobileSidebarOpen(false); }}
                                 className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${activeTarget === u.id ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50 text-slate-600'}`}
                             >
                                 <UserAvatar src={u.avatar} name={u.name} size="sm" />
@@ -194,22 +202,29 @@ const SalarySchemes: React.FC<SalarySchemesProps> = ({ users, schemes, onUpdateS
                 </div>
             </div>
 
-            {/* Config Area */}
-            <div className="flex-1 overflow-y-auto p-10 bg-slate-50/30">
-                <div className="max-w-3xl mx-auto space-y-8">
-                    <div>
-                        <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Схема: {activeTarget}</h2>
-                        <p className="text-xs text-slate-400 font-bold uppercase mt-1">Настройка правил начислений</p>
+            <div className="flex-1 overflow-y-auto p-4 md:p-10 bg-slate-50/30">
+                <div className="max-w-3xl mx-auto space-y-6 md:space-y-8">
+                    <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setMobileSidebarOpen(true)}
+                          className="md:hidden p-2 rounded-lg hover:bg-slate-100 text-slate-500"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                        </button>
+                        <div>
+                            <h2 className="text-lg md:text-2xl font-black text-slate-900 tracking-tight uppercase">Схема: {activeTarget}</h2>
+                            <p className="text-xs text-slate-400 font-bold uppercase mt-1">Настройка правил начислений</p>
+                        </div>
                     </div>
 
-                    <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm space-y-8">
+                    <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-sm space-y-6 md:space-y-8">
                         {/* Base Fix */}
                         <div className="space-y-4">
                             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Базовая ставка (Fix)</h3>
                             <div className="flex items-center gap-4">
                                 <input
                                     type="number"
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-2xl font-black text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 md:px-6 py-3 md:py-4 text-xl md:text-2xl font-black text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none"
                                     {...baseSalaryInput}
                                 />
                                 <span className="text-xl font-black text-slate-300">₸</span>
@@ -239,7 +254,7 @@ const SalarySchemes: React.FC<SalarySchemesProps> = ({ users, schemes, onUpdateS
                                             <div className="w-2 h-2 rounded-full bg-slate-400"></div>
                                             <h4 className="text-[9px] font-black text-slate-500 uppercase tracking-wider">Служебные задачи</h4>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             {STATIC_TASK_TYPES.map(type => (
                                                 <KpiRuleInput
                                                     key={type}
@@ -266,7 +281,7 @@ const SalarySchemes: React.FC<SalarySchemesProps> = ({ users, schemes, onUpdateS
                                                         <span>{category.name}</span>
                                                     </h4>
                                                 </div>
-                                                <div className="grid grid-cols-2 gap-4">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                     {categoryTypes.map(dt => (
                                                         <KpiRuleInput
                                                             key={dt.id}

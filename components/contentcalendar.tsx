@@ -150,9 +150,9 @@ const ContentCalendar: React.FC<ContentCalendarProps> = ({
 
   return (
     <div className="flex flex-col bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden animate-fade-in">
-      <div className="px-8 py-5 flex items-center justify-between border-b border-slate-100 bg-slate-50/50">
-        <div className="flex items-center gap-6">
-            <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">
+      <div className="px-4 md:px-8 py-4 md:py-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/50">
+        <div className="flex flex-wrap items-center gap-3 md:gap-6">
+            <h2 className="text-base md:text-xl font-black text-slate-900 tracking-tight uppercase">
                 {getDateRangeText()}
             </h2>
             <div className="flex bg-white p-1 rounded-xl border border-slate-200">
@@ -192,7 +192,7 @@ const ContentCalendar: React.FC<ContentCalendarProps> = ({
               </div>
             )}
         </div>
-        <div className="flex gap-4">
+        <div className="hidden md:flex gap-4">
              {[
                  { l: 'Черновик', c: 'bg-slate-200' },
                  { l: 'Проверка', c: 'bg-indigo-400' },
@@ -223,7 +223,7 @@ const ContentCalendar: React.FC<ContentCalendarProps> = ({
             const dayTasks = tasks.filter(t => t.deadline && new Date(t.deadline).toDateString() === dateStr);
             const isToday = cell.date.toDateString() === new Date().toDateString();
             
-            const minHeight = viewMode === 'day' ? 'min-h-[600px]' : viewMode === 'week' ? 'min-h-[400px]' : 'min-h-[100px]';
+            const minHeight = viewMode === 'day' ? 'min-h-[400px] md:min-h-[600px]' : viewMode === 'week' ? 'min-h-[200px] md:min-h-[400px]' : 'min-h-[80px] md:min-h-[100px]';
             const textSize = viewMode === 'day' ? 'text-base' : 'text-[9px]';
             const dateSize = viewMode === 'day' ? 'text-2xl' : 'text-[10px]';
 
@@ -232,7 +232,7 @@ const ContentCalendar: React.FC<ContentCalendarProps> = ({
                     key={idx}
                     onDragOver={e => e.preventDefault()}
                     onDrop={e => handleDrop(e, cell.date)}
-                    className={`${minHeight} bg-white p-4 transition-all hover:bg-blue-50/20 group relative flex flex-col ${!cell.currentMonth ? 'opacity-30' : ''}`}
+                    className={`${minHeight} bg-white p-1.5 md:p-4 transition-all hover:bg-blue-50/20 group relative flex flex-col ${!cell.currentMonth ? 'opacity-30' : ''}`}
                 >
                     <div className="flex justify-between items-start mb-3">
                         <span className={`${dateSize} font-mono font-black ${isToday ? 'text-blue-600' : 'text-slate-300'}`}>

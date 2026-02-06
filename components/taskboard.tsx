@@ -162,7 +162,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
                     return (
                         <div
                             key={col.id}
-                            className="flex-shrink-0 w-[300px] md:w-[340px] flex flex-col snap-center rounded-2xl bg-slate-100/40 border border-slate-200/50 overflow-hidden"
+                            className="flex-shrink-0 w-[82vw] sm:w-[300px] md:w-[340px] flex flex-col snap-center rounded-2xl bg-slate-100/40 border border-slate-200/50 overflow-hidden"
                             onDragOver={e => e.preventDefault()}
                             onDrop={e => {
                                 const tid = e.dataTransfer.getData('taskId');
@@ -203,7 +203,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({
                 timelineColumns.map(col => (
                     <div
                         key={col.id}
-                        className="flex-shrink-0 w-[300px] md:w-[340px] flex flex-col snap-center rounded-2xl bg-slate-100/40 border border-slate-200/50 overflow-hidden"
+                        className="flex-shrink-0 w-[82vw] sm:w-[300px] md:w-[340px] flex flex-col snap-center rounded-2xl bg-slate-100/40 border border-slate-200/50 overflow-hidden"
                     >
                         <div className="p-4 flex justify-between items-center bg-white border-b border-slate-200 shadow-sm sticky top-0 z-10">
                             <div className="flex items-center gap-2">

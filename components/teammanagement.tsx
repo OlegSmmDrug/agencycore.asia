@@ -154,7 +154,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({
                                                     <td className="px-4 md:px-8 py-4 md:py-5 text-right"><p className="text-xs md:text-sm font-black text-slate-900">{(user.salary || 0).toLocaleString()} ₸</p></td>
                                                     <td className="px-4 md:px-8 py-4 md:py-5 text-center">
                                                         {isCeo && (
-                                                            <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                                                            <div className="flex items-center justify-center gap-2 md:opacity-0 md:group-hover:opacity-100">
                                                                 <button
                                                                     onClick={() => { setEditingUser(user); setIsUserModalOpen(true); }}
                                                                     className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl border border-transparent hover:border-blue-200 transition-all"
@@ -193,7 +193,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({
             <div className="p-6 md:p-8 shrink-0 bg-white border-b border-slate-100 shadow-sm z-10">
                 <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                     <div>
-                        <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Команда</h2>
+                        <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Команда</h2>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-2">Human Resources & Access Control</p>
                     </div>
 
@@ -203,12 +203,12 @@ const TeamManagement: React.FC<TeamManagementProps> = ({
                             <svg className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                         </div>
                         {isCeo && (
-                            <button onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all">+ Новый сотрудник</button>
+                            <button onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }} className="bg-slate-900 text-white px-4 md:px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all whitespace-nowrap">+ <span className="hidden sm:inline">Новый </span>Сотрудник</button>
                         )}
                     </div>
                 </div>
                 
-                <div className="max-w-[1600px] mx-auto mt-8 flex gap-1 overflow-x-auto no-scrollbar">
+                <div className="max-w-[1600px] mx-auto mt-4 md:mt-8 flex gap-1 overflow-x-auto no-scrollbar pb-1">
                     {subTabs.map(tab => (
                         <button 
                             key={tab.id}

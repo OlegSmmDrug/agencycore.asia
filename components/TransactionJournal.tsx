@@ -161,27 +161,27 @@ export default function TransactionJournal({ transactions, clients, projects, us
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Журнал платежей</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Журнал платежей</h1>
+          <p className="text-gray-600 mt-1 text-sm">
             Всего транзакций: {filteredTransactions.length} на сумму {totalAmount.toLocaleString('ru-RU')} ₸
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
           <button
             onClick={exportToCSV}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            className="flex items-center justify-center gap-2 px-3 md:px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex-1 sm:flex-initial"
           >
             <Download className="h-4 w-4" />
-            Экспорт
+            <span className="hidden sm:inline">Экспорт</span>
           </button>
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="flex items-center justify-center gap-2 px-3 md:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex-1 sm:flex-initial"
           >
             <Plus className="h-4 w-4" />
-            Добавить платеж
+            <span className="hidden sm:inline">Добавить</span> <span className="sm:hidden">Добавить</span>
           </button>
         </div>
       </div>
@@ -309,23 +309,23 @@ export default function TransactionJournal({ transactions, clients, projects, us
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Дата</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Клиент</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Тип платежа</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Сумма</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Описание</th>
+                  <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Дата</th>
+                  <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Клиент</th>
+                  <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Тип платежа</th>
+                  <th className="px-3 md:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Сумма</th>
+                  <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Описание</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredTransactions.map(transaction => (
                   <tr key={transaction.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 md:px-6 py-3 md:py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2 text-sm text-gray-900">
                         <Calendar className="h-4 w-4 text-gray-400" />
                         {new Date(transaction.date).toLocaleDateString('ru-RU')}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 md:px-6 py-3 md:py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <UserIcon className="h-4 w-4 text-gray-400" />
                         <span className="text-sm font-medium text-gray-900">
@@ -333,17 +333,17 @@ export default function TransactionJournal({ transactions, clients, projects, us
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 md:px-6 py-3 md:py-4 whitespace-nowrap">
                       <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700">
                         {getPaymentTypeLabel(transaction.type)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                    <td className="px-3 md:px-6 py-3 md:py-4 whitespace-nowrap text-right">
                       <span className="text-sm font-semibold text-green-600">
                         +{transaction.amount.toLocaleString('ru-RU')} ₸
                       </span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 md:px-6 py-3 md:py-4">
                       <span className="text-sm text-gray-600">{transaction.description || '—'}</span>
                     </td>
                   </tr>
