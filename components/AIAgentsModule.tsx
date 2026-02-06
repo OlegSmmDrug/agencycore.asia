@@ -135,6 +135,16 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
     }
   };
 
+  const handleDeleteAgent = async (agentId: string) => {
+    try {
+      await aiAgentService.deleteAgent(agentId);
+      setAgents(prev => prev.filter(a => a.id !== agentId));
+      setSelectedAgentId(null);
+    } catch (error) {
+      console.error('Error deleting agent:', error);
+    }
+  };
+
   const handleKBUpdate = async (agentId: string, faqs: FAQItem[], docs: DocumentItem[]) => {
     setAgents(prev => prev.map(a =>
       a.id === agentId ? { ...a, knowledgeBase: { faqs, documents: docs } } : a
@@ -399,6 +409,7 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
                 <SettingsPanel
                   agent={selectedAgent}
                   onUpdate={handleUpdateAgent}
+                  onDelete={handleDeleteAgent}
                 />
               </div>
               <div className="w-full xl:w-[450px] border-l bg-white hidden lg:flex flex-col shrink-0 shadow-lg">

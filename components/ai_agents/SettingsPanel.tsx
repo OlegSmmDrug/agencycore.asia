@@ -5,11 +5,13 @@ import { MODELS, STYLE_GUIDELINES, TRIGGER_OPTIONS } from '../../constants/aiAge
 interface SettingsPanelProps {
   agent: AIAgent;
   onUpdate: (agent: AIAgent) => void;
+  onDelete?: (agentId: string) => void;
 }
 
-const SettingsPanel: React.FC<SettingsPanelProps> = ({ agent, onUpdate }) => {
+const SettingsPanel: React.FC<SettingsPanelProps> = ({ agent, onUpdate, onDelete }) => {
   const [localAgent, setLocalAgent] = useState<AIAgent>(agent);
   const [hasChanges, setHasChanges] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     setLocalAgent(agent);
@@ -278,6 +280,39 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ agent, onUpdate }) => {
           </div>
         </div>
       </section>
+
+      {onDelete && (
+        <section className="bg-white p-8 rounded-3xl border border-red-100 shadow-sm">
+          <h3 className="text-lg font-black mb-4 uppercase tracking-wider text-red-600">Удаление агента</h3>
+          {!showDeleteConfirm ? (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-600">Агент будет удален без возможности восстановления</p>
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="px-6 py-2.5 bg-red-50 text-red-600 rounded-xl font-bold text-sm hover:bg-red-100 transition-all border border-red-200"
+              >
+                Удалить агента
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-4">
+              <p className="text-sm font-medium text-red-600">Вы уверены?</p>
+              <button
+                onClick={() => onDelete(agent.id)}
+                className="px-6 py-2.5 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 transition-all"
+              >
+                Да, удалить
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-200 transition-all"
+              >
+                Отмена
+              </button>
+            </div>
+          )}
+        </section>
+      )}
 
       {hasChanges && (
         <div className="sticky bottom-4 flex justify-center">
