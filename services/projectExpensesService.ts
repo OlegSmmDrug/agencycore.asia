@@ -386,21 +386,20 @@ export const projectExpensesService = {
 
     const expense = mapRowToExpense(data);
 
-    if (expense.revenue === 0 || !expense.revenue) {
-      const { data: project } = await supabase
-        .from('projects')
-        .select('budget')
-        .eq('id', projectId)
-        .maybeSingle();
+    const { data: project } = await supabase
+      .from('projects')
+      .select('budget')
+      .eq('id', projectId)
+      .maybeSingle();
 
-      if (project?.budget) {
-        await supabase
-          .from('project_expenses')
-          .update({ revenue: project.budget })
-          .eq('id', expense.id);
+    if (project?.budget && Number(project.budget) !== expense.revenue) {
+      await supabase
+        .from('project_expenses')
+        .update({ revenue: project.budget })
+        .eq('id', expense.id);
 
-        expense.revenue = Number(project.budget);
-      }
+      expense.revenue = Number(project.budget);
+      expense.marginPercent = calculateMargin(expense.revenue, expense.totalExpenses);
     }
 
     return expense;
@@ -662,6 +661,11 @@ export const projectExpensesService = {
     monthEnd.setMonth(monthEnd.getMonth() + 1);
     monthEnd.setDate(0);
     monthEnd.setHours(23, 59, 59, 999);
+
+    await supabase.rpc('sync_livedune_to_publications', { p_project_id: projectId })
+      .then(({ error }) => {
+        if (error) console.error('[syncDynamicExpenses] sync_livedune_to_publications error:', error);
+      });
 
     const { data: publicationCounts } = await supabase
       .from('content_publications')

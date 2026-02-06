@@ -849,14 +849,19 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                       const finalRate = foundService?.costPrice ? Number(foundService.costPrice) : 0;
                       const contentMetrics = project.contentMetrics as Record<string, { fact?: number; plan?: number }>;
                       const metricData = contentMetrics[metricKey];
-                      const planCount = metricData?.plan || 0;
+
+                      const now = new Date();
+                      const selectedDate = new Date(selectedMonth + '-01');
+                      const isFutureMonth = selectedDate.getFullYear() > now.getFullYear() ||
+                        (selectedDate.getFullYear() === now.getFullYear() && selectedDate.getMonth() > now.getMonth());
+                      const count = isFutureMonth ? (metricData?.plan || 0) : (metricData?.fact || 0);
 
                       enrichedDynamicExpenses[kpiKey] = {
                         serviceName: foundService?.name || serviceName,
                         category: finalCategory,
-                        count: planCount,
+                        count,
                         rate: finalRate,
-                        cost: planCount * finalRate,
+                        cost: count * finalRate,
                         syncedAt: new Date().toISOString()
                       };
                       categoriesInUse.add(finalCategory);
