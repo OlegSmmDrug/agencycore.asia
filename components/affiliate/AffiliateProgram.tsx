@@ -3,9 +3,8 @@ import { affiliateService, AffiliateStats, PromoCode, ReferralTransaction } from
 import { IncomeTab } from './IncomeTab';
 import { LinksTab } from './LinksTab';
 import { RulesTab } from './RulesTab';
-import { PlatformTab } from './PlatformTab';
 
-type TabId = 'income' | 'links' | 'rules' | 'platform';
+type TabId = 'income' | 'links' | 'rules';
 
 interface AffiliateProgramProps {
   organizationId: string;
@@ -51,7 +50,6 @@ export const AffiliateProgram: React.FC<AffiliateProgramProps> = ({ organization
     { id: 'income', label: 'Доход' },
     { id: 'links', label: 'Ссылки и промокоды' },
     { id: 'rules', label: 'Правила' },
-    { id: 'platform', label: 'Платформа LP' },
   ];
 
   return (
@@ -89,7 +87,6 @@ export const AffiliateProgram: React.FC<AffiliateProgramProps> = ({ organization
         />
       )}
       {activeTab === 'rules' && <RulesTab />}
-      {activeTab === 'platform' && <PlatformTab />}
     </div>
   );
 };

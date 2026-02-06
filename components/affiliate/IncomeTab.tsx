@@ -15,14 +15,14 @@ export const IncomeTab: React.FC<IncomeTabProps> = ({ stats, transactions, loadi
     {
       icon: DollarSign,
       label: 'Готово к выплате',
-      value: `${stats.readyToPay.toLocaleString('ru-RU')} руб.`,
+      value: `${stats.readyToPay.toLocaleString('ru-RU')} тг`,
       color: 'text-emerald-600',
       bgColor: 'bg-emerald-50',
     },
     {
       icon: Clock,
       label: 'В ожидании',
-      value: `${stats.pending.toLocaleString('ru-RU')} руб.`,
+      value: `${stats.pending.toLocaleString('ru-RU')} тг`,
       description: 'Сумма, которая будет готова к выплате в течение 14 дней',
       color: 'text-amber-600',
       bgColor: 'bg-amber-50',
@@ -30,7 +30,7 @@ export const IncomeTab: React.FC<IncomeTabProps> = ({ stats, transactions, loadi
     {
       icon: CheckCircle,
       label: 'Выплачено',
-      value: `${stats.totalPaid.toLocaleString('ru-RU')} руб.`,
+      value: `${stats.totalPaid.toLocaleString('ru-RU')} тг`,
       description: 'Средства, которые были выведены с партнерского баланса',
       color: 'text-blue-600',
       bgColor: 'bg-blue-50',
@@ -180,10 +180,10 @@ export const IncomeTab: React.FC<IncomeTabProps> = ({ stats, transactions, loadi
                       )}
                     </td>
                     <td className="py-3 px-4 text-sm text-slate-600">
-                      {tx.paymentAmount.toLocaleString('ru-RU')} руб.
+                      {tx.paymentAmount.toLocaleString('ru-RU')} тг
                     </td>
                     <td className="py-3 px-4 text-sm font-medium text-slate-900">
-                      {tx.commissionAmount.toLocaleString('ru-RU')} руб.
+                      {tx.commissionAmount.toLocaleString('ru-RU')} тг
                       <span className="text-xs text-slate-400 ml-1">({tx.commissionPercent}%)</span>
                     </td>
                     <td className="py-3 px-4">

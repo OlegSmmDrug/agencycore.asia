@@ -22,7 +22,7 @@ export const RulesTab: React.FC = () => {
 
       <div className="border-t border-slate-200 pt-6">
         <p className="text-sm font-semibold text-slate-900 mb-4">
-          Бонус для рефералов: 750 руб. на счет сервиса, вместо стандартных 375
+          Бонус для рефералов: 750 тг на счет сервиса, вместо стандартных 375
         </p>
       </div>
 
@@ -35,7 +35,7 @@ export const RulesTab: React.FC = () => {
         </div>
         <p className="text-sm text-slate-600 leading-relaxed">
           Независимо от суммы платежа вы сразу получите 50% первого платежа привлеченного вами клиента.
-          Например, клиент положил 2000 руб. на счет, а вы получаете с этого 1000 руб.
+          Например, клиент положил 2000 тг на счет, а вы получаете с этого 1000 тг
         </p>
       </div>
 
@@ -93,7 +93,7 @@ export const RulesTab: React.FC = () => {
       <div className="bg-white border border-slate-200 rounded-xl p-6">
         <h4 className="text-lg font-bold text-slate-900 mb-3">Когда можно вывести партнерский баланс</h4>
         <p className="text-sm text-slate-600 leading-relaxed mb-3">
-          По достижению 5 000 руб. на счету вы можете оставить заявку на вывод денег.
+          По достижению 5 000 тг на счету вы можете оставить заявку на вывод денег.
           Потребуется прислать необходимые документы и банковские реквизиты, после чего 10 или 25 числа будет отправлен перевод.
         </p>
         <p className="text-sm text-slate-600 leading-relaxed">

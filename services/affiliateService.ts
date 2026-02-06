@@ -132,7 +132,7 @@ class AffiliateService {
 
     const { data, error } = await supabase
       .from('promo_codes')
-      .select('*, users!promo_codes_user_id_fkey(full_name)')
+      .select('*')
       .eq('code', normalizedCode)
       .eq('is_active', true)
       .maybeSingle();
@@ -270,13 +270,23 @@ class AffiliateService {
   async getTransactions(userId: string): Promise<ReferralTransaction[]> {
     const { data, error } = await supabase
       .from('referral_transactions')
-      .select('*, referred_org:organizations!referral_transactions_referred_org_id_fkey(name)')
+      .select('*')
       .eq('referrer_user_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching transactions:', error);
       return [];
+    }
+
+    const orgIds = [...new Set((data || []).map((t: any) => t.referred_org_id))];
+    const orgNames: Record<string, string> = {};
+    if (orgIds.length > 0) {
+      const { data: orgs } = await supabase
+        .from('organizations')
+        .select('id, name')
+        .in('id', orgIds);
+      (orgs || []).forEach((o: any) => { orgNames[o.id] = o.name; });
     }
 
     return (data || []).map((t: any) => ({
@@ -292,14 +302,14 @@ class AffiliateService {
       readyAt: t.ready_at,
       paidAt: t.paid_at,
       createdAt: t.created_at,
-      referredOrgName: t.referred_org?.name || 'N/A',
+      referredOrgName: orgNames[t.referred_org_id] || 'N/A',
     }));
   }
 
   async getReferrals(organizationId: string): Promise<ReferralRegistration[]> {
     const { data, error } = await supabase
       .from('referral_registrations')
-      .select('*, referred_org:organizations!referral_registrations_referred_org_id_fkey(name)')
+      .select('*')
       .eq('referrer_org_id', organizationId)
       .eq('level', 1)
       .order('created_at', { ascending: false });
@@ -307,6 +317,16 @@ class AffiliateService {
     if (error) {
       console.error('Error fetching referrals:', error);
       return [];
+    }
+
+    const orgIds = [...new Set((data || []).map((r: any) => r.referred_org_id))];
+    const orgNames: Record<string, string> = {};
+    if (orgIds.length > 0) {
+      const { data: orgs } = await supabase
+        .from('organizations')
+        .select('id, name')
+        .in('id', orgIds);
+      (orgs || []).forEach((o: any) => { orgNames[o.id] = o.name; });
     }
 
     return (data || []).map((r: any) => ({
@@ -318,7 +338,7 @@ class AffiliateService {
       level: r.level,
       isActive: r.is_active,
       createdAt: r.created_at,
-      referredOrgName: r.referred_org?.name || 'N/A',
+      referredOrgName: orgNames[r.referred_org_id] || 'N/A',
     }));
   }
 

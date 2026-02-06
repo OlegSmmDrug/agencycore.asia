@@ -64,7 +64,7 @@ export const LinksTab: React.FC<LinksTabProps> = ({ promoCodes, organizationId, 
             <input
               type="text"
               value={newCode}
-              onChange={(e) => setNewCode(e.target.value.replace(/[^a-zA-Z0-9._-]/g, ''))}
+              onChange={(e) => setNewCode(e.target.value.replace(/[^a-zA-Z0-9а-яА-ЯёЁ._-]/g, ''))}
               placeholder="mypromo"
               className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
