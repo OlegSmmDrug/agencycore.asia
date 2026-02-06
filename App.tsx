@@ -49,6 +49,7 @@ import { authService, type AuthUser } from './services/authService';
 import { moduleAccessService, ModuleAccess } from './services/moduleAccessService';
 import { planLimitsService } from './services/planLimitsService';
 import ModuleGate from './components/ModuleGate';
+import { sessionMonitorService } from './services/sessionMonitorService';
 import { supabase } from './lib/supabase';
 
 // Helper for safe local storage loading with migrations
@@ -205,6 +206,21 @@ const App: React.FC = () => {
     return () => {
       console.log('🧹 Cleaning up data loading effect');
       mounted = false;
+    };
+  }, [currentAuthUser?.id]);
+
+  useEffect(() => {
+    if (!currentAuthUser?.id || currentAuthUser.isSuperAdmin) return;
+
+    sessionMonitorService.start(currentAuthUser.id, (result) => {
+      addNotification(
+        `Обнаружены одновременные входы с ${result.concurrent_ips} разных IP-адресов. Возможно, аккаунт используется несколькими людьми.`,
+        'warning'
+      );
+    });
+
+    return () => {
+      sessionMonitorService.stop();
     };
   }, [currentAuthUser?.id]);
 
