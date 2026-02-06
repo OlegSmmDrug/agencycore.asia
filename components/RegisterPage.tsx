@@ -34,11 +34,14 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onRegister, onSwitchToLogin
     });
 
     if (authError) {
-      setError(
-        authError.message.includes('уже существует')
-          ? 'Email уже зарегистрирован'
-          : 'Ошибка регистрации. Попробуйте позже.'
-      );
+      const msg = authError.message || '';
+      if (msg.includes('уже существует') || msg.includes('duplicate') || msg.includes('unique')) {
+        setError('Email уже зарегистрирован');
+      } else if (msg.includes('password') || msg.includes('пароль')) {
+        setError('Пароль слишком слабый. Используйте минимум 6 символов.');
+      } else {
+        setError('Ошибка регистрации: ' + (msg || 'Попробуйте позже.'));
+      }
       setIsLoading(false);
     } else if (user) {
       onRegister(user);

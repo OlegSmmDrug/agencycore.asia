@@ -286,6 +286,8 @@ export const authService = {
     industry?: string;
     companySize?: string;
   }): Promise<{ user: AuthUser | null; error: Error | null }> {
+    let createdOrgId: string | null = null;
+
     try {
       const { organizationService } = await import('./organizationService');
 
@@ -299,10 +301,13 @@ export const authService = {
         throw new Error('Пользователь с таким email уже существует');
       }
 
-      const slug = data.companyName
+      const baseSlug = data.companyName
         .toLowerCase()
         .replace(/[^a-z0-9а-яё]+/gi, '-')
         .replace(/^-+|-+$/g, '');
+
+      const suffix = Math.random().toString(36).substring(2, 8);
+      const slug = `${baseSlug}-${suffix}`;
 
       const tempUserId = crypto.randomUUID();
 
@@ -313,6 +318,8 @@ export const authService = {
         industry: data.industry,
         companySize: data.companySize,
       });
+
+      createdOrgId = organization.id;
 
       const { data: user, error: userError } = await supabase
         .from('users')
@@ -328,7 +335,11 @@ export const authService = {
         .select()
         .single();
 
-      if (userError) throw userError;
+      if (userError) {
+        await supabase.from('organizations').delete().eq('id', organization.id);
+        createdOrgId = null;
+        throw userError;
+      }
 
       const authUser: AuthUser = {
         id: user.id,
@@ -344,6 +355,9 @@ export const authService = {
 
       return { user: authUser, error: null };
     } catch (error) {
+      if (createdOrgId) {
+        try { await supabase.from('organizations').delete().eq('id', createdOrgId); } catch (_) { /* cleanup best-effort */ }
+      }
       console.error('Registration error:', error);
       return { user: null, error: error as Error };
     }
