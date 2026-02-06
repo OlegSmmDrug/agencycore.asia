@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { authService } from '../services/authService';
-import { BarChart3, Users, DollarSign, Search, Building2, Plus, Edit, LogOut, Gift, Link2, UserCheck, Clock, CheckCircle, Ban, Trash2, Server, FileText } from 'lucide-react';
+import { BarChart3, Users, DollarSign, Search, Building2, Plus, Edit, LogOut, Gift, Link2, UserCheck, Clock, CheckCircle, Ban, Trash2, Server, FileText, CreditCard } from 'lucide-react';
 import OrganizationEditModal from './OrganizationEditModal';
 import SystemMetricsPanel from './SystemMetricsPanel';
 import LegalPagesAdmin from './LegalPagesAdmin';
 import SuperAdminOverview from './SuperAdminOverview';
+import SuperAdminBilling from './SuperAdminBilling';
 
 interface Organization {
   id: string;
@@ -64,7 +65,7 @@ interface AffiliateAdminStats {
 }
 
 const SuperAdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'affiliate' | 'legal' | 'system'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'billing' | 'affiliate' | 'legal' | 'system'>('overview');
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -308,6 +309,19 @@ const SuperAdminDashboard: React.FC = () => {
             <div className="flex items-center gap-2">
               <Building2 className="w-4 h-4" />
               Компании
+            </div>
+          </button>
+          <button
+            onClick={() => setActiveTab('billing')}
+            className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+              activeTab === 'billing'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <CreditCard className="w-4 h-4" />
+              Тарифы и биллинг
             </div>
           </button>
           <button
@@ -700,6 +714,10 @@ const SuperAdminDashboard: React.FC = () => {
               </>
             )}
           </div>
+        )}
+
+        {activeTab === 'billing' && currentUserId && (
+          <SuperAdminBilling currentUserId={currentUserId} />
         )}
 
         {activeTab === 'legal' && <LegalPagesAdmin />}

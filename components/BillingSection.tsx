@@ -36,84 +36,19 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
   const [topUpAmount, setTopUpAmount] = useState('');
   const [showTopUpModal, setShowTopUpModal] = useState(false);
   const [additionalUsers, setAdditionalUsers] = useState(0);
-  const [subscriptionPeriod, setSubscriptionPeriod] = useState<'6months' | '9months' | '1year' | '2years'>('1year');
+  const [subscriptionPeriod, setSubscriptionPeriod] = useState('1year');
   const [modules, setModules] = useState<ModuleAccess[]>([]);
   const [usageStats, setUsageStats] = useState<any>(null);
   const [activeSection, setActiveSection] = useState<'plans' | 'modules' | 'usage'>('plans');
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [periodBonuses, setPeriodBonuses] = useState<{ id: string; label: string; months: number; bonusMonths: number }[]>([]);
+  const [additionalUserPriceUsd, setAdditionalUserPriceUsd] = useState(3);
+  const [additionalUserPriceKzt, setAdditionalUserPriceKzt] = useState(1350);
 
-  const plans: Plan[] = [
-    {
-      id: 'free',
-      name: 'FREE',
-      displayName: 'Бесплатный',
-      description: 'Для частных пользователей или стартовых команд',
-      priceMonthly: 0,
-      priceRu: 0,
-      maxUsers: 2,
-      maxProjects: 10,
-      features: [
-        { text: 'До 2 пользователей', included: true },
-        { text: '10 проектов в работе', included: true },
-        { text: 'Базовую CRM', included: true },
-        { text: 'Модуль аналитики', included: false },
-        { text: 'API интеграция', included: false },
-      ],
-      upgradeNote: 'Триггер для апгрейда: Приглашение 3-го пользователя'
-    },
-    {
-      id: 'starter',
-      name: 'STARTER',
-      displayName: 'Стартовый',
-      description: 'Для растущих команд и большей совместной работы',
-      priceMonthly: 9,
-      priceRu: 4050,
-      maxUsers: 10,
-      maxProjects: 100,
-      features: [
-        { text: 'Всё что в FREE тарифе', included: true },
-        { text: '3-10 пользователей', included: true },
-        { text: '100 проектов в работе', included: true },
-        { text: 'Зарплатную ведомость', included: true },
-        { text: 'API интеграция', included: false },
-      ],
-      isPopular: false
-    },
-    {
-      id: 'professional',
-      name: 'PROFESSIONAL',
-      displayName: 'Профессиональный',
-      description: 'Для растущих команд и большей совместной работы',
-      priceMonthly: 25,
-      priceRu: 11250,
-      maxUsers: 25,
-      maxProjects: null,
-      features: [
-        { text: 'Всё что в СТАРТОВОМ тарифе', included: true },
-        { text: 'до 25 пользователей', included: true },
-        { text: 'ERP модуль Аналитики', included: true },
-        { text: 'Продвинутые готовые модули', included: true },
-        { text: 'API интеграция', included: true },
-      ],
-      isPopular: true
-    },
-    {
-      id: 'enterprise',
-      name: 'ENTERPRISE',
-      displayName: 'Enterprise',
-      description: 'Для больших команд с индивидуальными потребностями',
-      priceMonthly: 499,
-      priceRu: 224550,
-      maxUsers: null,
-      maxProjects: null,
-      features: [
-        { text: 'Всё из Профессионального', included: true },
-        { text: 'Неограниченное количество пользователей', included: true },
-        { text: 'Приоритетная поддержка 24/7', included: true },
-        { text: 'Выделенный менеджер', included: true },
-        { text: 'Кастомная интеграция', included: true },
-      ],
-    }
-  ];
+  useEffect(() => {
+    loadPlansFromDB();
+    loadPeriodBonuses();
+  }, []);
 
   useEffect(() => {
     if (organization) {
@@ -122,6 +57,64 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
       loadUsageStats();
     }
   }, [organization?.id]);
+
+  const loadPlansFromDB = async () => {
+    try {
+      const { data } = await supabase
+        .from('subscription_plans')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order');
+
+      if (data && data.length > 0) {
+        const mapped: Plan[] = data.map((p: any) => {
+          const features = Array.isArray(p.features_display)
+            ? p.features_display
+            : JSON.parse(p.features_display || '[]');
+          return {
+            id: p.id,
+            name: p.name,
+            displayName: p.display_name_ru || p.display_name,
+            description: p.description_ru || p.description,
+            priceMonthly: Number(p.price_monthly) || 0,
+            priceRu: Number(p.price_kzt) || 0,
+            maxUsers: p.max_users,
+            maxProjects: p.max_projects,
+            features,
+            isPopular: p.is_popular || false,
+          };
+        });
+        setPlans(mapped);
+        if (data[0]) {
+          setAdditionalUserPriceUsd(Number(data[0].additional_user_price_usd) || 3);
+          setAdditionalUserPriceKzt(Number(data[0].additional_user_price_kzt) || 1350);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading plans:', err);
+    }
+  };
+
+  const loadPeriodBonuses = async () => {
+    try {
+      const { data } = await supabase
+        .from('subscription_period_bonuses')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order');
+
+      if (data && data.length > 0) {
+        setPeriodBonuses(data.map((p: any) => ({
+          id: p.period_key,
+          label: p.period_label,
+          months: p.months,
+          bonusMonths: p.bonus_months,
+        })));
+      }
+    } catch (err) {
+      console.error('Error loading period bonuses:', err);
+    }
+  };
 
   const loadSubscriptionData = async () => {
     if (!organization?.id) return;
@@ -406,7 +399,7 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
                 </div>
                 <div>
                   <h3 className="text-base sm:text-lg font-semibold text-slate-800">Дополнительные пользователи</h3>
-                  <p className="text-xs sm:text-sm text-slate-500">3$ за пользователя в месяц</p>
+                  <p className="text-xs sm:text-sm text-slate-500">{additionalUserPriceUsd}$ за пользователя в месяц</p>
                 </div>
               </div>
 
@@ -442,11 +435,11 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
                 <div className="bg-blue-50 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm text-slate-600">Стоимость:</span>
-                    <span className="text-lg font-bold text-blue-600">{additionalUsers * 3}$ / месяц</span>
+                    <span className="text-lg font-bold text-blue-600">{additionalUsers * additionalUserPriceUsd}$ / месяц</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-slate-600">В тенге:</span>
-                    <span className="text-lg font-bold text-blue-600">{(additionalUsers * 3 * 450).toLocaleString()} ₸ / месяц</span>
+                    <span className="text-lg font-bold text-blue-600">{(additionalUsers * additionalUserPriceKzt).toLocaleString()} ₸ / месяц</span>
                   </div>
                 </div>
               </div>
@@ -464,15 +457,15 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
               </div>
 
               <div className="space-y-3">
-                {[
-                  { id: '6months', label: '6 месяцев', bonus: '+1 месяц в подарок', months: 6, bonusMonths: 1 },
-                  { id: '9months', label: '9 месяцев', bonus: '+1 месяц в подарок', months: 9, bonusMonths: 1 },
-                  { id: '1year', label: '1 год', bonus: '+2 месяца в подарок', months: 12, bonusMonths: 2 },
-                  { id: '2years', label: '2 года', bonus: '+6 месяцев в подарок', months: 24, bonusMonths: 6 },
-                ].map((period) => (
+                {periodBonuses.map((period) => {
+                  const bonusText = period.bonusMonths === 1 ? '+1 месяц в подарок'
+                    : period.bonusMonths < 5 ? `+${period.bonusMonths} месяца в подарок`
+                    : `+${period.bonusMonths} месяцев в подарок`;
+                  return { ...period, bonus: bonusText };
+                }).map((period) => (
                   <button
                     key={period.id}
-                    onClick={() => setSubscriptionPeriod(period.id as any)}
+                    onClick={() => setSubscriptionPeriod(period.id)}
                     className={`w-full text-left p-3 sm:p-4 rounded-lg border-2 transition-all ${
                       subscriptionPeriod === period.id
                         ? 'border-blue-500 bg-blue-50'
@@ -504,14 +497,12 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
                 <div className="text-sm text-slate-600 mb-1">Итого к оплате:</div>
                 <div className="text-2xl font-bold text-green-600">
                   {(() => {
-                    const periods: Record<string, { months: number; price: number }> = {
-                      '6months': { months: 6, price: 6 },
-                      '9months': { months: 9, price: 9 },
-                      '1year': { months: 12, price: 12 },
-                      '2years': { months: 24, price: 24 }
-                    };
-                    const selected = periods[subscriptionPeriod];
-                    return `${selected.price * 10}$ за ${selected.months} мес.`;
+                    const selected = periodBonuses.find(p => p.id === subscriptionPeriod);
+                    if (!selected) return '-';
+                    const currentPlanData = plans.find(p => p.name === currentPlan);
+                    const monthlyPrice = currentPlanData?.priceMonthly || 0;
+                    const total = monthlyPrice * selected.months;
+                    return `${total}$ за ${selected.months} мес.`;
                   })()}
                 </div>
               </div>
