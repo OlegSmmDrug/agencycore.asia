@@ -817,12 +817,26 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
 
                 const enrichedDynamicExpenses: Record<string, DynamicExpenseItem> = { ...dynamicExpenses };
 
-                if (project.contentMetricsVisible && Array.isArray(project.contentMetricsVisible)) {
-                  project.contentMetricsVisible.forEach((metricKey: string) => {
+                const allContentMetrics = project.contentMetrics as Record<string, { fact?: number; plan?: number }> | undefined;
+                if (allContentMetrics && typeof allContentMetrics === 'object') {
+                  const innerNormalize = (str: string): string => {
+                    return str
+                      .toLowerCase()
+                      .replace(/[_\s]+/g, '')
+                      .replace(/[^a-zа-я0-9]/g, '')
+                      .trim();
+                  };
+
+                  const nowDate = new Date();
+                  const selectedDate = new Date(selectedMonth + '-01');
+                  const isFutureMonth = selectedDate.getFullYear() > nowDate.getFullYear() ||
+                    (selectedDate.getFullYear() === nowDate.getFullYear() && selectedDate.getMonth() > nowDate.getMonth());
+
+                  Object.keys(allContentMetrics).forEach((metricKey: string) => {
                     const metricKeyNormalized = normalize(metricKey);
 
                     const existingKey = Object.keys(enrichedDynamicExpenses).find(key => {
-                      const keyNormalized = normalize(key.replace('kpi_', ''));
+                      const keyNormalized = normalize(key.replace('kpi_', '').replace('content_', ''));
                       const itemNormalized = normalize(enrichedDynamicExpenses[key]?.serviceName || '');
                       return keyNormalized === metricKeyNormalized || itemNormalized === metricKeyNormalized;
                     });
@@ -831,29 +845,15 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                       const kpiKey = `kpi_${metricKey}`;
                       const serviceName = metricKey.charAt(0).toUpperCase() + metricKey.slice(1).replace(/_/g, ' ');
 
-                      const normalize = (str: string): string => {
-                        return str
-                          .toLowerCase()
-                          .replace(/[_\s]+/g, '')
-                          .replace(/[^a-zа-я0-9]/g, '')
-                          .trim();
-                      };
-
-                      const normalizedServiceName = normalize(serviceName);
+                      const normalizedServiceName = innerNormalize(serviceName);
                       const foundService = calculatorServices.find(s => {
-                        const normalizedCalcName = normalize(s.name);
+                        const normalizedCalcName = innerNormalize(s.name);
                         return normalizedCalcName === normalizedServiceName;
                       });
 
                       const finalCategory = foundService?.category || detectCategory(serviceName);
                       const finalRate = foundService?.costPrice ? Number(foundService.costPrice) : 0;
-                      const contentMetrics = project.contentMetrics as Record<string, { fact?: number; plan?: number }>;
-                      const metricData = contentMetrics[metricKey];
-
-                      const now = new Date();
-                      const selectedDate = new Date(selectedMonth + '-01');
-                      const isFutureMonth = selectedDate.getFullYear() > now.getFullYear() ||
-                        (selectedDate.getFullYear() === now.getFullYear() && selectedDate.getMonth() > now.getMonth());
+                      const metricData = allContentMetrics[metricKey];
                       const count = isFutureMonth ? (metricData?.plan || 0) : (metricData?.fact || 0);
 
                       enrichedDynamicExpenses[kpiKey] = {

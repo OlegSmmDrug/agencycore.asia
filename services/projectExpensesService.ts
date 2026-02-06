@@ -787,6 +787,47 @@ export const projectExpensesService = {
       console.log(`[syncDynamicExpenses] Added: ${contentType} (${totalFact} units, cost=${totalCost})`);
     }
 
+    const contentMetrics = fullProject.contentMetrics || {};
+    const publicationTypes = new Set(['post', 'stories', 'reels']);
+
+    const now2 = new Date();
+    const selectedDate = new Date(`${month}-01`);
+    const isFutureMonth = selectedDate.getFullYear() > now2.getFullYear() ||
+      (selectedDate.getFullYear() === now2.getFullYear() && selectedDate.getMonth() > now2.getMonth());
+
+    for (const metricKey of Object.keys(contentMetrics)) {
+      if (publicationTypes.has(metricKey.toLowerCase())) continue;
+
+      const kpiKey = `kpi_${metricKey}`;
+      const existingInDynamic = Object.keys(dynamicExpenses).some(key => {
+        const keyNorm = normalizeServiceName(key.replace('kpi_', ''));
+        const metricNorm = normalizeServiceName(metricKey);
+        return keyNorm === metricNorm;
+      });
+      if (existingInDynamic) continue;
+
+      const metricData = contentMetrics[metricKey] as { plan?: number; fact?: number };
+      const count = isFutureMonth ? (metricData?.plan || 0) : (metricData?.fact || 0);
+
+      const calcService = findCalculatorService(metricKey);
+      const rate = calcService?.costPrice && calcService.costPrice > 0
+        ? calcService.costPrice
+        : 0;
+
+      const category = calcService?.category || 'other';
+
+      dynamicExpenses[kpiKey] = {
+        serviceName: calcService?.name || metricKey.charAt(0).toUpperCase() + metricKey.slice(1).replace(/_/g, ' '),
+        count,
+        rate,
+        cost: count * rate,
+        category,
+        syncedAt: now
+      };
+
+      console.log(`[syncDynamicExpenses] Added CRM service: ${metricKey} (count=${count}, rate=${rate}, cost=${count * rate})`);
+    }
+
     const existing = await this.getExpenseByProjectAndMonth(projectId, month);
     const modelsExpenses = existing?.modelsExpenses || 0;
 
