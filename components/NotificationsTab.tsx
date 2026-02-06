@@ -3,7 +3,6 @@ import {
   Bell,
   Send,
   Link2,
-  Unlink,
   ExternalLink,
   CheckCircle,
   XCircle,
@@ -15,6 +14,9 @@ import {
   AlertTriangle,
   UserPlus,
   Activity,
+  Copy,
+  Key,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   telegramNotificationService,
@@ -41,6 +43,9 @@ export const NotificationsTab: React.FC<NotificationsTabProps> = ({
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [testSending, setTestSending] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [linkCode, setLinkCode] = useState<string | null>(null);
+  const [generatingCode, setGeneratingCode] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -61,6 +66,37 @@ export const NotificationsTab: React.FC<NotificationsTabProps> = ({
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const handleGenerateCode = async () => {
+    try {
+      setGeneratingCode(true);
+      const code = await telegramNotificationService.generateLinkCode(userId, organizationId);
+      setLinkCode(code);
+      setCodeCopied(false);
+    } catch (error) {
+      console.error('Error generating link code:', error);
+    } finally {
+      setGeneratingCode(false);
+    }
+  };
+
+  const handleCopyCommand = async () => {
+    if (!linkCode) return;
+    try {
+      await navigator.clipboard.writeText(`/link ${linkCode}`);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 3000);
+    } catch {
+      const el = document.createElement('textarea');
+      el.value = `/link ${linkCode}`;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 3000);
+    }
+  };
 
   const handleTogglePref = async (key: keyof NotificationPreferences, value: boolean) => {
     try {
@@ -168,11 +204,18 @@ export const NotificationsTab: React.FC<NotificationsTabProps> = ({
               Привяжите свой Telegram-аккаунт, чтобы получать мгновенные уведомления о новых задачах, дедлайнах и важных событиях.
             </p>
 
-            <div className="bg-slate-50 rounded-lg p-5 text-left max-w-md mx-auto mb-6">
-              <h4 className="text-sm font-semibold text-slate-700 mb-3">Как подключить:</h4>
+            <div className="bg-slate-50 rounded-lg p-5 text-left max-w-lg mx-auto mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <ShieldCheck className="w-4 h-4 text-green-600" />
+                <h4 className="text-sm font-semibold text-slate-700">Безопасная привязка по коду</h4>
+              </div>
               <ol className="space-y-3 text-sm text-slate-600">
                 <li className="flex gap-3">
                   <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">1</span>
+                  <span>Нажмите <b>«Получить код привязки»</b> ниже</span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">2</span>
                   <span>
                     Откройте бота{' '}
                     <a
@@ -183,33 +226,67 @@ export const NotificationsTab: React.FC<NotificationsTabProps> = ({
                     >
                       @{BOT_USERNAME}
                     </a>{' '}
-                    в Telegram
+                    в Telegram и нажмите <b>Start</b>
                   </span>
-                </li>
-                <li className="flex gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">2</span>
-                  <span>Начните диалог командой <code className="bg-slate-200 px-1.5 py-0.5 rounded text-xs font-mono">/start</code></span>
                 </li>
                 <li className="flex gap-3">
                   <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">3</span>
-                  <span>
-                    Отправьте команду{' '}
-                    <code className="bg-slate-200 px-1.5 py-0.5 rounded text-xs font-mono">/set {userEmail}</code>
-                  </span>
+                  <span>Отправьте боту команду <code className="bg-slate-200 px-1.5 py-0.5 rounded text-xs font-mono">/link ВАШ_КОД</code></span>
                 </li>
                 <li className="flex gap-3">
                   <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">4</span>
-                  <span>Вернитесь сюда и нажмите <b>Обновить</b>, чтобы увидеть привязанный аккаунт</span>
+                  <span>Вернитесь сюда и нажмите <b>«Обновить»</b></span>
                 </li>
               </ol>
             </div>
 
+            {linkCode ? (
+              <div className="max-w-lg mx-auto mb-6">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-xs text-blue-600 mb-2 font-medium">Ваш код привязки (действителен 10 минут):</p>
+                  <div className="flex items-center justify-center gap-3">
+                    <code className="text-2xl font-bold tracking-[0.3em] text-blue-800 bg-white px-4 py-2 rounded-lg border border-blue-200">
+                      {linkCode}
+                    </code>
+                  </div>
+                  <p className="text-xs text-blue-500 mt-3 mb-2">Отправьте боту команду:</p>
+                  <div className="flex items-center gap-2 justify-center">
+                    <code className="text-sm font-mono bg-white px-3 py-1.5 rounded border border-blue-200 text-blue-800">
+                      /link {linkCode}
+                    </code>
+                    <button
+                      onClick={handleCopyCommand}
+                      className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                      title="Скопировать команду"
+                    >
+                      {codeCopied ? <CheckCircle className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {codeCopied && (
+                    <p className="text-xs text-green-600 mt-1 text-center">Скопировано!</p>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button
+                onClick={handleGenerateCode}
+                disabled={generatingCode}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm disabled:opacity-50"
+              >
+                {generatingCode ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Key className="w-4 h-4" />
+                )}
+                {linkCode ? 'Получить новый код' : 'Получить код привязки'}
+              </button>
               <a
                 href={`https://t.me/${BOT_USERNAME}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors font-medium text-sm"
               >
                 <ExternalLink className="w-4 h-4" />
                 Открыть @{BOT_USERNAME}
@@ -289,15 +366,30 @@ export const NotificationsTab: React.FC<NotificationsTabProps> = ({
             </div>
 
             <div className="pt-2 border-t border-slate-100">
-              <a
-                href={`https://t.me/${BOT_USERNAME}`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={handleGenerateCode}
+                disabled={generatingCode}
                 className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
               >
-                <Link2 className="w-3.5 h-3.5" />
+                {generatingCode ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
                 Добавить ещё один Telegram-аккаунт
-              </a>
+              </button>
+              {linkCode && (
+                <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-xs text-blue-600 mb-1">Отправьте боту @{BOT_USERNAME}:</p>
+                  <div className="flex items-center gap-2">
+                    <code className="text-sm font-mono bg-white px-2 py-1 rounded border border-blue-200 text-blue-800">
+                      /link {linkCode}
+                    </code>
+                    <button
+                      onClick={handleCopyCommand}
+                      className="p-1 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                    >
+                      {codeCopied ? <CheckCircle className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

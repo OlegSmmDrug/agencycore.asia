@@ -119,6 +119,32 @@ export const telegramNotificationService = {
     }
   },
 
+  async generateLinkCode(userId: string, organizationId: string): Promise<string> {
+    await supabase
+      .from('telegram_link_codes')
+      .delete()
+      .eq('user_id', userId);
+
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    const arr = new Uint8Array(6);
+    crypto.getRandomValues(arr);
+    for (let i = 0; i < 6; i++) {
+      code += chars[arr[i] % chars.length];
+    }
+
+    const { error } = await supabase
+      .from('telegram_link_codes')
+      .insert({
+        user_id: userId,
+        organization_id: organizationId,
+        code,
+      });
+
+    if (error) throw error;
+    return code;
+  },
+
   async sendNotification(
     userId: string,
     title: string,

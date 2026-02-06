@@ -15,7 +15,9 @@ function getSupabaseClient() {
   );
 }
 
-async function getBotToken(supabase: ReturnType<typeof createClient>): Promise<string> {
+async function getBotToken(
+  supabase: ReturnType<typeof createClient>
+): Promise<string> {
   const { data, error } = await supabase
     .from("telegram_bot_config")
     .select("bot_token")
@@ -57,43 +59,64 @@ async function handleStart(
   const text =
     `Добро пожаловать, <b>${firstName}</b>!\n\n` +
     `Я бот <b>AgencyCore</b> для уведомлений.\n\n` +
-    `Чтобы привязать ваш аккаунт, отправьте команду:\n` +
-    `<code>/set ваш-email@example.com</code>\n\n` +
-    `Используйте тот email, под которым вы зарегистрированы в системе AgencyCore.`;
+    `Чтобы привязать аккаунт:\n` +
+    `1. Откройте <b>Настройки профиля → Уведомления</b> в AgencyCore\n` +
+    `2. Нажмите <b>«Получить код привязки»</b>\n` +
+    `3. Отправьте мне полученный код командой:\n` +
+    `<code>/link XXXXXX</code>\n\n` +
+    `Это гарантирует, что только вы сможете привязать свой аккаунт.`;
 
   await sendTelegramMessage(botToken, chatId, text);
 }
 
-async function handleSetEmail(
+async function handleLinkCode(
   supabase: ReturnType<typeof createClient>,
   botToken: string,
   chatId: number,
   username: string,
   firstName: string,
-  email: string
+  code: string
 ) {
-  const trimmedEmail = email.trim().toLowerCase();
+  const trimmedCode = code.trim().toUpperCase();
 
-  if (!trimmedEmail || !trimmedEmail.includes("@")) {
+  if (!trimmedCode || trimmedCode.length < 4) {
     await sendTelegramMessage(
       botToken,
       chatId,
-      "Неверный формат email. Попробуйте:\n<code>/set ваш-email@example.com</code>"
+      "Неверный формат кода. Получите код в <b>Настройки профиля → Уведомления</b> и отправьте:\n<code>/link XXXXXX</code>"
     );
     return;
   }
 
-  const { data: user, error: userError } = await supabase
-    .from("users")
-    .select("id, name, organization_id, email")
-    .eq("email", trimmedEmail)
+  await supabase
+    .from("telegram_link_codes")
+    .delete()
+    .lt("expires_at", new Date().toISOString());
+
+  const { data: linkCode, error: codeError } = await supabase
+    .from("telegram_link_codes")
+    .select("id, user_id, organization_id, expires_at")
+    .eq("code", trimmedCode)
     .maybeSingle();
 
-  if (userError || !user) {
+  if (codeError || !linkCode) {
     await sendTelegramMessage(
       botToken,
       chatId,
-      `Пользователь с email <b>${trimmedEmail}</b> не найден в системе.\n\nУбедитесь, что вы используете тот же email, под которым зарегистрированы в AgencyCore.`
+      "Код не найден или истёк. Получите новый код в <b>Настройки профиля → Уведомления</b>."
+    );
+    return;
+  }
+
+  if (new Date(linkCode.expires_at) < new Date()) {
+    await supabase
+      .from("telegram_link_codes")
+      .delete()
+      .eq("id", linkCode.id);
+    await sendTelegramMessage(
+      botToken,
+      chatId,
+      "Код истёк. Получите новый код в <b>Настройки профиля → Уведомления</b>."
     );
     return;
   }
@@ -101,15 +124,26 @@ async function handleSetEmail(
   const { data: existing } = await supabase
     .from("user_telegram_links")
     .select("id")
-    .eq("user_id", user.id)
+    .eq("user_id", linkCode.user_id)
     .eq("telegram_chat_id", chatId)
     .maybeSingle();
 
   if (existing) {
+    await supabase
+      .from("telegram_link_codes")
+      .delete()
+      .eq("id", linkCode.id);
+
+    const { data: user } = await supabase
+      .from("users")
+      .select("name")
+      .eq("id", linkCode.user_id)
+      .maybeSingle();
+
     await sendTelegramMessage(
       botToken,
       chatId,
-      `Ваш Telegram-аккаунт уже привязан к <b>${user.name}</b> (${trimmedEmail}).\n\nУведомления активны.`
+      `Ваш Telegram уже привязан к аккаунту <b>${user?.name || "—"}</b>. Уведомления активны.`
     );
     return;
   }
@@ -118,8 +152,8 @@ async function handleSetEmail(
     .from("user_telegram_links")
     .upsert(
       {
-        user_id: user.id,
-        organization_id: user.organization_id,
+        user_id: linkCode.user_id,
+        organization_id: linkCode.organization_id,
         telegram_chat_id: chatId,
         telegram_username: username || "",
         telegram_first_name: firstName || "",
@@ -132,21 +166,26 @@ async function handleSetEmail(
     await sendTelegramMessage(
       botToken,
       chatId,
-      "Произошла ошибка при привязке аккаунта. Попробуйте позже."
+      "Произошла ошибка при привязке. Попробуйте позже."
     );
     return;
   }
 
+  await supabase
+    .from("telegram_link_codes")
+    .delete()
+    .eq("id", linkCode.id);
+
   const { data: existingPrefs } = await supabase
     .from("user_notification_preferences")
     .select("id")
-    .eq("user_id", user.id)
+    .eq("user_id", linkCode.user_id)
     .maybeSingle();
 
   if (!existingPrefs) {
     await supabase.from("user_notification_preferences").insert({
-      user_id: user.id,
-      organization_id: user.organization_id,
+      user_id: linkCode.user_id,
+      organization_id: linkCode.organization_id,
       telegram_enabled: true,
       notify_new_task: true,
       notify_task_status: true,
@@ -156,12 +195,18 @@ async function handleSetEmail(
     });
   }
 
+  const { data: user } = await supabase
+    .from("users")
+    .select("name, email")
+    .eq("id", linkCode.user_id)
+    .maybeSingle();
+
   await sendTelegramMessage(
     botToken,
     chatId,
-    `Ваш Telegram-аккаунт успешно привязан к учетной записи <b>${user.name}</b> (${trimmedEmail}).\n\n` +
-      `Теперь вы будете получать уведомления из AgencyCore прямо в Telegram.\n\n` +
-      `Настроить типы уведомлений можно в разделе <b>Настройки профиля</b> -> <b>Уведомления</b>.`
+    `Telegram успешно привязан к аккаунту <b>${user?.name || "—"}</b> (${user?.email || ""}).\n\n` +
+      `Теперь вы будете получать уведомления из AgencyCore.\n\n` +
+      `Настроить типы уведомлений: <b>Настройки профиля → Уведомления</b>.`
   );
 }
 
@@ -187,7 +232,7 @@ async function handleUnlink(
   await sendTelegramMessage(
     botToken,
     chatId,
-    "Ваш Telegram-аккаунт отвязан от AgencyCore. Уведомления больше не будут приходить.\n\nЧтобы привязать снова, используйте <code>/set email@example.com</code>"
+    "Ваш Telegram отвязан от AgencyCore. Уведомления больше не будут приходить.\n\nЧтобы привязать снова, получите новый код в CRM."
   );
 }
 
@@ -195,7 +240,7 @@ async function handleHelp(botToken: string, chatId: number) {
   const text =
     `<b>Команды бота AgencyCore:</b>\n\n` +
     `/start - Начало работы\n` +
-    `/set email@example.com - Привязать аккаунт\n` +
+    `/link XXXXXX - Привязать аккаунт по коду из CRM\n` +
     `/status - Проверить статус привязки\n` +
     `/unlink - Отвязать аккаунт\n` +
     `/help - Список команд`;
@@ -217,7 +262,7 @@ async function handleStatus(
     await sendTelegramMessage(
       botToken,
       chatId,
-      "Ваш Telegram не привязан ни к одному аккаунту AgencyCore.\n\nИспользуйте <code>/set email@example.com</code> для привязки."
+      "Ваш Telegram не привязан ни к одному аккаунту AgencyCore.\n\nПолучите код привязки в <b>Настройки профиля → Уведомления</b>."
     );
     return;
   }
@@ -301,11 +346,7 @@ Deno.serve(async (req: Request) => {
 
     if (path === "send-notification" && req.method === "POST") {
       const body = await req.json();
-      const result = await handleSendNotification(
-        supabase,
-        botToken,
-        body
-      );
+      const result = await handleSendNotification(supabase, botToken, body);
       return new Response(JSON.stringify(result), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -345,15 +386,15 @@ Deno.serve(async (req: Request) => {
 
       if (text === "/start") {
         await handleStart(botToken, chatId, firstName);
-      } else if (text.startsWith("/set ")) {
-        const email = text.substring(5).trim();
-        await handleSetEmail(
+      } else if (text.startsWith("/link ")) {
+        const code = text.substring(6).trim();
+        await handleLinkCode(
           supabase,
           botToken,
           chatId,
           username,
           firstName,
-          email
+          code
         );
       } else if (text === "/unlink") {
         await handleUnlink(supabase, botToken, chatId);
@@ -361,6 +402,12 @@ Deno.serve(async (req: Request) => {
         await handleStatus(supabase, botToken, chatId);
       } else if (text === "/help") {
         await handleHelp(botToken, chatId);
+      } else if (text.startsWith("/set ")) {
+        await sendTelegramMessage(
+          botToken,
+          chatId,
+          "Привязка по email отключена в целях безопасности.\n\nИспользуйте код из CRM:\n1. Откройте <b>Настройки профиля → Уведомления</b>\n2. Нажмите <b>«Получить код привязки»</b>\n3. Отправьте: <code>/link XXXXXX</code>"
+        );
       } else {
         await sendTelegramMessage(
           botToken,
