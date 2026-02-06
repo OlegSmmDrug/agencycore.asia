@@ -163,7 +163,6 @@ const TeamManagement: React.FC<TeamManagementProps> = ({
                                                 <th className="px-4 md:px-8 py-4 md:py-5">Должность</th>
                                                 <th className="px-4 md:px-8 py-4 md:py-5">ИИН</th>
                                                 <th className="px-4 md:px-8 py-4 md:py-5 text-center">День рождения</th>
-                                                <th className="px-4 md:px-8 py-4 md:py-5 text-right">Оклад (Фикс)</th>
                                                 <th className="px-4 md:px-8 py-4 md:py-5 text-center">Действия</th>
                                             </tr>
                                         </thead>
@@ -201,7 +200,6 @@ const TeamManagement: React.FC<TeamManagementProps> = ({
                                                             );
                                                         })()}
                                                     </td>
-                                                    <td className="px-4 md:px-8 py-4 md:py-5 text-right"><p className="text-xs md:text-sm font-black text-slate-900">{(user.salary || 0).toLocaleString()} ₸</p></td>
                                                     <td className="px-4 md:px-8 py-4 md:py-5 text-center">
                                                         {isCeo && (
                                                             <div className="flex items-center justify-center gap-2 md:opacity-0 md:group-hover:opacity-100">

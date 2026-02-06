@@ -234,19 +234,7 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, user, onClose, onSave, is
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Оклад</label>
-              <input
-                type="number"
-                value={formData.salary || 0}
-                onChange={e => {
-                  const val = Number(e.target.value);
-                  setFormData({ ...formData, salary: isNaN(val) ? 0 : val });
-                }}
-                className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500"
-              />
-            </div>
+          <div className="grid grid-cols-1 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">ИИН</label>
               <input
