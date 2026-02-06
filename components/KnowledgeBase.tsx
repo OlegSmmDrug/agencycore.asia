@@ -39,8 +39,8 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
 
   const [floatingToolbar, setFloatingToolbar] = useState<{ show: boolean; top: number; left: number }>({ show: false, top: 0, left: 0 });
   const [blockMenuOpen, setBlockMenuOpen] = useState(false);
-  const [blockMenuPos, setBlockMenuPos] = useState({ top: 0, left: 0 });
   const floatingToolbarRef = useRef<HTMLDivElement>(null);
+  const addBlockBtnRef = useRef<HTMLButtonElement>(null);
   const savedSelectionRef = useRef<Range | null>(null);
 
   const handleSelectDoc = (docId: string) => {
@@ -138,9 +138,26 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
       return false;
   };
 
+  const ensureEditorFocus = useCallback(() => {
+    if (!editorRef.current) return;
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount || !editorRef.current.contains(sel.anchorNode)) {
+      editorRef.current.focus();
+      const range = document.createRange();
+      range.selectNodeContents(editorRef.current);
+      range.collapse(false);
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    }
+  }, []);
+
   // --- EDITOR LOGIC ---
   const execCmd = (command: string, value: string | undefined = undefined) => {
-      restoreSelection();
+      if (savedSelectionRef.current) {
+        restoreSelection();
+      } else {
+        ensureEditorFocus();
+      }
       document.execCommand(command, false, value);
       if (editorRef.current) {
           handleUpdateContent(editorRef.current.innerHTML);
@@ -152,22 +169,30 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
       saveSelection();
       const url = prompt("Введите URL ссылки:", "https://");
       if (url) {
-        restoreSelection();
-        document.execCommand('createLink', false, url);
+        if (savedSelectionRef.current && !savedSelectionRef.current.collapsed) {
+          restoreSelection();
+          document.execCommand('createLink', false, url);
+        } else {
+          ensureEditorFocus();
+          const linkHTML = `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #2563eb; text-decoration: underline;">${url}</a>&nbsp;`;
+          document.execCommand('insertHTML', false, linkHTML);
+        }
         if (editorRef.current) handleUpdateContent(editorRef.current.innerHTML);
       }
   };
 
   const insertImageAtCursor = (imageUrl: string) => {
+      ensureEditorFocus();
       const img = document.createElement('img');
       img.src = imageUrl;
       img.style.maxWidth = '100%';
       img.style.height = 'auto';
       img.style.margin = '1rem 0';
       img.style.borderRadius = '0.5rem';
+      img.style.display = 'block';
 
       const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0) {
+      if (selection && selection.rangeCount > 0 && editorRef.current?.contains(selection.anchorNode)) {
           const range = selection.getRangeAt(0);
           range.deleteContents();
           range.insertNode(img);
@@ -175,6 +200,10 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
       } else if (editorRef.current) {
           editorRef.current.appendChild(img);
       }
+
+      const br = document.createElement('p');
+      br.innerHTML = '<br>';
+      img.parentNode?.insertBefore(br, img.nextSibling);
 
       if (editorRef.current) {
           handleUpdateContent(editorRef.current.innerHTML);
@@ -244,6 +273,8 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
   };
 
   const handleInsertImage = () => {
+      ensureEditorFocus();
+      saveSelection();
       fileInputRef.current?.click();
   };
 
@@ -476,17 +507,7 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
   ];
 
   const openBlockMenu = () => {
-    const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0 && editorWrapperRef.current) {
-      const range = sel.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-      const wrapperRect = editorWrapperRef.current.getBoundingClientRect();
-      setBlockMenuPos({
-        top: rect.bottom - wrapperRect.top + 8,
-        left: rect.left - wrapperRect.left,
-      });
-    }
-    setBlockMenuOpen(true);
+    setBlockMenuOpen(prev => !prev);
   };
 
   const renderBlockIcon = (icon: string) => {
@@ -511,14 +532,28 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
   return (
     <div className="flex h-full bg-white md:bg-slate-50 overflow-hidden font-sans relative">
         <style>{`
-            .kb-editor blockquote { border-left: 4px solid #e2e8f0; padding-left: 1rem; font-style: italic; color: #64748b; }
+            .kb-editor blockquote { border-left: 3px solid #cbd5e1; padding-left: 1rem; font-style: italic; color: #64748b; margin: 0.75rem 0; }
             .kb-editor ul { list-style-type: disc; padding-left: 1.5rem; }
             .kb-editor ol { list-style-type: decimal; padding-left: 1.5rem; }
-            .kb-editor h1 { font-size: 2rem; font-weight: 800; margin: 1.5rem 0 0.75rem; }
-            .kb-editor h2 { font-size: 1.5rem; font-weight: 700; margin: 1.25rem 0 0.5rem; }
-            .kb-editor h3 { font-size: 1.25rem; font-weight: 600; margin: 1rem 0 0.5rem; }
+            .kb-editor li { margin: 0.25rem 0; }
+            .kb-editor h1 { font-size: 2rem; font-weight: 800; margin: 1.5rem 0 0.5rem; color: #0f172a; line-height: 1.2; }
+            .kb-editor h2 { font-size: 1.5rem; font-weight: 700; margin: 1.25rem 0 0.5rem; color: #1e293b; line-height: 1.3; }
+            .kb-editor h3 { font-size: 1.2rem; font-weight: 600; margin: 1rem 0 0.4rem; color: #334155; line-height: 1.35; }
+            .kb-editor p { margin: 0.4rem 0; }
+            .kb-editor a { color: #2563eb; text-decoration: underline; text-underline-offset: 2px; }
+            .kb-editor a:hover { color: #1d4ed8; }
+            .kb-editor img { max-width: 100%; height: auto; border-radius: 0.5rem; margin: 1rem 0; display: block; }
+            .kb-editor pre { background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 0.5rem; font-family: monospace; font-size: 0.875rem; overflow-x: auto; margin: 0.75rem 0; }
+            .kb-editor table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+            .kb-editor td, .kb-editor th { border: 1px solid #e2e8f0; padding: 0.5rem 0.75rem; }
+            .kb-editor hr { border: none; border-top: 2px solid #f1f5f9; margin: 1.5rem 0; }
             @keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-            .animate-fade-in { animation: fade-in 0.15s ease-out; }
+            .animate-fade-in { animation: fade-in 0.12s ease-out; }
+            @media (max-width: 767px) {
+              .kb-editor h1 { font-size: 1.6rem; }
+              .kb-editor h2 { font-size: 1.25rem; }
+              .kb-editor h3 { font-size: 1.1rem; }
+            }
         `}</style>
         {/* LEFT SIDEBAR (TREE) */}
         <div className={`w-full md:w-72 lg:w-80 flex-shrink-0 bg-white md:bg-slate-50 border-r border-slate-200 flex flex-col pt-4 ${mobileView === 'editor' ? 'hidden md:flex' : 'flex'}`}>
@@ -720,58 +755,57 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
                             {floatingToolbar.show && (
                                 <div
                                     ref={floatingToolbarRef}
-                                    className="absolute z-50 animate-fade-in"
+                                    className="hidden md:block absolute z-50 animate-fade-in"
                                     style={{ top: `${floatingToolbar.top}px`, left: `${floatingToolbar.left}px` }}
                                 >
-                                    <div className="bg-slate-900 text-white rounded-xl px-1.5 py-1 flex items-center shadow-2xl border border-white/10 backdrop-blur-xl">
-                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('bold')} className="px-2.5 py-1.5 hover:bg-white/10 rounded-lg font-bold text-sm transition-colors">B</button>
-                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('italic')} className="px-2.5 py-1.5 hover:bg-white/10 rounded-lg italic font-serif text-sm transition-colors">I</button>
-                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('underline')} className="px-2.5 py-1.5 hover:bg-white/10 rounded-lg underline text-sm transition-colors">U</button>
-                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('strikeThrough')} className="px-2.5 py-1.5 hover:bg-white/10 rounded-lg line-through text-sm transition-colors">S</button>
+                                    <div className="bg-slate-900 text-white rounded-xl px-1 py-0.5 flex items-center shadow-2xl border border-white/10">
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('bold')} className="px-2.5 py-1.5 hover:bg-white/10 rounded-lg font-bold text-sm transition-colors" title="Жирный">B</button>
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('italic')} className="px-2.5 py-1.5 hover:bg-white/10 rounded-lg italic font-serif text-sm transition-colors" title="Курсив">I</button>
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('underline')} className="px-2.5 py-1.5 hover:bg-white/10 rounded-lg underline text-sm transition-colors" title="Подчеркнутый">U</button>
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('strikeThrough')} className="px-2.5 py-1.5 hover:bg-white/10 rounded-lg line-through text-sm transition-colors" title="Зачеркнутый">S</button>
                                         <div className="w-px h-5 bg-white/15 mx-0.5"></div>
-                                        <button onMouseDown={e => e.preventDefault()} onClick={handleInsertLink} className="px-2 py-1.5 hover:bg-white/10 rounded-lg transition-colors">
+                                        <button onMouseDown={e => e.preventDefault()} onClick={handleInsertLink} className="px-2 py-1.5 hover:bg-white/10 rounded-lg transition-colors" title="Ссылка">
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                                         </button>
                                         <div className="w-px h-5 bg-white/15 mx-0.5"></div>
-                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('formatBlock', 'H2')} className="px-2 py-1.5 hover:bg-white/10 rounded-lg text-xs font-bold transition-colors">H2</button>
-                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('formatBlock', 'H3')} className="px-2 py-1.5 hover:bg-white/10 rounded-lg text-xs font-bold transition-colors">H3</button>
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('formatBlock', 'H2')} className="px-2 py-1.5 hover:bg-white/10 rounded-lg text-xs font-bold transition-colors" title="Заголовок 2">H2</button>
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('formatBlock', 'H3')} className="px-2 py-1.5 hover:bg-white/10 rounded-lg text-xs font-bold transition-colors" title="Заголовок 3">H3</button>
                                         <div className="w-px h-5 bg-white/15 mx-0.5"></div>
-                                        <button onMouseDown={e => e.preventDefault()} onClick={() => { restoreSelection(); document.execCommand('hiliteColor', false, '#FEF9C3'); if (editorRef.current) handleUpdateContent(editorRef.current.innerHTML); }} className="px-2 py-1.5 hover:bg-white/10 rounded-lg transition-colors flex items-center" title="Выделить">
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => { restoreSelection(); document.execCommand('hiliteColor', false, '#FEF9C3'); if (editorRef.current) handleUpdateContent(editorRef.current.innerHTML); }} className="px-2 py-1.5 hover:bg-white/10 rounded-lg transition-colors flex items-center" title="Желтое выделение">
                                             <div className="w-4 h-4 rounded bg-yellow-200 border border-yellow-300"></div>
                                         </button>
-                                        <button onMouseDown={e => e.preventDefault()} onClick={() => { restoreSelection(); document.execCommand('hiliteColor', false, '#DBEAFE'); if (editorRef.current) handleUpdateContent(editorRef.current.innerHTML); }} className="px-2 py-1.5 hover:bg-white/10 rounded-lg transition-colors flex items-center" title="Выделить">
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => { restoreSelection(); document.execCommand('hiliteColor', false, '#DBEAFE'); if (editorRef.current) handleUpdateContent(editorRef.current.innerHTML); }} className="px-2 py-1.5 hover:bg-white/10 rounded-lg transition-colors flex items-center" title="Голубое выделение">
                                             <div className="w-4 h-4 rounded bg-blue-200 border border-blue-300"></div>
+                                        </button>
+                                        <button onMouseDown={e => e.preventDefault()} onClick={() => { restoreSelection(); document.execCommand('hiliteColor', false, 'transparent'); if (editorRef.current) handleUpdateContent(editorRef.current.innerHTML); }} className="px-2 py-1.5 hover:bg-white/10 rounded-lg transition-colors flex items-center" title="Убрать выделение">
+                                            <svg className="w-4 h-4 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                                         </button>
                                     </div>
                                 </div>
                             )}
 
-                            {/* Block Menu ("+" button) */}
-                            {blockMenuOpen && (
-                                <>
-                                    <div className="fixed inset-0 z-40" onClick={() => setBlockMenuOpen(false)} />
-                                    <div
-                                        className="absolute z-50 bg-white rounded-xl shadow-2xl border border-slate-200 w-56 max-h-80 overflow-y-auto animate-fade-in"
-                                        style={{ top: `${blockMenuPos.top}px`, left: `${blockMenuPos.left}px` }}
-                                    >
-                                        <div className="p-1">
-                                            <p className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Блоки</p>
-                                            {blockMenuItems.map((item) => (
-                                                <button
-                                                    key={item.label}
-                                                    onClick={() => { item.action(); setBlockMenuOpen(false); }}
-                                                    className="flex items-center w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg transition-colors text-left"
-                                                >
-                                                    <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center mr-3 text-slate-500 flex-shrink-0">
-                                                        {renderBlockIcon(item.icon)}
-                                                    </span>
-                                                    {item.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </>
+                            {/* Mobile Selection Toolbar - fixed at top */}
+                            {floatingToolbar.show && (
+                                <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-slate-900 text-white px-2 py-1.5 flex items-center justify-center space-x-1 shadow-xl animate-fade-in safe-area-top">
+                                    <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('bold')} className="px-3 py-2 hover:bg-white/10 active:bg-white/20 rounded-lg font-bold text-sm">B</button>
+                                    <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('italic')} className="px-3 py-2 hover:bg-white/10 active:bg-white/20 rounded-lg italic font-serif text-sm">I</button>
+                                    <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('underline')} className="px-3 py-2 hover:bg-white/10 active:bg-white/20 rounded-lg underline text-sm">U</button>
+                                    <button onMouseDown={e => e.preventDefault()} onClick={() => execCmd('strikeThrough')} className="px-3 py-2 hover:bg-white/10 active:bg-white/20 rounded-lg line-through text-sm">S</button>
+                                    <div className="w-px h-5 bg-white/15"></div>
+                                    <button onMouseDown={e => e.preventDefault()} onClick={handleInsertLink} className="px-2.5 py-2 hover:bg-white/10 active:bg-white/20 rounded-lg">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                                    </button>
+                                    <div className="w-px h-5 bg-white/15"></div>
+                                    <button onMouseDown={e => e.preventDefault()} onClick={() => { restoreSelection(); document.execCommand('hiliteColor', false, '#FEF9C3'); if (editorRef.current) handleUpdateContent(editorRef.current.innerHTML); }} className="px-2.5 py-2 hover:bg-white/10 active:bg-white/20 rounded-lg">
+                                        <div className="w-5 h-5 rounded bg-yellow-200 border border-yellow-300"></div>
+                                    </button>
+                                    <button onMouseDown={e => e.preventDefault()} onClick={() => { restoreSelection(); document.execCommand('hiliteColor', false, '#DBEAFE'); if (editorRef.current) handleUpdateContent(editorRef.current.innerHTML); }} className="px-2.5 py-2 hover:bg-white/10 active:bg-white/20 rounded-lg">
+                                        <div className="w-5 h-5 rounded bg-blue-200 border border-blue-300"></div>
+                                    </button>
+                                </div>
                             )}
+
+                            {/* intentionally empty - block menu rendered in portal below */}
 
                             <div
                                 ref={editorRef}
@@ -810,16 +844,45 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
                         />
                     </div>
 
-                    {/* Floating "+" Block Menu Button */}
-                    <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-40 flex items-center space-x-3">
-                        <button
-                            onClick={openBlockMenu}
-                            className="w-10 h-10 bg-slate-900 hover:bg-slate-800 text-white rounded-full shadow-2xl flex items-center justify-center transition-all active:scale-95 border border-white/10"
-                            title="Добавить блок"
-                        >
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path d="M12 4v16m8-8H4" /></svg>
-                        </button>
-                    </div>
+                    {/* Block Menu */}
+                    {blockMenuOpen && (
+                        <div className="fixed inset-0 z-50" onClick={() => setBlockMenuOpen(false)}>
+                            <div
+                                className="fixed bottom-20 left-1/2 -translate-x-1/2 md:absolute md:bottom-auto md:left-auto md:translate-x-0 md:right-8 w-[calc(100%-2rem)] max-w-xs md:w-60 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-fade-in"
+                                style={addBlockBtnRef.current ? (() => {
+                                    const r = addBlockBtnRef.current!.getBoundingClientRect();
+                                    return window.innerWidth >= 768 ? { position: 'fixed' as const, bottom: `${window.innerHeight - r.top + 8}px`, left: `${r.left + r.width / 2 - 120}px`, transform: 'none' } : {};
+                                })() : {}}
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <div className="p-1.5 max-h-[60vh] overflow-y-auto">
+                                    <p className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Блоки</p>
+                                    {blockMenuItems.map((item) => (
+                                        <button
+                                            key={item.label}
+                                            onClick={() => { setBlockMenuOpen(false); setTimeout(() => item.action(), 50); }}
+                                            className="flex items-center w-full px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-xl transition-colors text-left"
+                                        >
+                                            <span className="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center mr-3 text-slate-500 flex-shrink-0">
+                                                {renderBlockIcon(item.icon)}
+                                            </span>
+                                            {item.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Floating "+" Button */}
+                    <button
+                        ref={addBlockBtnRef}
+                        onClick={openBlockMenu}
+                        className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-11 h-11 rounded-full shadow-2xl flex items-center justify-center transition-all active:scale-90 ${blockMenuOpen ? 'bg-white text-slate-900 border border-slate-200 rotate-45' : 'bg-slate-900 text-white border border-white/10'}`}
+                        title="Добавить блок"
+                    >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path d="M12 4v16m8-8H4" /></svg>
+                    </button>
                 </>
             ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-slate-200">
