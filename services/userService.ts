@@ -2,6 +2,23 @@ import { supabase } from '../lib/supabase';
 import { User, SystemRole } from '../types';
 import { getCurrentOrganizationId } from '../utils/organizationContext';
 
+function parseBirthdayFromIIN(iin?: string | null): string | undefined {
+  if (!iin) return undefined;
+  const digits = iin.replace(/\D/g, '');
+  if (digits.length < 7) return undefined;
+  const yy = parseInt(digits.substring(0, 2), 10);
+  const mm = parseInt(digits.substring(2, 4), 10);
+  const dd = parseInt(digits.substring(4, 6), 10);
+  const century = parseInt(digits.substring(6, 7), 10);
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return undefined;
+  let year: number;
+  if (century >= 1 && century <= 2) year = 1800 + yy;
+  else if (century >= 3 && century <= 4) year = 1900 + yy;
+  else if (century >= 5 && century <= 6) year = 2000 + yy;
+  else year = yy >= 50 ? 1900 + yy : 2000 + yy;
+  return `${year}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+
 export const userService = {
   async getAll(): Promise<User[]> {
     const organizationId = getCurrentOrganizationId();
@@ -33,7 +50,7 @@ export const userService = {
       teamLeadId: row.team_lead_id || undefined,
       salary: Number(row.salary) || 0,
       iin: row.iin || '',
-      birthday: row.birthday || undefined,
+      birthday: row.birthday || parseBirthdayFromIIN(row.iin),
       balance: Number(row.balance) || 0
     }));
   },
@@ -88,7 +105,7 @@ export const userService = {
         team_lead_id: user.teamLeadId || null,
         salary: user.salary,
         iin: user.iin || null,
-        birthday: user.birthday || null,
+        birthday: user.birthday || parseBirthdayFromIIN(user.iin) || null,
         balance: user.balance || 0
       })
       .eq('id', user.id)
@@ -137,7 +154,7 @@ export const userService = {
         team_lead_id: user.teamLeadId || null,
         salary: user.salary,
         iin: user.iin || null,
-        birthday: user.birthday || null,
+        birthday: user.birthday || parseBirthdayFromIIN(user.iin) || null,
         balance: user.balance || 0,
         organization_id: organizationId
       })
@@ -227,7 +244,11 @@ export const userService = {
     const updateData: any = {};
     if (updates.name !== undefined) updateData.name = updates.name;
     if (updates.jobTitle !== undefined) updateData.job_title = updates.jobTitle;
-    if (updates.iin !== undefined) updateData.iin = updates.iin || null;
+    if (updates.iin !== undefined) {
+      updateData.iin = updates.iin || null;
+      const bd = parseBirthdayFromIIN(updates.iin);
+      if (bd) updateData.birthday = bd;
+    }
     if (updates.avatar !== undefined) updateData.avatar = updates.avatar;
 
     const { data, error } = await supabase
