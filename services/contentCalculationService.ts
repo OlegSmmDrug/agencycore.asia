@@ -43,72 +43,59 @@ export const getLiveduneContentCounts = async (
   dateRange?: { start: Date; end: Date }
 ): Promise<LiveduneContentCounts> => {
   try {
-    // Попытка 1: Получить данные из локального кеша (content_publications)
     const { supabase } = await import('../lib/supabase');
 
-    let query = supabase
+    let cacheQuery = supabase
+      .from('livedune_content_cache')
+      .select('content_type')
+      .eq('project_id', project.id);
+
+    if (dateRange) {
+      cacheQuery = cacheQuery
+        .gte('published_date', dateRange.start.toISOString().split('T')[0])
+        .lte('published_date', dateRange.end.toISOString().split('T')[0]);
+    }
+
+    const { data: cachedContent, error: cacheError } = await cacheQuery;
+
+    if (!cacheError && cachedContent && cachedContent.length > 0) {
+      const posts = cachedContent.filter(p => p.content_type === 'post').length;
+      const reels = cachedContent.filter(p => p.content_type === 'reels').length;
+      const stories = cachedContent.filter(p => p.content_type === 'story').length;
+
+      console.log(`[Content Calculation] ${project.name}: Using livedune_content_cache:`, { posts, reels, stories });
+
+      supabase.rpc('sync_livedune_to_publications', { p_project_id: project.id })
+        .then(({ error }) => {
+          if (error) console.error(`[Content Calculation] sync_livedune_to_publications error:`, error);
+        });
+
+      return { posts, reels, stories, hasError: false };
+    }
+
+    let pubQuery = supabase
       .from('content_publications')
       .select('content_type')
       .eq('project_id', project.id);
 
     if (dateRange) {
-      query = query
+      pubQuery = pubQuery
         .gte('published_at', dateRange.start.toISOString())
         .lte('published_at', dateRange.end.toISOString());
     }
 
-    const { data: publications, error: dbError } = await query;
+    const { data: publications, error: dbError } = await pubQuery;
 
     if (!dbError && publications && publications.length > 0) {
       const posts = publications.filter(p => p.content_type === 'Post' || p.content_type.toLowerCase() === 'post').length;
       const reels = publications.filter(p => p.content_type === 'Reels' || p.content_type.toLowerCase() === 'reels' || p.content_type.toLowerCase() === 'reel').length;
       const stories = publications.filter(p => p.content_type === 'Stories' || p.content_type.toLowerCase() === 'story' || p.content_type.toLowerCase() === 'stories').length;
 
-      console.log(`[Content Calculation] ${project.name}: Using content_publications data:`, {
-        posts,
-        reels,
-        stories
-      });
-
+      console.log(`[Content Calculation] ${project.name}: Using content_publications:`, { posts, reels, stories });
       return { posts, reels, stories, hasError: false };
     }
 
-    // Попытка 2: Получить данные из livedune_content_cache
-    const { data: cachedContent, error: cacheError } = await supabase
-      .from('livedune_content_cache')
-      .select('content_type')
-      .eq('project_id', project.id);
-
-    if (!cacheError && cachedContent && cachedContent.length > 0) {
-      let filteredCache = cachedContent;
-
-      if (dateRange) {
-        const { data: dateFiltered } = await supabase
-          .from('livedune_content_cache')
-          .select('content_type')
-          .eq('project_id', project.id)
-          .gte('published_date', dateRange.start.toISOString().split('T')[0])
-          .lte('published_date', dateRange.end.toISOString().split('T')[0]);
-
-        if (dateFiltered) filteredCache = dateFiltered;
-      }
-
-      const posts = filteredCache.filter(p => p.content_type === 'post').length;
-      const reels = filteredCache.filter(p => p.content_type === 'reels').length;
-      const stories = filteredCache.filter(p => p.content_type === 'story').length;
-
-      console.log(`[Content Calculation] ${project.name}: Using livedune_content_cache data:`, {
-        posts,
-        reels,
-        stories
-      });
-
-      return { posts, reels, stories, hasError: false };
-    }
-
-    // Попытка 3: Обратиться к API Livedune (только если есть токен)
     if (!project.liveduneAccessToken || !project.liveduneAccountId) {
-      console.log(`[Content Calculation] ${project.name}: No Livedune credentials and no cached data`);
       return { posts: 0, reels: 0, stories: 0, hasError: false };
     }
 
@@ -124,7 +111,7 @@ export const getLiveduneContentCounts = async (
       dateRangeStr = `${fromStr}|${toStr}`;
     }
 
-    console.log(`[Content Calculation] ${project.name}: Fetching from Livedune API with accountId=${config.accountId} for date range: ${dateRangeStr}`);
+    console.log(`[Content Calculation] ${project.name}: Fetching from Livedune API for ${dateRangeStr}`);
 
     const [posts, reels, stories] = await Promise.all([
       getLivedunePosts(config, dateRangeStr),
@@ -132,60 +119,7 @@ export const getLiveduneContentCounts = async (
       getLiveduneStories(config, dateRangeStr)
     ]);
 
-    console.log(`[Content Calculation] ${project.name} (accountId=${config.accountId}) API Results:`, {
-      posts: posts.length,
-      reels: reels.length,
-      stories: stories.length
-    });
-
-    // Сохраняем полученные данные в content_publications
-    if (posts.length > 0 || reels.length > 0 || stories.length > 0) {
-      console.log(`[Content Calculation] ${project.name}: Saving API data to content_publications`);
-      const publicationsToInsert: any[] = [];
-
-      posts.forEach(post => {
-        publicationsToInsert.push({
-          project_id: project.id,
-          organization_id: project.organizationId,
-          content_type: 'Post',
-          published_at: post.created || new Date().toISOString(),
-          description: `Synced from Livedune API: ${post.text?.substring(0, 100) || ''}`
-        });
-      });
-
-      reels.forEach(reel => {
-        publicationsToInsert.push({
-          project_id: project.id,
-          organization_id: project.organizationId,
-          content_type: 'Reels',
-          published_at: reel.created || new Date().toISOString(),
-          description: `Synced from Livedune API: ${reel.text?.substring(0, 100) || ''}`
-        });
-      });
-
-      stories.forEach(story => {
-        publicationsToInsert.push({
-          project_id: project.id,
-          organization_id: project.organizationId,
-          content_type: 'Stories',
-          published_at: story.created || new Date().toISOString(),
-          description: 'Synced from Livedune API'
-        });
-      });
-
-      if (publicationsToInsert.length > 0) {
-        const { error: insertError } = await supabase
-          .from('content_publications')
-          .insert(publicationsToInsert)
-          .select();
-
-        if (insertError) {
-          console.error(`[Content Calculation] ${project.name}: Error saving to content_publications:`, insertError);
-        } else {
-          console.log(`[Content Calculation] ${project.name}: Saved ${publicationsToInsert.length} publications to DB`);
-        }
-      }
-    }
+    console.log(`[Content Calculation] ${project.name}: API Results:`, { posts: posts.length, reels: reels.length, stories: stories.length });
 
     return {
       posts: posts.length,

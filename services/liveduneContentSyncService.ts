@@ -60,16 +60,14 @@ export const liveduneContentSyncService = {
 
     console.log(`[LiveDune Sync] Found ${cachedContent.length} cached items`);
 
-    const { data: existingPublications, error: pubError } = await supabase
-      .from('content_publications')
-      .select('id')
-      .eq('project_id', projectId);
+    const { data: rpcResult, error: rpcError } = await supabase
+      .rpc('sync_livedune_to_publications', { p_project_id: projectId });
 
-    const existingCount = existingPublications?.length || 0;
-
-    if (existingCount > 0) {
-      console.log(`[LiveDune Sync] Project already has ${existingCount} publications, skipping sync`);
-      return { synced: 0, skipped: cachedContent.length };
+    if (rpcError) {
+      console.error('[LiveDune Sync] RPC sync error:', rpcError);
+    } else {
+      console.log(`[LiveDune Sync] RPC synced ${rpcResult} items`);
+      return { synced: rpcResult || 0, skipped: 0 };
     }
 
     let synced = 0;
@@ -77,28 +75,39 @@ export const liveduneContentSyncService = {
 
     const smmMembers = await this.getSMMTeamMembers(project.team_ids || []);
 
-    if (smmMembers.length === 0) {
-      console.warn('[LiveDune Sync] No SMM members in project team, publications will have no assigned user');
-    }
-
     for (const item of cachedContent as LiveduneCacheItem[]) {
-      let assignedUserId = item.user_id;
+      const mappedType = mapContentType(item.content_type);
+      const publishedAt = new Date(item.published_date).toISOString();
 
+      const { data: existing } = await supabase
+        .from('content_publications')
+        .select('id')
+        .eq('project_id', item.project_id)
+        .eq('content_type', mappedType)
+        .gte('published_at', item.published_date + 'T00:00:00Z')
+        .lte('published_at', item.published_date + 'T23:59:59Z')
+        .maybeSingle();
+
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      let assignedUserId = item.user_id;
       if (!assignedUserId && smmMembers.length > 0) {
         assignedUserId = smmMembers[synced % smmMembers.length].id;
       }
 
       if (!assignedUserId) {
-        console.warn(`[LiveDune Sync] Skipping item ${item.content_id}: no user to assign`);
         skipped++;
         continue;
       }
 
       const success = await contentPublicationService.create({
         projectId: item.project_id,
-        contentType: mapContentType(item.content_type),
-        publishedAt: new Date(item.published_date).toISOString(),
-        assignedUserId: assignedUserId,
+        contentType: mappedType,
+        publishedAt,
+        assignedUserId,
         organizationId: item.organization_id,
         description: `Synced from LiveDune (${item.content_id})`
       });
