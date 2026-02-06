@@ -13,7 +13,7 @@ import ProjectFinancialSummary from './ProjectFinancialSummary';
 import { SyncPreviewModal } from './SyncPreviewModal';
 import { ExpenseValidation } from './ExpenseValidation';
 import { AddExpenseModal } from './AddExpenseModal';
-import { ChevronLeft, ChevronRight, Lock, Unlock, Copy, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Lock, Unlock, Copy, Plus, Trash2, FolderPlus } from 'lucide-react';
 
 interface ProjectExpensesProps {
   projectId: string;
@@ -60,6 +60,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   const [calculatorServices, setCalculatorServices] = useState<any[]>([]);
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<{ id: string; name: string } | null>(null);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
 
   const canEdit = currentUser.jobTitle.toLowerCase().includes('pm') ||
                   currentUser.jobTitle.toLowerCase().includes('project manager') ||
@@ -685,18 +686,72 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
             previousMonthExpenses={previousMonthExpense?.totalExpenses}
           />
 
-          {(currentExpense?.dynamicExpenses && Object.keys(currentExpense.dynamicExpenses).length > 0) || (project.contentMetricsVisible && project.contentMetricsVisible.length > 0) ? (
+          {(currentExpense?.dynamicExpenses && Object.keys(currentExpense.dynamicExpenses).length > 0) || (project.contentMetricsVisible && project.contentMetricsVisible.length > 0) || (isEditing && canEdit) ? (
             <div className="bg-gradient-to-br from-blue-50 to-sky-50 border-2 border-blue-200 rounded-xl p-6">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                   <span className="text-2xl">💰</span>
                   Детализация расходов по услугам
                 </h3>
-                {currentExpense?.lastSyncedAt && (
-                  <div className="text-xs text-slate-500">
-                    Синхронизировано: {new Date(currentExpense.lastSyncedAt).toLocaleString('ru-RU')}
-                  </div>
-                )}
+                <div className="flex items-center gap-3">
+                  {isEditing && canEdit && !isMonthFrozen && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowCategoryPicker(!showCategoryPicker)}
+                        className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors"
+                      >
+                        <FolderPlus className="w-4 h-4" />
+                        Добавить категорию
+                      </button>
+                      {showCategoryPicker && (
+                        <>
+                        <div className="fixed inset-0 z-40" onClick={() => setShowCategoryPicker(false)} />
+                        <div className="absolute right-0 top-full mt-2 bg-white border border-slate-200 rounded-xl shadow-xl z-50 w-72 max-h-80 overflow-y-auto">
+                          <div className="p-3 border-b border-slate-100">
+                            <p className="text-sm font-semibold text-slate-700">Выберите категорию</p>
+                          </div>
+                          <div className="p-2">
+                            {(() => {
+                              const usedCategoryIds = new Set<string>();
+                              const dynamicExpenses = currentExpense?.dynamicExpenses || {};
+                              Object.values(dynamicExpenses).forEach(item => {
+                                if (item.category) usedCategoryIds.add(item.category);
+                              });
+                              const availableCategories = categories.filter(c => !usedCategoryIds.has(c.id));
+                              if (availableCategories.length === 0) {
+                                return (
+                                  <div className="text-center py-4 text-sm text-slate-500">
+                                    Все категории уже добавлены
+                                  </div>
+                                );
+                              }
+                              return availableCategories.map(cat => (
+                                <button
+                                  key={cat.id}
+                                  onClick={() => {
+                                    setSelectedCategory({ id: cat.id, name: cat.name });
+                                    setShowCategoryPicker(false);
+                                    setShowAddExpenseModal(true);
+                                  }}
+                                  className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-blue-50 transition-colors text-left"
+                                >
+                                  <span className="text-xl">{cat.icon}</span>
+                                  <span className="text-sm font-medium text-slate-700">{cat.name}</span>
+                                </button>
+                              ));
+                            })()}
+                          </div>
+                        </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {currentExpense?.lastSyncedAt && (
+                    <div className="text-xs text-slate-500">
+                      Синхронизировано: {new Date(currentExpense.lastSyncedAt).toLocaleString('ru-RU')}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {(() => {
