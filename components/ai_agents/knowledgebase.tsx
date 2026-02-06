@@ -57,7 +57,7 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ agents, onUpdate }) => {
         <select 
           value={selectedAgentId} 
           onChange={(e) => setSelectedAgentId(e.target.value)}
-          className="bg-white border rounded-2xl px-6 py-3 font-bold text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
+          className="bg-white border rounded-2xl px-6 py-3 font-bold text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm"
         >
           {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
@@ -67,13 +67,13 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ agents, onUpdate }) => {
         <div className="lg:col-span-2 space-y-6">
           <section className="bg-white p-8 rounded-3xl border shadow-sm">
             <h4 className="text-lg font-black mb-6 uppercase tracking-wider flex items-center gap-2">
-              <span className="text-indigo-600">Q&A</span> База данных (FAQ)
+              <span className="text-blue-600">Q&A</span> База данных (FAQ)
             </h4>
             
             <div className="space-y-4 mb-8">
               {agent?.knowledgeBase.faqs.map(faq => (
                 <div key={faq.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 group relative">
-                   <p className="text-xs font-black text-indigo-500 uppercase mb-1">Вопрос:</p>
+                   <p className="text-xs font-black text-blue-500 uppercase mb-1">Вопрос:</p>
                    <p className="font-bold text-gray-800 mb-2">{faq.question}</p>
                    <p className="text-xs font-black text-gray-400 uppercase mb-1">Ответ:</p>
                    <p className="text-sm text-gray-600">{faq.answer}</p>
@@ -105,7 +105,7 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ agents, onUpdate }) => {
                />
                <button 
                  onClick={addFAQ}
-                 className="w-full bg-indigo-600 text-white font-black py-3 rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100"
+                 className="w-full bg-blue-600 text-white font-black py-3 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-100"
                >
                  Добавить в базу знаний
                </button>
@@ -117,7 +117,7 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ agents, onUpdate }) => {
           <section className="bg-[#1e1e2d] text-white p-8 rounded-3xl shadow-xl">
              <h4 className="text-lg font-black mb-4 uppercase">Документация (RAG)</h4>
              <p className="text-sm text-gray-400 mb-6 leading-relaxed">Загрузите PDF или DOCX регламенты. ИИ будет индексировать их автоматически для поиска ответов.</p>
-             <div className="border-2 border-dashed border-gray-700 rounded-3xl p-10 flex flex-col items-center justify-center gap-4 hover:border-indigo-500 transition-all cursor-pointer">
+             <div className="border-2 border-dashed border-gray-700 rounded-3xl p-10 flex flex-col items-center justify-center gap-4 hover:border-blue-500 transition-all cursor-pointer">
                 <span className="text-4xl">📎</span>
                 <span className="text-xs font-bold uppercase tracking-widest opacity-60">Загрузить файл</span>
              </div>
@@ -143,10 +143,10 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ agents, onUpdate }) => {
                    <span className="text-lg font-black">24 / 500 MB</span>
                 </div>
                 <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                   <div className="h-full bg-indigo-500" style={{ width: '5%' }}></div>
+                   <div className="h-full bg-blue-500" style={{ width: '5%' }}></div>
                 </div>
                 <p className="text-[10px] text-gray-400 leading-tight italic">
-                   "Чем больше данных в базе, тем точнее ответы агента. Gemini 3 Pro лучше справляется с большими документами."
+                   "Чем больше данных в базе, тем точнее ответы агента. Claude 3.5 Sonnet лучше справляется с большими документами."
                 </p>
              </div>
           </section>

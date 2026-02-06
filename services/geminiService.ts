@@ -2,8 +2,6 @@
 import { Project, Client, Task, ProjectStatus, ClientStatus, AIAgent, Message } from "../types";
 import { processAgentResponse as claudeProcessAgentResponse } from './claudeService';
 
-// MOCK IMPLEMENTATION (No API Key required)
-
 export { claudeProcessAgentResponse as processAgentResponse };
 
 export const generateExecutiveSummary = async (

@@ -59,10 +59,10 @@ const ChatTester: React.FC<ChatTesterProps> = ({ agent, onAIResponse }) => {
     <div className="flex flex-col h-full bg-white">
       <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
         <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
+          <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
           Live Debug Mode
         </h3>
-        <button onClick={() => setMessages([])} className="text-[10px] font-bold text-gray-400 hover:text-indigo-600 transition-colors">CLEAR</button>
+        <button onClick={() => setMessages([])} className="text-[10px] font-bold text-gray-400 hover:text-blue-600 transition-colors">CLEAR</button>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-gray-50/20">
@@ -83,8 +83,8 @@ const ChatTester: React.FC<ChatTesterProps> = ({ agent, onAIResponse }) => {
               {msg.metadata && (
                 <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
                    {msg.metadata.leadScore !== undefined && (
-                     <div className="flex items-center justify-between bg-indigo-50/50 p-1.5 rounded-lg">
-                        <span className="text-[9px] text-indigo-400 font-bold uppercase">Lead Score:</span>
+                     <div className="flex items-center justify-between bg-blue-50/50 p-1.5 rounded-lg">
+                        <span className="text-[9px] text-blue-400 font-bold uppercase">Lead Score:</span>
                         <span className={`text-xs font-black ${msg.metadata.leadScore > 7 ? 'text-green-500' : 'text-amber-500'}`}>{msg.metadata.leadScore}/10</span>
                      </div>
                    )}
@@ -115,11 +115,11 @@ const ChatTester: React.FC<ChatTesterProps> = ({ agent, onAIResponse }) => {
           </div>
         ))}
         {loading && (
-          <div className="flex items-center gap-2 text-indigo-500 px-2">
+          <div className="flex items-center gap-2 text-blue-500 px-2">
             <div className="flex gap-1">
-              <div className="w-1 h-1 bg-indigo-500 rounded-full animate-bounce"></div>
-              <div className="w-1 h-1 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
-              <div className="w-1 h-1 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+              <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce"></div>
+              <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+              <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
             </div>
             <span className="text-[10px] font-black uppercase tracking-widest">Thinking</span>
           </div>
@@ -132,12 +132,12 @@ const ChatTester: React.FC<ChatTesterProps> = ({ agent, onAIResponse }) => {
             value={input} onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSend()}
             placeholder="Type your message..."
-            className="w-full border border-gray-200 rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-gray-50/50 transition-all"
+            className="w-full border border-gray-200 rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 bg-gray-50/50 transition-all"
           />
           <button 
             onClick={handleSend} 
             disabled={loading || !input.trim()} 
-            className="absolute right-2 top-2 w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center hover:bg-indigo-700 disabled:bg-gray-200 transition-colors shadow-sm"
+            className="absolute right-2 top-2 w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center hover:bg-blue-700 disabled:bg-gray-200 transition-colors shadow-sm"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
           </button>

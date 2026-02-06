@@ -14,7 +14,7 @@ const ReviewPanel: React.FC<ReviewPanelProps> = ({ actions, onApprove }) => {
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
          <h3 className="text-xl font-bold">Действия на проверку ({pendingActions.length})</h3>
-         <button className="text-sm bg-indigo-50 text-indigo-600 px-4 py-1.5 rounded-lg font-bold border border-indigo-100">История действий</button>
+         <button className="text-sm bg-blue-50 text-blue-600 px-4 py-1.5 rounded-lg font-bold border border-blue-100">История действий</button>
       </div>
 
       {pendingActions.length === 0 ? (
@@ -40,7 +40,7 @@ const ReviewPanel: React.FC<ReviewPanelProps> = ({ actions, onApprove }) => {
                   <div className="flex items-center gap-4 text-xs font-bold text-gray-500">
                      <div className="flex items-center gap-1">
                         <span>🤖 Агент:</span>
-                        <span className="text-indigo-600">{action.agentName}</span>
+                        <span className="text-blue-600">{action.agentName}</span>
                      </div>
                      <div className="flex items-center gap-1">
                         <span>🏷️ Тип:</span>
@@ -51,7 +51,7 @@ const ReviewPanel: React.FC<ReviewPanelProps> = ({ actions, onApprove }) => {
                <div className="flex flex-row md:flex-col gap-2 shrink-0 justify-center">
                   <button
                     onClick={() => onApprove(action)}
-                    className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold text-sm hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100"
+                    className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold text-sm hover:bg-blue-700 transition-colors shadow-lg shadow-blue-100"
                   >
                     Одобрить и выполнить
                   </button>

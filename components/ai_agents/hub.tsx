@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { AIAgent, UsageStats, AgentRole, Lead } from '../../types';
 import { ROLE_TEMPLATES } from '../../constants/aiAgents';
 
@@ -13,11 +13,19 @@ interface HubProps {
 const Hub: React.FC<HubProps> = ({ agents, stats, leads, onNavigateAgents }) => {
   const roles: AgentRole[] = ['seller', 'project_writer', 'tz_writer', 'executor_controller', 'finalizer', 'review_collector'];
 
+  const agentTaskCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    roles.forEach((role, i) => {
+      counts[role] = [12, 8, 5, 15, 3, 7][i] || 0;
+    });
+    return counts;
+  }, []);
+
   return (
     <div className="p-8 space-y-10 max-w-7xl mx-auto animate-in fade-in duration-700">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
-          { label: 'Запросы (Месяц)', value: stats.requestsToday, icon: '⚡', color: 'indigo' },
+          { label: 'Запросы (Месяц)', value: stats.requestsToday, icon: '⚡', color: 'blue' },
           { label: 'Новые лиды', value: leads.length, icon: '🎯', color: 'blue' },
           { label: 'Расходы ИИ', value: `$${stats.costSpent.toFixed(3)}`, icon: '💰', color: 'green' },
           { label: 'ROI проекта', value: '380%', icon: '🚀', color: 'amber' },
@@ -37,8 +45,8 @@ const Hub: React.FC<HubProps> = ({ agents, stats, leads, onNavigateAgents }) => 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <section className="lg:col-span-2">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-2xl font-black text-gray-800 tracking-tight">Воронка продаж <span className="text-indigo-400">(онлайн)</span></h3>
-            <button className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-xl">Полная воронка →</button>
+            <h3 className="text-2xl font-black text-gray-800 tracking-tight">Воронка продаж <span className="text-blue-400">(онлайн)</span></h3>
+            <button className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl">Полная воронка →</button>
           </div>
           
           <div className="grid grid-cols-3 gap-4 mb-8">
@@ -63,16 +71,16 @@ const Hub: React.FC<HubProps> = ({ agents, stats, leads, onNavigateAgents }) => 
               const agent = agents.find(a => a.role === role);
               const template = ROLE_TEMPLATES[role];
               return (
-                <div key={role} className={`group bg-white p-5 rounded-3xl border transition-all ${agent?.status === 'active' ? 'border-indigo-100 shadow-sm' : 'opacity-40 hover:opacity-100'}`}>
+                <div key={role} className={`group bg-white p-5 rounded-3xl border transition-all ${agent?.status === 'active' ? 'border-blue-100 shadow-sm' : 'opacity-40 hover:opacity-100'}`}>
                   <div className="flex items-start justify-between mb-4">
-                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl ${agent?.status === 'active' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-gray-100 text-gray-400'}`}>
+                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl ${agent?.status === 'active' ? 'bg-blue-600 text-white shadow-lg' : 'bg-gray-100 text-gray-400'}`}>
                         {role === 'seller' ? '💰' : role === 'project_writer' ? '📝' : role === 'tz_writer' ? '📐' : role === 'executor_controller' ? '👁️' : role === 'finalizer' ? '🎁' : '⭐'}
                      </div>
                      <span className={`w-2 h-2 rounded-full ${agent?.status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`}></span>
                   </div>
                   <h4 className="font-black text-gray-900 text-sm">{template.name}</h4>
                   <div className="mt-4 flex justify-between text-[9px] font-black text-gray-400 uppercase">
-                     <span>Задач: {Math.floor(Math.random() * 20)}</span>
+                     <span>Задач: {agentTaskCounts[role]}</span>
                      <span>Время работы: 99.9%</span>
                   </div>
                 </div>
@@ -84,12 +92,12 @@ const Hub: React.FC<HubProps> = ({ agents, stats, leads, onNavigateAgents }) => 
         <aside className="space-y-6">
            <div className="bg-[#1e1e2d] text-white p-8 rounded-[2.5rem] relative overflow-hidden shadow-2xl h-full">
               <h3 className="text-xl font-black mb-4 flex items-center gap-2">
-                 <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                 <span className="w-2 h-2 rounded-full bg-blue-500"></span>
                  Системная аналитика
               </h3>
               <div className="space-y-6 relative z-10">
                  <div className="p-4 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-md">
-                    <p className="text-xs font-bold text-indigo-400 mb-2 uppercase tracking-widest">Аналитика диалогов</p>
+                    <p className="text-xs font-bold text-blue-400 mb-2 uppercase tracking-widest">Аналитика диалогов</p>
                     <p className="text-xs text-gray-300 leading-relaxed italic">
                       "ИИ Продавец выявил 3 новых лида с бюджетом выше 100к. Рекомендую передать данные ИИ Составителю ТЗ для подготовки документов."
                     </p>
@@ -101,7 +109,7 @@ const Hub: React.FC<HubProps> = ({ agents, stats, leads, onNavigateAgents }) => 
                     </p>
                  </div>
               </div>
-              <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl"></div>
+              <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl"></div>
            </div>
         </aside>
       </div>

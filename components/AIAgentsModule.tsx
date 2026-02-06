@@ -274,7 +274,7 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
           <button
             onClick={() => setView('hub')}
             className={`w-full px-4 py-3 rounded-xl text-left font-bold text-sm transition-all ${
-              view === 'hub' ? 'bg-indigo-50 text-indigo-600' : 'text-gray-600 hover:bg-gray-50'
+              view === 'hub' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
             Центр управления
@@ -282,7 +282,7 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
           <button
             onClick={() => setView('kb')}
             className={`w-full px-4 py-3 rounded-xl text-left font-bold text-sm transition-all ${
-              view === 'kb' ? 'bg-indigo-50 text-indigo-600' : 'text-gray-600 hover:bg-gray-50'
+              view === 'kb' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
             База знаний
@@ -290,7 +290,7 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
           <button
             onClick={() => setView('analytics')}
             className={`w-full px-4 py-3 rounded-xl text-left font-bold text-sm transition-all ${
-              view === 'analytics' ? 'bg-indigo-50 text-indigo-600' : 'text-gray-600 hover:bg-gray-50'
+              view === 'analytics' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
             Аналитика
@@ -298,7 +298,7 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
           <button
             onClick={() => setView('review')}
             className={`w-full px-4 py-3 rounded-xl text-left font-bold text-sm transition-all flex items-center justify-between ${
-              view === 'review' ? 'bg-indigo-50 text-indigo-600' : 'text-gray-600 hover:bg-gray-50'
+              view === 'review' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
             <span>Панель контроля</span>
@@ -318,7 +318,7 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
                 key={agent.id}
                 onClick={() => { setSelectedAgentId(agent.id); setView('agents'); }}
                 className={`w-full px-3 py-2 rounded-xl text-left text-xs font-medium transition-all flex items-center justify-between ${
-                  selectedAgentId === agent.id ? 'bg-indigo-50 text-indigo-600' : 'text-gray-600 hover:bg-gray-50'
+                  selectedAgentId === agent.id ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-50'
                 }`}
               >
                 <span className="truncate">{agent.name}</span>
@@ -346,14 +346,14 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
           <div className="flex items-center gap-4 md:gap-8 w-full md:w-auto justify-between md:justify-end">
             <div className="text-right flex flex-col items-end">
               <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">Расходы ИИ (Месяц)</span>
-              <span className="text-base md:text-lg font-black text-indigo-600">${stats.costSpent.toFixed(3)} / $20.00</span>
+              <span className="text-base md:text-lg font-black text-blue-600">${stats.costSpent.toFixed(3)} / $20.00</span>
               <div className="w-32 h-1 bg-gray-100 rounded-full mt-1 overflow-hidden">
-                <div className="h-full bg-indigo-500" style={{ width: `${Math.min((stats.costSpent / 20) * 100, 100)}%` }}></div>
+                <div className="h-full bg-blue-500" style={{ width: `${Math.min((stats.costSpent / 20) * 100, 100)}%` }}></div>
               </div>
             </div>
             <button
               onClick={() => setView('review')}
-              className="relative p-3 bg-gray-50 rounded-2xl hover:bg-indigo-50 transition-all border border-transparent hover:border-indigo-100"
+              className="relative p-3 bg-gray-50 rounded-2xl hover:bg-blue-50 transition-all border border-transparent hover:border-blue-100"
             >
               ⚖️
               {actions.filter(a => a.status === 'pending').length > 0 && (

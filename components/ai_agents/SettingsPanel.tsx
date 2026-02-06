@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AIAgent, CommunicationStyle, TriggerType } from '../../types';
 import { MODELS, STYLE_GUIDELINES, TRIGGER_OPTIONS } from '../../constants/aiAgents';
 
@@ -10,6 +10,11 @@ interface SettingsPanelProps {
 const SettingsPanel: React.FC<SettingsPanelProps> = ({ agent, onUpdate }) => {
   const [localAgent, setLocalAgent] = useState<AIAgent>(agent);
   const [hasChanges, setHasChanges] = useState(false);
+
+  useEffect(() => {
+    setLocalAgent(agent);
+    setHasChanges(false);
+  }, [agent.id]);
 
   const handleUpdate = (updates: Partial<AIAgent>) => {
     setLocalAgent(prev => ({ ...prev, ...updates }));
@@ -59,7 +64,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ agent, onUpdate }) => {
               type="text"
               value={localAgent.name}
               onChange={e => handleUpdate({ name: e.target.value })}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               placeholder="Например: ИИ Продавец Pro"
             />
           </div>
@@ -69,7 +74,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ agent, onUpdate }) => {
             <select
               value={localAgent.model}
               onChange={e => handleUpdate({ model: e.target.value })}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             >
               {MODELS.map(model => (
                 <option key={model.id} value={model.id}>
@@ -106,7 +111,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ agent, onUpdate }) => {
         <textarea
           value={localAgent.settings.systemPrompt}
           onChange={e => handleSettingsUpdate({ systemPrompt: e.target.value })}
-          className="w-full h-64 border border-gray-200 rounded-xl px-4 py-3 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          className="w-full h-64 border border-gray-200 rounded-xl px-4 py-3 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20"
           placeholder="Введите инструкции для агента..."
         />
         <p className="text-xs text-gray-500 mt-2">
@@ -123,7 +128,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ agent, onUpdate }) => {
               onClick={() => handleSettingsUpdate({ communicationStyle: key as CommunicationStyle })}
               className={`p-4 border-2 rounded-2xl cursor-pointer transition-all ${
                 localAgent.settings.communicationStyle === key
-                  ? 'border-indigo-500 bg-indigo-50'
+                  ? 'border-blue-500 bg-blue-50'
                   : 'border-gray-200 hover:border-gray-300'
               }`}
             >
@@ -143,7 +148,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ agent, onUpdate }) => {
               onClick={() => handleTriggerToggle(trigger.id)}
               className={`p-4 border-2 rounded-2xl cursor-pointer transition-all ${
                 localAgent.triggers?.includes(trigger.id)
-                  ? 'border-indigo-500 bg-indigo-50'
+                  ? 'border-blue-500 bg-blue-50'
                   : 'border-gray-200 hover:border-gray-300'
               }`}
             >
@@ -172,7 +177,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ agent, onUpdate }) => {
                 type="checkbox"
                 checked={localAgent.permissions[key as keyof typeof localAgent.permissions]}
                 onChange={e => handlePermissionsUpdate({ [key]: e.target.checked } as any)}
-                className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <span className="text-sm font-medium text-gray-700">{label}</span>
             </label>
@@ -231,7 +236,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ agent, onUpdate }) => {
               step="0.5"
               value={localAgent.settings.dailyCostLimit}
               onChange={e => handleSettingsUpdate({ dailyCostLimit: parseFloat(e.target.value) })}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
             <p className="text-xs text-gray-500 mt-1">Агент остановится при превышении лимита</p>
           </div>
@@ -250,7 +255,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ agent, onUpdate }) => {
                 onChange={e => handleSettingsUpdate({ autoMode: e.target.checked })}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
             </label>
           </div>
 
@@ -268,7 +273,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ agent, onUpdate }) => {
                 onChange={e => handleSettingsUpdate({ useKnowledgeBase: e.target.checked })}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
             </label>
           </div>
         </div>
@@ -278,7 +283,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ agent, onUpdate }) => {
         <div className="sticky bottom-4 flex justify-center">
           <button
             onClick={handleSave}
-            className="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black text-lg hover:bg-indigo-700 transition-all shadow-2xl shadow-indigo-200 animate-in slide-in-from-bottom-4"
+            className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-lg hover:bg-blue-700 transition-all shadow-2xl shadow-blue-200 animate-in slide-in-from-bottom-4"
           >
             Сохранить изменения
           </button>

@@ -1,41 +1,9 @@
 import { AIAgent, Message } from '../types';
 import { STYLE_GUIDELINES } from '../constants/aiAgents';
-import { integrationCredentialService } from './integrationCredentialService';
+import { getCurrentOrganizationId } from '../utils/organizationContext';
 
-const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-
-let cachedApiKey: string | null = null;
-
-async function getClaudeApiKey(): Promise<string> {
-  if (cachedApiKey) return cachedApiKey;
-
-  const envKey = import.meta.env.VITE_CLAUDE_API_KEY || '';
-  if (envKey) {
-    console.log('[Claude] Using API key from environment');
-    cachedApiKey = envKey;
-    return envKey;
-  }
-
-  try {
-    console.log('[Claude] Attempting to get API key from database...');
-    const apiKey = await integrationCredentialService.getCredential(
-      'e109a03d-7c0a-4819-8c03-0afdc253678d',
-      'api_key'
-    );
-
-    if (apiKey) {
-      console.log('[Claude] Successfully retrieved API key from database');
-      cachedApiKey = apiKey;
-      return apiKey;
-    }
-
-    console.warn('[Claude] No API key found in database');
-  } catch (error) {
-    console.error('[Claude] Failed to get Claude API key from database:', error);
-  }
-
-  throw new Error('Claude API ключ не настроен. Добавьте его в разделе Интеграции');
-}
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 interface ClaudeMessage {
   role: 'user' | 'assistant';
@@ -72,85 +40,62 @@ interface AgentResponseResult {
   cost: number;
 }
 
+async function callClaudeProxy(body: Record<string, any>): Promise<ClaudeResponse> {
+  const organizationId = getCurrentOrganizationId();
+  if (!organizationId) {
+    throw new Error('Organization ID not found');
+  }
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/claude-proxy`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      ...body,
+      organization_id: organizationId,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const msg = data.error?.message || data.error || `Claude API error: ${response.status}`;
+    throw new Error(String(msg));
+  }
+
+  return data;
+}
+
 export const processAgentResponse = async (
   agent: AIAgent,
   messageHistory: Message[],
   userInput: string
 ): Promise<AgentResponseResult> => {
-  console.log('[Claude] Starting agent response processing...');
-
-  let apiKey: string;
-  try {
-    apiKey = await getClaudeApiKey();
-    console.log('[Claude] API key obtained successfully');
-  } catch (error: any) {
-    console.error('[Claude] Failed to get API key:', error);
-    throw new Error(`API Key Error: ${error.message}`);
-  }
-
   const systemPrompt = buildSystemPrompt(agent);
   const claudeMessages = convertMessagesToClaudeFormat(messageHistory, userInput);
 
-  console.log('[Claude] Making API request to:', CLAUDE_API_URL);
-  console.log('[Claude] Model:', agent.model);
-  console.log('[Claude] Max tokens:', agent.settings.maxTokens);
+  const data = await callClaudeProxy({
+    model: agent.model,
+    max_tokens: agent.settings.maxTokens,
+    temperature: agent.settings.temperature,
+    system: systemPrompt,
+    messages: claudeMessages,
+  });
 
-  try {
-    const response = await fetch(CLAUDE_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: agent.model,
-        max_tokens: agent.settings.maxTokens,
-        temperature: agent.settings.temperature,
-        system: systemPrompt,
-        messages: claudeMessages
-      })
-    });
+  const text = data.content[0]?.text || 'Нет ответа от AI';
+  const metadata = agent.role === 'seller' ? extractLeadMetadata(text, userInput) : undefined;
+  const proposedAction = extractProposedAction(text, agent);
+  const cost = calculateCost(data.usage.input_tokens + data.usage.output_tokens, agent.model);
 
-    console.log('[Claude] Response status:', response.status);
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('[Claude] API error response:', errorData);
-
-      let errorMessage = `Claude API error: ${response.status}`;
-      if (errorData.error?.message) {
-        errorMessage += ` - ${errorData.error.message}`;
-      }
-
-      throw new Error(errorMessage);
-    }
-
-    const data: ClaudeResponse = await response.json();
-    console.log('[Claude] Successfully received response');
-
-    const text = data.content[0]?.text || 'Нет ответа от AI';
-
-    const metadata = agent.role === 'seller' ? extractLeadMetadata(text, userInput) : undefined;
-    const proposedAction = extractProposedAction(text, agent);
-    const cost = calculateCost(data.usage.input_tokens + data.usage.output_tokens, agent.model);
-
-    return {
-      text,
-      metadata,
-      proposedAction,
-      tokensUsed: data.usage.input_tokens + data.usage.output_tokens,
-      cost
-    };
-  } catch (error: any) {
-    console.error('[Claude] Processing error:', error);
-
-    if (error.message.includes('Failed to fetch')) {
-      throw new Error('Ошибка сети. Проверьте подключение к интернету и CORS настройки.');
-    }
-
-    throw new Error(error.message || 'Ошибка при обращении к Claude API');
-  }
+  return {
+    text,
+    metadata,
+    proposedAction,
+    tokensUsed: data.usage.input_tokens + data.usage.output_tokens,
+    cost,
+  };
 };
 
 function buildSystemPrompt(agent: AIAgent): string {
@@ -181,14 +126,10 @@ function convertMessagesToClaudeFormat(history: Message[], newUserInput: string)
 
   const messages: ClaudeMessage[] = recentHistory.map(msg => ({
     role: msg.role,
-    content: msg.content
+    content: msg.content,
   }));
 
-  messages.push({
-    role: 'user',
-    content: newUserInput
-  });
-
+  messages.push({ role: 'user', content: newUserInput });
   return messages;
 }
 
@@ -240,9 +181,8 @@ function extractLeadMetadata(aiResponse: string, userInput: string): {
   return metadata;
 }
 
-function extractProposedAction(text: string, agent: AIAgent): any {
+function extractProposedAction(text: string, _agent: AIAgent): any {
   const actionMatch = text.match(/\[ACTION:\s*(\w+)\]([\s\S]*?)(?=\[ACTION:|$)/i);
-
   if (!actionMatch) return null;
 
   const actionType = actionMatch[1];
@@ -269,7 +209,7 @@ function extractProposedAction(text: string, agent: AIAgent): any {
     type: actionType,
     description: `${actionType}: ${reasoning.substring(0, 100)}`,
     reasoning,
-    data
+    data,
   };
 }
 
@@ -277,7 +217,7 @@ function calculateCost(totalTokens: number, model: string): number {
   const costPer1k: Record<string, number> = {
     'claude-3-5-sonnet-20241022': 0.003,
     'claude-3-5-haiku-20241022': 0.0008,
-    'claude-3-opus-20240229': 0.015
+    'claude-3-opus-20240229': 0.015,
   };
 
   const rate = costPer1k[model] || 0.003;
@@ -285,8 +225,6 @@ function calculateCost(totalTokens: number, model: string): number {
 }
 
 export const qualifyLead = async (conversationText: string): Promise<number> => {
-  const apiKey = await getClaudeApiKey();
-
   const prompt = `Проанализируй диалог с потенциальным клиентом и оцени качество лида от 1 до 10, где:
 - 1-3: Низкое качество (нет бюджета, не целевая аудитория, тайм-кикеры)
 - 4-6: Среднее качество (есть интерес, но бюджет/срочность не ясны)
@@ -299,25 +237,15 @@ ${conversationText}
 Ответь ТОЛЬКО числом от 1 до 10.`;
 
   try {
-    const response = await fetch(CLAUDE_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-3-5-haiku-20241022',
-        max_tokens: 10,
-        temperature: 0,
-        messages: [{ role: 'user', content: prompt }]
-      })
+    const data = await callClaudeProxy({
+      model: 'claude-3-5-haiku-20241022',
+      max_tokens: 10,
+      temperature: 0,
+      messages: [{ role: 'user', content: prompt }],
     });
 
-    const data: ClaudeResponse = await response.json();
     const scoreText = data.content[0]?.text || '5';
     const score = parseInt(scoreText.match(/\d+/)?.[0] || '5');
-
     return Math.min(Math.max(score, 1), 10);
   } catch (error) {
     console.error('Error qualifying lead:', error);

@@ -21,8 +21,8 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({ stats, agents }) => {
             </h3>
             <div className="h-64 flex items-end gap-2 px-4 border-b border-l relative">
                {[40, 65, 30, 85, 90, 45, 70].map((h, i) => (
-                 <div key={i} className="flex-1 bg-indigo-500/10 rounded-t-lg relative group transition-all hover:bg-indigo-500/30 cursor-pointer">
-                    <div className="absolute bottom-0 left-0 right-0 bg-indigo-600 rounded-t-lg transition-all" style={{ height: `${h}%` }}></div>
+                 <div key={i} className="flex-1 bg-blue-500/10 rounded-t-lg relative group transition-all hover:bg-blue-500/30 cursor-pointer">
+                    <div className="absolute bottom-0 left-0 right-0 bg-blue-600 rounded-t-lg transition-all" style={{ height: `${h}%` }}></div>
                     <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                        {Math.floor(h * 2.4)} запросов
                     </div>
@@ -51,7 +51,7 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({ stats, agents }) => {
                <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs">
                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-indigo-600 rounded-full"></div>
+                        <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
                         <span className="text-gray-600">Claude 3.5 Sonnet</span>
                      </div>
                      <span className="font-bold">60%</span>
@@ -59,7 +59,7 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({ stats, agents }) => {
                   <div className="flex items-center justify-between text-xs">
                      <div className="flex items-center gap-2">
                         <div className="w-3 h-3 bg-amber-500 rounded-full"></div>
-                        <span className="text-gray-600">Gemini 3 Flash</span>
+                        <span className="text-gray-600">Claude 3.5 Haiku</span>
                      </div>
                      <span className="font-bold">30%</span>
                   </div>
@@ -94,7 +94,7 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({ stats, agents }) => {
                     <tr key={agent.id} className="hover:bg-gray-50 transition-colors">
                        <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                             <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">🤖</div>
+                             <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">🤖</div>
                              <div>
                                 <p className="font-bold text-gray-900">{agent.name}</p>
                                 <p className="text-[10px] text-gray-400 uppercase">{agent.role}</p>
@@ -113,7 +113,7 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({ stats, agents }) => {
                           </div>
                        </td>
                        <td className="px-6 py-4">
-                          <button className="text-indigo-600 hover:text-indigo-800 font-bold">Детали</button>
+                          <button className="text-blue-600 hover:text-blue-800 font-bold">Детали</button>
                        </td>
                     </tr>
                   ))}
