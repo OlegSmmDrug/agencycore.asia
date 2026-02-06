@@ -546,7 +546,7 @@ const WhatsAppManager: React.FC<WhatsAppManagerProps> = ({ currentUser, users })
 
                     <div className="flex items-center justify-between">
                       <p className="text-sm text-slate-500 truncate">
-                        {chat.lastMessage?.content || chat.phone}
+                        {chat.lastMessage?.content || (chat.chatType === 'group' ? 'Групповой чат' : chat.phone || 'Нет сообщений')}
                       </p>
                       {chat.unreadCount > 0 && (
                         <span className="ml-2 px-2 py-0.5 bg-green-500 text-white text-xs font-bold rounded-full flex-shrink-0">
@@ -590,12 +590,14 @@ const WhatsAppManager: React.FC<WhatsAppManagerProps> = ({ currentUser, users })
                       <ExternalLink className="w-4 h-4 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                     )}
                   </h3>
-                  {selectedClient.phone && (
+                  {selectedClient.chatType === 'group' ? (
+                    <span className="text-sm text-slate-500">Групповой чат</span>
+                  ) : selectedClient.phone ? (
                     <div className="flex items-center gap-2 text-sm text-slate-500">
                       <Phone className="w-3 h-3" />
                       <span>{selectedClient.phone}</span>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
 
