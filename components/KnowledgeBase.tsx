@@ -22,7 +22,7 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'tree' | 'archive'>('tree');
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
+  const [mobileView, setMobileView] = useState<'list' | 'editor'>('list');
 
   const [showNesting, setShowNesting] = useState(true);
   const [showCover, setShowCover] = useState(false);
@@ -39,7 +39,7 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
 
   const handleSelectDoc = (docId: string) => {
     setSelectedDocId(docId);
-    setMobileSidebarOpen(false);
+    setMobileView('editor');
   };
 
   // Initialize with first doc if available
@@ -265,6 +265,7 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
       setExpandedFolders([...expandedFolders, parentId]);
     }
     setViewMode('tree');
+    setMobileView('editor');
   };
 
   const handleUpdateContent = (content: string) => {
@@ -366,8 +367,8 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
           <div key={doc.id} className="select-none">
             <div 
               className={`
-                flex items-center px-3 py-2.5 md:py-1.5 cursor-pointer text-sm transition-colors rounded-lg mx-2 mb-0.5 group
-                ${isSelected ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-600 hover:bg-slate-100'}
+                flex items-center px-4 py-3 md:px-3 md:py-1.5 cursor-pointer text-sm transition-all rounded-2xl md:rounded-lg mx-2 mb-1 md:mb-0.5 group
+                ${isSelected ? 'bg-slate-900 md:bg-blue-50 text-white md:text-blue-700 font-medium shadow-xl md:shadow-none' : 'text-slate-600 hover:bg-slate-50 md:hover:bg-slate-100'}
               `}
               style={{ paddingLeft: `${depth * 12 + 12}px` }}
               onClick={() => {
@@ -576,48 +577,37 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
   );
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden relative">
-        {mobileSidebarOpen && (
-          <div className="fixed inset-0 bg-black/20 z-30 md:hidden" onClick={() => setMobileSidebarOpen(false)} />
-        )}
+    <div className="flex h-full bg-white md:bg-slate-50 overflow-hidden font-sans relative">
         {/* LEFT SIDEBAR (TREE) */}
-        <div className={`
-          fixed inset-y-0 left-0 z-40 w-72 md:w-64 md:static md:z-auto
-          flex flex-col border-r border-slate-200 bg-slate-50 pt-4 flex-shrink-0
-          transition-transform duration-200 ease-in-out
-          ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-        `}>
-            <div className="px-4 mb-4">
-                <div className="flex items-center justify-between mb-3">
-                    <button 
-                        onClick={() => setViewMode('tree')}
-                        className={`text-lg font-bold ${viewMode === 'tree' ? 'text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}
-                    >
+        <div className={`w-full md:w-72 lg:w-80 flex-shrink-0 bg-white md:bg-slate-50 border-r border-slate-200 flex flex-col pt-4 ${mobileView === 'editor' ? 'hidden md:flex' : 'flex'}`}>
+            <div className="px-6 py-6 md:px-4 md:py-0 md:mb-4 shrink-0">
+                <div className="flex items-center justify-between mb-4 md:mb-3">
+                    <h1 className="text-2xl md:text-lg font-black md:font-bold text-slate-900 md:text-slate-800 uppercase md:normal-case tracking-tight md:tracking-normal">
                         База знаний
-                    </button>
-                    <button 
+                    </h1>
+                    <button
                         onClick={() => handleAddDocument()}
-                        className="text-blue-600 hover:bg-blue-50 px-2 py-1 rounded text-sm font-medium flex items-center transition-colors"
+                        className="w-10 h-10 md:w-auto md:h-auto bg-slate-900 md:bg-transparent hover:bg-slate-800 md:hover:bg-blue-50 text-white md:text-blue-600 rounded-xl md:rounded shadow-lg md:shadow-none flex items-center justify-center md:px-2 md:py-1 transition-all active:scale-95"
                     >
-                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                        Новый
+                        <svg className="w-5 h-5 md:w-4 md:h-4 md:mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M12 4v16m8-8H4" /></svg>
+                        <span className="hidden md:inline text-sm font-medium">Новый</span>
                     </button>
                 </div>
                 {viewMode === 'tree' && (
                     <div className="relative">
-                        <input 
-                            type="text" 
-                            placeholder="Поиск..."
+                        <input
+                            type="text"
+                            placeholder="Поиск в документах..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
-                            className="w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="w-full bg-slate-100 md:bg-white border-none md:border md:border-slate-200 rounded-2xl md:rounded-lg pl-10 md:pl-8 pr-4 md:pr-3 py-3 md:py-1.5 text-sm focus:outline-none focus:ring-2 md:focus:ring-1 focus:ring-blue-500/20 md:focus:ring-blue-500 transition-all"
                         />
-                        <svg className="w-4 h-4 text-slate-400 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                        <svg className="w-5 h-5 md:w-4 md:h-4 text-slate-400 absolute left-3 md:left-2.5 top-3.5 md:top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                     </div>
                 )}
             </div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar pb-4">
+            <div className="flex-1 overflow-y-auto custom-scrollbar px-2 md:px-0 pb-24 md:pb-4">
                 {viewMode === 'tree' ? renderTree(null) : renderArchive()}
             </div>
 
@@ -642,17 +632,17 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
         </div>
 
         {/* MAIN CONTENT */}
-        <div className="flex-1 flex flex-col bg-white min-w-0 relative">
+        <div className={`flex-1 flex flex-col bg-white min-w-0 relative ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
             {selectedDoc ? (
                 <>
                     {/* Header */}
-                    <div className="flex items-center justify-between px-3 md:px-6 py-3 border-b border-slate-100 gap-2">
+                    <div className="px-4 md:px-6 py-3 md:py-3 flex items-center justify-between border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-20 gap-2">
                         <div className="flex items-center text-sm text-slate-500 overflow-hidden whitespace-nowrap min-w-0">
                             <button
-                              onClick={() => setMobileSidebarOpen(true)}
-                              className="md:hidden p-1.5 mr-2 rounded-lg hover:bg-slate-100 text-slate-500 flex-shrink-0"
+                              onClick={() => setMobileView('list')}
+                              className="md:hidden text-slate-500 font-black flex items-center text-xs uppercase tracking-widest mr-3 flex-shrink-0"
                             >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                              <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg> Назад
                             </button>
                             <span className="hidden md:flex items-center bg-slate-100 rounded px-2 py-0.5 mr-2 flex-shrink-0">
                                 <span className="mr-1">S</span> AgencyCore
@@ -731,7 +721,7 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
                     )}
 
                     {/* Editor Content */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-12 max-w-4xl mx-auto w-full">
+                    <div className="flex-1 overflow-y-auto custom-scrollbar px-6 md:px-12 lg:px-24 pt-6 md:pt-12 pb-32 max-w-5xl mx-auto w-full">
                         {showCover && (
                             <div className="w-full h-28 md:h-48 bg-gradient-to-r from-blue-400 to-teal-500 rounded-xl mb-4 md:mb-8 shadow-sm flex items-center justify-center text-white/50 text-sm group relative">
                                 Обложка документа
@@ -759,7 +749,7 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
                             </div>
                         </div>
 
-                        <Toolbar />
+                        <div className="hidden md:block"><Toolbar /></div>
 
                         {/* Nested Pages List */}
                         {showNesting && documents.some(d => d.parentId === selectedDoc.id && !d.isArchived) && (
@@ -822,26 +812,33 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
                             className="hidden"
                         />
                     </div>
+
+                    {/* Mobile Floating Toolbar */}
+                    <div className="md:hidden fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white rounded-[2rem] px-6 py-3.5 flex items-center space-x-6 shadow-2xl z-40 border border-white/10 backdrop-blur-xl">
+                        <button onClick={() => execCmd('bold')} className="font-black text-lg hover:text-blue-400 transition-colors">B</button>
+                        <button onClick={() => execCmd('italic')} className="italic serif text-lg hover:text-blue-400 transition-colors">I</button>
+                        <button onClick={() => execCmd('insertUnorderedList')} className="hover:text-blue-400 transition-colors"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg></button>
+                        <div className="h-6 w-px bg-white/10"></div>
+                        <button onClick={() => execCmd('formatBlock', 'H2')} className="text-sm font-black text-slate-400 hover:text-white">H2</button>
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="hover:text-blue-400 transition-colors"
+                            disabled={uploadingImage}
+                        >
+                            {uploadingImage ? (
+                                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            ) : (
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                            )}
+                        </button>
+                    </div>
                 </>
             ) : (
-                <div className="flex flex-col items-center justify-center h-full text-slate-400 px-4">
-                    <button
-                      onClick={() => setMobileSidebarOpen(true)}
-                      className="md:hidden mb-6 px-4 py-2 bg-slate-100 rounded-lg text-slate-600 text-sm font-medium"
-                    >
-                      Открыть список документов
-                    </button>
-                    <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-                        <svg className="w-10 h-10 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                <div className="flex-1 flex flex-col items-center justify-center text-slate-200">
+                    <div className="p-8 bg-slate-50 rounded-full mb-6">
+                        <svg className="w-16 h-16 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
                     </div>
-                    <p className="text-lg font-medium text-slate-600">База знаний</p>
-                    <p className="text-sm mt-1">Выберите документ или создайте новый</p>
-                    <button 
-                        onClick={() => handleAddDocument()}
-                        className="mt-6 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200 font-medium"
-                    >
-                        Создать первый документ
-                    </button>
+                    <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-300">Выберите документ</p>
                 </div>
             )}
 
