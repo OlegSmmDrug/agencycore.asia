@@ -71,7 +71,7 @@ const ProjectRaceTrack: React.FC<ProjectRaceTrackProps> = ({ projects, tasks, cl
   // Calculate stage for each project
   const racers = useMemo(() => {
     return projects
-        .filter(p => p.status === ProjectStatus.IN_WORK || p.status === ProjectStatus.PRODUCTION || p.status === ProjectStatus.ADS_START)
+        .filter(p => p.status !== ProjectStatus.COMPLETED && p.status !== ProjectStatus.ARCHIVED)
         .map(project => {
             const client = clients.find(c => c.id === project.clientId);
             const statuses = projectStageStatuses[project.id] || [];
