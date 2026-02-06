@@ -15,6 +15,9 @@ export interface Organization {
   companySize: string;
   timezone: string;
   plan_name?: string;
+  subscription_status?: string;
+  trial_end_date?: string;
+  subscription_end_date?: string;
   onboardingCompletedAt?: string;
   isBlocked: boolean;
   isDeleted: boolean;

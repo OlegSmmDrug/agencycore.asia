@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { Organization, OrganizationSubscription, SubscriptionPlan, UsageMetric } from '../types';
 import { organizationService } from '../services/organizationService';
+import { supabase } from '../lib/supabase';
 
 interface OrganizationContextType {
   organization: Organization | null;
@@ -28,6 +29,20 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setLoading(true);
 
       const org = await organizationService.getCurrentOrganization();
+
+      if (org) {
+        await supabase.rpc('check_and_expire_trial', { p_org_id: org.id });
+        const { data: freshOrg } = await supabase
+          .from('organizations')
+          .select('plan_name, subscription_status')
+          .eq('id', org.id)
+          .maybeSingle();
+        if (freshOrg) {
+          org.plan_name = freshOrg.plan_name;
+          org.subscription_status = freshOrg.subscription_status;
+        }
+      }
+
       setOrganization(org);
 
       if (org) {

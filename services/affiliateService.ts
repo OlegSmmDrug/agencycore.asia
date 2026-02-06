@@ -343,16 +343,23 @@ class AffiliateService {
   }
 
   async extendTrialForPromo(organizationId: string): Promise<boolean> {
-    const extendedDate = new Date();
-    extendedDate.setDate(extendedDate.getDate() + 14);
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('trial_end_date')
+      .eq('id', organizationId)
+      .maybeSingle();
+
+    const baseDate = org?.trial_end_date ? new Date(org.trial_end_date) : new Date();
+    baseDate.setDate(baseDate.getDate() + 14);
 
     const { error } = await supabase
       .from('organizations')
       .update({
-        plan_name: 'Business',
-        subscription_status: 'active',
-        trial_extended_until: extendedDate.toISOString(),
-        subscription_end_date: extendedDate.toISOString(),
+        plan_name: 'Professional',
+        subscription_status: 'trial',
+        trial_end_date: baseDate.toISOString(),
+        trial_extended_until: baseDate.toISOString(),
+        subscription_end_date: baseDate.toISOString(),
       })
       .eq('id', organizationId);
 

@@ -193,6 +193,9 @@ export const organizationService = {
     companySize?: string;
     timezone?: string;
   }): Promise<Organization> {
+    const trialEnd = new Date();
+    trialEnd.setDate(trialEnd.getDate() + 14);
+
     const { data: org, error } = await supabase
       .from('organizations')
       .insert({
@@ -202,7 +205,11 @@ export const organizationService = {
         industry: data.industry || 'marketing_agency',
         company_size: data.companySize || '1-10',
         timezone: data.timezone || 'Asia/Almaty',
-        onboarding_completed_at: new Date().toISOString()
+        onboarding_completed_at: new Date().toISOString(),
+        plan_name: 'Professional',
+        subscription_status: 'trial',
+        trial_end_date: trialEnd.toISOString(),
+        subscription_end_date: trialEnd.toISOString(),
       })
       .select()
       .single();

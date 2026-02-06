@@ -45,6 +45,7 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
   const [additionalUserPriceUsd, setAdditionalUserPriceUsd] = useState(3);
   const [additionalUserPriceKzt, setAdditionalUserPriceKzt] = useState(1350);
   const [modulePriceUsd, setModulePriceUsd] = useState(5);
+  const [trialInfo, setTrialInfo] = useState<{ isTrial: boolean; trialEndDate: string | null; subscriptionEndDate: string | null }>({ isTrial: false, trialEndDate: null, subscriptionEndDate: null });
 
   useEffect(() => {
     loadPlansFromDB();
@@ -135,16 +136,36 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
     if (!organization?.id) return;
 
     try {
-      setCurrentPlan(organization.plan_name || 'Free');
+      const { data: trialResult } = await supabase.rpc('check_and_expire_trial', { p_org_id: organization.id });
+      if (trialResult?.expired) {
+        setCurrentPlan('Free');
+      } else {
+        setCurrentPlan(organization.plan_name || 'Free');
+      }
+
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('plan_name, subscription_status, trial_end_date, subscription_end_date')
+        .eq('id', organization.id)
+        .maybeSingle();
+
+      if (orgData) {
+        setCurrentPlan(orgData.plan_name || 'Free');
+        setTrialInfo({
+          isTrial: orgData.subscription_status === 'trial',
+          trialEndDate: orgData.trial_end_date,
+          subscriptionEndDate: orgData.subscription_end_date,
+        });
+      }
 
       const { data: user } = await supabase
         .from('users')
         .select('balance')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (user) {
-        setBalance(user.balance || 0);
+        setBalance(Number(user.balance) || 0);
       }
     } catch (error) {
       console.error('Error loading subscription:', error);
@@ -184,62 +205,81 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
   const handleSelectPlan = async (planName: string) => {
     if (!organization?.id) return;
 
+    const selectedPlan = plans.find(p => p.name === planName);
+    if (!selectedPlan) return;
+
+    if (planName === 'FREE') {
+      setIsLoading(true);
+      try {
+        const { error } = await supabase
+          .from('organizations')
+          .update({
+            plan_name: 'Free',
+            subscription_status: 'active',
+            mrr: 0,
+            trial_end_date: null,
+            subscription_end_date: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', organization.id);
+
+        if (!error) {
+          setCurrentPlan('Free');
+          await loadModules();
+          await loadUsageStats();
+          alert('Вы перешли на бесплатный тариф.');
+        }
+      } catch (error) {
+        console.error('Error switching to free:', error);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    if (selectedPlan.priceRu > balance) {
+      alert(`Недостаточно средств. Требуется ${selectedPlan.priceRu.toLocaleString()} ₸, на балансе ${balance.toLocaleString()} ₸`);
+      return;
+    }
+
+    if (!confirm(`Купить тариф "${selectedPlan.displayName}" за ${selectedPlan.priceRu.toLocaleString()} ₸/мес? Сумма спишется с баланса.`)) {
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const selectedPlan = plans.find(p => p.name === planName);
-      if (!selectedPlan) return;
+      const { data: result, error } = await supabase.rpc('purchase_plan', {
+        p_org_id: organization.id,
+        p_user_id: userId,
+        p_plan_name: planName,
+      });
 
-      const dbName = planNameForDB(planName);
-      const { error } = await supabase
-        .from('organizations')
-        .update({
-          plan_name: dbName,
-          mrr: selectedPlan.priceRu,
-          subscription_status: 'active',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', organization.id);
+      if (error) throw error;
 
-      if (!error) {
-        setCurrentPlan(dbName);
+      if (result?.success) {
+        setCurrentPlan(result.plan);
+        setBalance(Number(result.balance_after));
+        setTrialInfo({ isTrial: false, trialEndDate: null, subscriptionEndDate: null });
         await loadModules();
         await loadUsageStats();
-        alert('Тариф успешно изменен!');
+        alert(`Тариф "${selectedPlan.displayName}" успешно активирован!`);
+      } else {
+        const errMsg = result?.error === 'Insufficient balance'
+          ? `Недостаточно средств. Требуется ${result.required?.toLocaleString()} ₸, на балансе ${result.available?.toLocaleString()} ₸`
+          : result?.error || 'Ошибка при покупке тарифа';
+        alert(errMsg);
       }
     } catch (error) {
-      console.error('Error updating plan:', error);
-      alert('Ошибка при смене тарифа');
+      console.error('Error purchasing plan:', error);
+      alert('Ошибка при покупке тарифа');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleTopUp = async () => {
-    const amount = parseFloat(topUpAmount);
-    if (isNaN(amount) || amount <= 0) {
-      alert('Введите корректную сумму');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const { error } = await supabase
-        .from('users')
-        .update({ balance: balance + amount })
-        .eq('id', userId);
-
-      if (!error) {
-        setBalance(balance + amount);
-        setTopUpAmount('');
-        setShowTopUpModal(false);
-        alert('Баланс успешно пополнен!');
-      }
-    } catch (error) {
-      console.error('Error topping up balance:', error);
-      alert('Ошибка при пополнении баланса');
-    } finally {
-      setIsLoading(false);
-    }
+    alert('Онлайн-оплата скоро будет доступна. Для пополнения баланса обратитесь к администратору.');
+    setShowTopUpModal(false);
   };
 
   const currentPlanUpper = currentPlan.toUpperCase();
@@ -258,7 +298,18 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
               {lockedModules.length === 0 && <Crown className="w-5 h-5 text-yellow-300" />}
               <h3 className="text-base sm:text-lg font-semibold">Текущий тариф</h3>
             </div>
-            <p className="text-xl sm:text-2xl font-bold">{plans.find(p => p.name === currentPlanUpper)?.displayName || 'Бесплатный'}</p>
+            <p className="text-xl sm:text-2xl font-bold">
+              {plans.find(p => p.name === currentPlanUpper)?.displayName || 'Бесплатный'}
+              {trialInfo.isTrial && (
+                <span className="ml-2 text-sm font-normal bg-white/20 px-2 py-0.5 rounded-full">Пробный период</span>
+              )}
+            </p>
+            {trialInfo.isTrial && trialInfo.trialEndDate && (
+              <p className="text-sm text-blue-100 mt-1">
+                Пробный период до {new Date(trialInfo.trialEndDate).toLocaleDateString('ru-RU')}
+                {' '}({Math.max(0, Math.ceil((new Date(trialInfo.trialEndDate).getTime() - Date.now()) / 86400000))} дн. осталось)
+              </p>
+            )}
           </div>
           <div className="w-full sm:w-auto sm:text-right">
             <h3 className="text-base sm:text-lg font-semibold mb-1">Баланс</h3>
@@ -393,10 +444,12 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
 
                 <button
                   onClick={() => handleSelectPlan(plan.name)}
-                  disabled={isLoading || currentPlanUpper === plan.name}
-                  className={`w-full py-2.5 rounded-lg font-semibold transition-colors ${
-                    currentPlanUpper === plan.name
+                  disabled={isLoading || (currentPlanUpper === plan.name && !trialInfo.isTrial)}
+                  className={`w-full py-2.5 rounded-lg font-semibold transition-colors text-sm ${
+                    currentPlanUpper === plan.name && !trialInfo.isTrial
                       ? 'bg-green-100 text-green-700 cursor-default'
+                      : plan.priceRu > 0 && plan.priceRu > balance
+                      ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                       : plan.isPopular
                       ? 'bg-blue-600 text-white hover:bg-blue-700'
                       : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
@@ -404,8 +457,12 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
                 >
                   {isLoading ? (
                     <Loader className="w-5 h-5 animate-spin mx-auto" />
-                  ) : currentPlanUpper === plan.name ? (
+                  ) : currentPlanUpper === plan.name && !trialInfo.isTrial ? (
                     'Текущий тариф'
+                  ) : plan.priceRu > 0 ? (
+                    plan.priceRu > balance
+                      ? `Не хватает ${(plan.priceRu - balance).toLocaleString()} ₸`
+                      : `Купить за ${plan.priceRu.toLocaleString()} ₸/мес`
                   ) : (
                     'Выбрать тариф'
                   )}
