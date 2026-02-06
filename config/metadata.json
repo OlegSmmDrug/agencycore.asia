@@ -1,0 +1,7 @@
+{
+  "name": "Digital Strategist: Briefing Module",
+  "description": "A professional AI-driven briefing tool for digital marketing agencies, conducting deep interviews to extract high-value insights for advertising campaigns.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
