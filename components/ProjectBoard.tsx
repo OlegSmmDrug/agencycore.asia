@@ -47,9 +47,11 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
   const [viewScope, setViewScope] = useState<'all' | 'my' | 'archive'>('my');
   const [projectStageStatuses, setProjectStageStatuses] = useState<Record<string, Level1StageStatus[]>>({});
   const [level1Stages, setLevel1Stages] = useState<RoadmapStageLevel1[]>([]);
+  const [stagesLoaded, setStagesLoaded] = useState(false);
 
   useEffect(() => {
     const loadStagesAndStatuses = async () => {
+      setStagesLoaded(false);
       try {
         const stages = await roadmapService.getLevel1Stages();
         setLevel1Stages(stages);
@@ -69,11 +71,15 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
         setProjectStageStatuses(statusesMap);
       } catch (error) {
         console.error('Error loading stages:', error);
+      } finally {
+        setStagesLoaded(true);
       }
     };
 
     if (projects.length > 0) {
       loadStagesAndStatuses();
+    } else {
+      setStagesLoaded(true);
     }
   }, [projects]);
 
@@ -215,6 +221,17 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
   };
 
   const renderBoardView = () => {
+    if (!stagesLoaded) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <div className="flex items-center gap-3 text-slate-400">
+            <div className="w-5 h-5 border-2 border-slate-300 border-t-blue-500 rounded-full animate-spin" />
+            <span className="text-sm">Загрузка...</span>
+          </div>
+        </div>
+      );
+    }
+
     const getColumnProjects = (colId: string) => {
       const firstStageId = level1Stages[0]?.id;
 
