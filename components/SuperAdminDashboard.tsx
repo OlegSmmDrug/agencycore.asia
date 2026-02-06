@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { authService } from '../services/authService';
-import { BarChart3, Users, TrendingUp, TrendingDown, DollarSign, Activity, Search, Building2, Plus, Edit, LogOut, Gift, Link2, UserCheck, Clock, CheckCircle, Ban, Trash2, Server } from 'lucide-react';
+import { BarChart3, Users, TrendingUp, TrendingDown, DollarSign, Activity, Search, Building2, Plus, Edit, LogOut, Gift, Link2, UserCheck, Clock, CheckCircle, Ban, Trash2, Server, FileText } from 'lucide-react';
 import OrganizationEditModal from './OrganizationEditModal';
 import SystemMetricsPanel from './SystemMetricsPanel';
+import LegalPagesAdmin from './LegalPagesAdmin';
 
 interface PlatformStats {
   total_mrr: number;
@@ -72,7 +73,7 @@ interface AffiliateAdminStats {
 }
 
 const SuperAdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'affiliate' | 'system'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'affiliate' | 'legal' | 'system'>('overview');
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -346,6 +347,19 @@ const SuperAdminDashboard: React.FC = () => {
             <div className="flex items-center gap-2">
               <Gift className="w-4 h-4" />
               Партнерская программа
+            </div>
+          </button>
+          <button
+            onClick={() => setActiveTab('legal')}
+            className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+              activeTab === 'legal'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              Юр. страницы
             </div>
           </button>
           <button
@@ -825,6 +839,8 @@ const SuperAdminDashboard: React.FC = () => {
             )}
           </div>
         )}
+
+        {activeTab === 'legal' && <LegalPagesAdmin />}
 
         {activeTab === 'system' && <SystemMetricsPanel />}
       </div>

@@ -238,7 +238,10 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onRegister, onSwitchToLogin
             )}
 
             <p className="text-xs text-slate-500 text-center">
-              Регистрируясь, вы соглашаетесь с условиями использования и политикой конфиденциальности
+              Регистрируясь, вы соглашаетесь с{' '}
+              <a href="/legal/offer" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">условиями использования</a>
+              {' '}и{' '}
+              <a href="/legal/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">политикой конфиденциальности</a>
             </p>
           </form>
         </div>

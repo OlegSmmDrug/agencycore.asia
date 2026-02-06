@@ -28,6 +28,7 @@ import TemplateEditorFullModal from './components/TemplateEditorFullModal';
 import { GuestAuthProvider } from './components/GuestAuthProvider';
 import { GuestProjectView } from './components/GuestProjectView';
 import PublicDocumentView from './components/PublicDocumentView';
+import LegalPageView from './components/LegalPageView';
 import { CLIENT_STATUS_LABELS } from './constants';
 import { User, Client, Project, Task, Role, Notification, ProjectStatus, ClientStatus, TaskStatus, Document, Transaction, PaymentType, Note, Service, PayrollRecord, SalaryScheme } from './types';
 import { suggestProjectTasks } from './services/geminiService';
@@ -1108,6 +1109,12 @@ const App: React.FC = () => {
       const result = new Date(dateStr);
       result.setDate(result.getDate() + days);
       return result.toISOString().split('T')[0];
+  }
+
+  // --- Legal Pages Route Handling ---
+  const legalPageMatch = window.location.pathname.match(/^\/legal\/([a-zA-Z0-9_-]+)/);
+  if (legalPageMatch) {
+    return <LegalPageView slug={legalPageMatch[1]} />;
   }
 
   // --- Public Knowledge Base Document Route Handling ---
