@@ -1,6 +1,6 @@
 class BrowserNotificationService {
   private audioContext: AudioContext | null = null;
-  private faviconUrl: string = '/favicon.ico';
+  private faviconUrl: string = '/фавикон_agencycore.png';
 
   async requestPermission(): Promise<NotificationPermission> {
     if (!('Notification' in window)) {
