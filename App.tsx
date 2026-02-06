@@ -364,6 +364,9 @@ const App: React.FC = () => {
 
   // Selection State
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [projectDetailTab, setProjectDetailTab] = useState<string>('overview');
+  const [projectBoardViewType, setProjectBoardViewType] = useState<'board' | 'list' | 'services'>('board');
+  const [projectBoardViewScope, setProjectBoardViewScope] = useState<'all' | 'my' | 'archive'>('my');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -1278,6 +1281,8 @@ const App: React.FC = () => {
                     team={team}
                     notes={notes}
                     currentUser={currentUser}
+                    initialTab={projectDetailTab}
+                    onTabChange={setProjectDetailTab}
                     onBack={() => setSelectedProjectId(null)}
                     onAddTask={(initialData) => {
                         setModalType('task');
@@ -1339,9 +1344,18 @@ const App: React.FC = () => {
             users={users}
             currentUserId={users.find(u => u.email === currentUser.email)?.id}
             currentUser={users.find(u => u.email === currentUser.email)}
+            initialViewType={projectBoardViewType}
+            onViewTypeChange={setProjectBoardViewType}
+            initialViewScope={projectBoardViewScope}
+            onViewScopeChange={setProjectBoardViewScope}
             onProjectStatusChange={handleProjectStatusChange}
             onGenerateTasks={handleGenerateTasks}
-            onProjectClick={(p) => setSelectedProjectId(p.id)}
+            onProjectClick={(p) => {
+                if (p.id !== selectedProjectId) {
+                  setProjectDetailTab('overview');
+                }
+                setSelectedProjectId(p.id);
+            }}
             onEditProject={(p, e) => {
                 e.stopPropagation();
                 setModalType('project');
@@ -1610,7 +1624,6 @@ const App: React.FC = () => {
             activeTab={activeTab}
             setActiveTab={(tab) => {
                 setActiveTab(tab);
-                setSelectedProjectId(null);
             }}
             currentUser={currentUser}
             isOpen={isSidebarOpen}

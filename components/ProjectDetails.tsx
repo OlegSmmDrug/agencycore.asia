@@ -49,6 +49,8 @@ interface ProjectDetailsProps {
   onAddNote: (note: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Note>;
   onUpdateNote: (note: Note) => void;
   onDeleteNote: (id: string) => void;
+  initialTab?: string;
+  onTabChange?: (tab: string) => void;
 }
 
 type TabType = 'overview' | 'roadmap' | 'calendar' | 'facebook' | 'google' | 'tiktok' | 'livedune' | 'team' | 'legal' | 'notes' | 'expenses';
@@ -72,9 +74,16 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
   onCreateTask,
   onAddNote,
   onUpdateNote,
-  onDeleteNote
+  onDeleteNote,
+  initialTab,
+  onTabChange
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [activeTab, setActiveTabLocal] = useState<TabType>((initialTab as TabType) || 'overview');
+
+  const setActiveTab = (tab: TabType) => {
+    setActiveTabLocal(tab);
+    onTabChange?.(tab);
+  };
   const [isRoadmapModalOpen, setIsRoadmapModalOpen] = useState(false);
   const [isContentModalOpen, setIsContentModalOpen] = useState(false);
   const [selectedContentTask, setSelectedContentTask] = useState<Partial<Task> | null>(null);

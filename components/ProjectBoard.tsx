@@ -21,6 +21,10 @@ interface ProjectBoardProps {
   onArchiveProject?: (projectId: string, e: React.MouseEvent) => void;
   onRestoreProject?: (projectId: string, e: React.MouseEvent) => void;
   isGeneratingTasksFor: string | null;
+  initialViewType?: 'board' | 'list' | 'services';
+  onViewTypeChange?: (viewType: 'board' | 'list' | 'services') => void;
+  initialViewScope?: 'all' | 'my' | 'archive';
+  onViewScopeChange?: (scope: 'all' | 'my' | 'archive') => void;
 }
 
 const ProjectBoard: React.FC<ProjectBoardProps> = ({
@@ -37,14 +41,28 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
   onAddProject,
   onArchiveProject,
   onRestoreProject,
-  isGeneratingTasksFor
+  isGeneratingTasksFor,
+  initialViewType,
+  onViewTypeChange,
+  initialViewScope,
+  onViewScopeChange
 }) => {
-  const [viewType, setViewType] = useState<'board' | 'list' | 'services'>('board');
+  const [viewType, setViewTypeLocal] = useState<'board' | 'list' | 'services'>(initialViewType || 'board');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClientId, setSelectedClientId] = useState<string>('all');
   const [selectedService, setSelectedService] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<ProjectStatus | 'all'>('all');
-  const [viewScope, setViewScope] = useState<'all' | 'my' | 'archive'>('my');
+  const [viewScope, setViewScopeLocal] = useState<'all' | 'my' | 'archive'>(initialViewScope || 'my');
+
+  const setViewType = (vt: 'board' | 'list' | 'services') => {
+    setViewTypeLocal(vt);
+    onViewTypeChange?.(vt);
+  };
+
+  const setViewScope = (vs: 'all' | 'my' | 'archive') => {
+    setViewScopeLocal(vs);
+    onViewScopeChange?.(vs);
+  };
   const [projectStageStatuses, setProjectStageStatuses] = useState<Record<string, Level1StageStatus[]>>({});
   const [level1Stages, setLevel1Stages] = useState<RoadmapStageLevel1[]>([]);
   const [stagesLoaded, setStagesLoaded] = useState(false);
