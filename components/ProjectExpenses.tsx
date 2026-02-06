@@ -13,7 +13,7 @@ import ProjectFinancialSummary from './ProjectFinancialSummary';
 import { SyncPreviewModal } from './SyncPreviewModal';
 import { ExpenseValidation } from './ExpenseValidation';
 import { AddExpenseModal } from './AddExpenseModal';
-import { ChevronLeft, ChevronRight, Lock, Unlock, Copy, Plus, Trash2, FolderPlus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Lock, Unlock, Copy, Plus, Trash2, FolderPlus, RefreshCw } from 'lucide-react';
 
 interface ProjectExpensesProps {
   projectId: string;
@@ -61,6 +61,7 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<{ id: string; name: string } | null>(null);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const canEdit = currentUser.jobTitle.toLowerCase().includes('pm') ||
                   currentUser.jobTitle.toLowerCase().includes('project manager') ||
@@ -287,19 +288,33 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   const AUTO_SYNC_INTERVAL = 180;
   const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isEditingRef = useRef(isEditing);
+  const isMonthFrozenRef = useRef(isMonthFrozen);
+  const selectedMonthRef = useRef(selectedMonth);
 
-  const runAutoSync = useCallback(async () => {
-    if (!canEdit || isMonthFrozen || isEditing) return;
+  useEffect(() => { isEditingRef.current = isEditing; }, [isEditing]);
+  useEffect(() => { isMonthFrozenRef.current = isMonthFrozen; }, [isMonthFrozen]);
+  useEffect(() => { selectedMonthRef.current = selectedMonth; }, [selectedMonth]);
+
+  const performSync = useCallback(async (showSpinner = false) => {
+    if (!canEdit || isMonthFrozenRef.current || isEditingRef.current) return;
+    if (showSpinner) setSyncing(true);
     try {
-      const synced = await projectExpensesService.syncDynamicExpenses(projectId, selectedMonth, currentUser.id);
+      const synced = await projectExpensesService.syncDynamicExpenses(projectId, selectedMonthRef.current, currentUser.id);
       setCurrentExpense(synced);
       await loadExpenses();
       setLastAutoSync(new Date());
       setNextSyncIn(AUTO_SYNC_INTERVAL);
     } catch (error) {
-      console.error('Auto-sync error:', error);
+      console.error('Sync error:', error);
+    } finally {
+      if (showSpinner) setSyncing(false);
     }
-  }, [canEdit, isMonthFrozen, isEditing, projectId, selectedMonth, currentUser.id]);
+  }, [canEdit, projectId, currentUser.id]);
+
+  const handleManualSync = useCallback(() => {
+    performSync(true);
+  }, [performSync]);
 
   useEffect(() => {
     if (!canEdit || isMonthFrozen) return;
@@ -310,6 +325,8 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     setLastAutoSync(new Date());
     setNextSyncIn(AUTO_SYNC_INTERVAL);
 
+    performSync(false);
+
     countdownRef.current = setInterval(() => {
       setNextSyncIn(prev => {
         if (prev <= 1) return AUTO_SYNC_INTERVAL;
@@ -318,16 +335,14 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
     }, 1000);
 
     syncIntervalRef.current = setInterval(() => {
-      if (!isEditing) {
-        runAutoSync();
-      }
+      performSync(false);
     }, AUTO_SYNC_INTERVAL * 1000);
 
     return () => {
       if (countdownRef.current) clearInterval(countdownRef.current);
       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
     };
-  }, [canEdit, isMonthFrozen, selectedMonth, projectId]);
+  }, [canEdit, isMonthFrozen, selectedMonth, projectId, performSync]);
 
   const loadCategories = async () => {
     try {
@@ -791,11 +806,23 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
                       )}
                     </div>
                   )}
-                  {currentExpense?.lastSyncedAt && (
-                    <div className="text-xs text-slate-500">
-                      Синхронизировано: {new Date(currentExpense.lastSyncedAt).toLocaleString('ru-RU')}
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {currentExpense?.lastSyncedAt && (
+                      <div className="text-xs text-slate-500">
+                        Синхронизировано: {new Date(currentExpense.lastSyncedAt).toLocaleString('ru-RU')}
+                      </div>
+                    )}
+                    {canEdit && !isMonthFrozen && (
+                      <button
+                        onClick={handleManualSync}
+                        disabled={syncing || isEditing}
+                        className="p-1.5 rounded-lg hover:bg-blue-100 text-slate-400 hover:text-blue-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Синхронизировать сейчас"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
