@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { User, Mail, Lock, Camera, Save, Shield, UserIcon, CheckCircle, AlertCircle, Eye, EyeOff, CreditCard } from 'lucide-react';
+import { User, Mail, Lock, Camera, Save, Shield, UserIcon, CheckCircle, AlertCircle, Eye, EyeOff, CreditCard, Gift } from 'lucide-react';
 import { User as UserType, SystemRole } from '../types';
 import { supabase } from '../lib/supabase';
 import BillingSection from './BillingSection';
+import { AffiliateProgram } from './affiliate/AffiliateProgram';
 
 interface ProfileSettingsPageProps {
     user: UserType;
@@ -10,7 +11,7 @@ interface ProfileSettingsPageProps {
 }
 
 export const ProfileSettingsPage: React.FC<ProfileSettingsPageProps> = ({ user, onUpdate }) => {
-    const [activeTab, setActiveTab] = useState<'personal' | 'contact' | 'security' | 'billing'>('personal');
+    const [activeTab, setActiveTab] = useState<'personal' | 'contact' | 'security' | 'billing' | 'affiliate'>('personal');
     const isAdmin = user.systemRole === SystemRole.ADMIN;
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -267,6 +268,17 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsPageProps> = ({ user, 
                                 <span className="text-sm lg:text-base">Тарифы и платежи</span>
                             </button>
                         )}
+                        <button
+                            onClick={() => setActiveTab('affiliate')}
+                            className={`flex-shrink-0 lg:w-full flex items-center gap-2 lg:gap-3 px-3 lg:px-4 py-2 lg:py-3 rounded-lg text-left transition-colors whitespace-nowrap ${
+                                activeTab === 'affiliate'
+                                    ? 'bg-blue-50 text-blue-700 font-medium'
+                                    : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                        >
+                            <Gift className="w-5 h-5 flex-shrink-0" />
+                            <span className="text-sm lg:text-base">Партнерская программа</span>
+                        </button>
                     </nav>
                 </div>
 
@@ -477,6 +489,18 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsPageProps> = ({ user, 
 
                         {activeTab === 'billing' && isAdmin && (
                             <BillingSection userId={user.id} />
+                        )}
+
+                        {activeTab === 'affiliate' && (
+                            <AffiliateProgram
+                                organizationId={(() => {
+                                    try {
+                                        const stored = localStorage.getItem('currentUser');
+                                        return stored ? JSON.parse(stored).organizationId : '';
+                                    } catch { return ''; }
+                                })()}
+                                userId={user.id}
+                            />
                         )}
                     </div>
                 </div>

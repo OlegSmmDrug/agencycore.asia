@@ -285,6 +285,7 @@ export const authService = {
     password: string;
     industry?: string;
     companySize?: string;
+    promoCode?: string;
   }): Promise<{ user: AuthUser | null; error: Error | null }> {
     let createdOrgId: string | null = null;
 
@@ -339,6 +340,23 @@ export const authService = {
         await supabase.from('organizations').delete().eq('id', organization.id);
         createdOrgId = null;
         throw userError;
+      }
+
+      if (data.promoCode) {
+        try {
+          const { affiliateService } = await import('./affiliateService');
+          const { valid } = await affiliateService.validatePromoCode(data.promoCode);
+          if (valid) {
+            await affiliateService.registerReferral(data.promoCode, organization.id);
+            await affiliateService.extendTrialForPromo(organization.id);
+            await supabase
+              .from('organizations')
+              .update({ referred_by_promo_code: data.promoCode.toLowerCase().trim() })
+              .eq('id', organization.id);
+          }
+        } catch (promoErr) {
+          console.warn('Promo code processing failed (non-critical):', promoErr);
+        }
       }
 
       const authUser: AuthUser = {

@@ -11,6 +11,10 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onRegister, onSwitchToLogin
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [organizationName, setOrganizationName] = useState('');
+  const [promoCode, setPromoCode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('promo') || '';
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -31,6 +35,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onRegister, onSwitchToLogin
       ownerName: fullName,
       email,
       password,
+      promoCode: promoCode.trim() || undefined,
     });
 
     if (authError) {
@@ -144,6 +149,25 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onRegister, onSwitchToLogin
                 placeholder="your@email.com"
                 className="w-full px-4 py-3.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-slate-50 transition-all font-medium text-slate-700"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
+                Промокод <span className="font-normal normal-case tracking-normal text-slate-400">(необязательно)</span>
+              </label>
+              <input
+                type="text"
+                value={promoCode}
+                onChange={(e) => {
+                  setPromoCode(e.target.value);
+                  setError('');
+                }}
+                placeholder="Введите промокод партнера"
+                className="w-full px-4 py-3.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-slate-50 transition-all font-medium text-slate-700"
+              />
+              {promoCode && (
+                <p className="text-xs text-emerald-600 mt-1">+14 дней бесплатного доступа ко всем модулям</p>
+              )}
             </div>
 
             <div>
