@@ -101,22 +101,22 @@ export const STYLE_GUIDELINES: Record<CommunicationStyle, string> = {
 
 export const MODELS = [
   {
-    id: 'claude-3-5-sonnet-20241022',
-    name: 'Claude 3.5 Sonnet (Рекомендуется)',
-    costPer1k: 0.003,
+    id: 'claude-sonnet-4-5-20250929',
+    name: 'Claude Sonnet 4.5 (Рекомендуется)',
+    costPer1k: 0.009,
     description: 'Лучший баланс качества и цены. Отлично подходит для продаж и генерации контента.'
   },
   {
-    id: 'claude-3-5-haiku-20241022',
-    name: 'Claude 3.5 Haiku (Экономный)',
-    costPer1k: 0.0008,
+    id: 'claude-haiku-4-5-20251001',
+    name: 'Claude Haiku 4.5 (Экономный)',
+    costPer1k: 0.003,
     description: 'Быстрый и дешевый. Идеален для простых FAQ и рутинных задач.'
   },
   {
-    id: 'claude-3-opus-20240229',
-    name: 'Claude 3 Opus (Максимум)',
-    costPer1k: 0.015,
-    description: 'Самый мощный для сложных задач с глубоким анализом и рассуждениями.'
+    id: 'claude-sonnet-4-20250514',
+    name: 'Claude Sonnet 4 (Базовый)',
+    costPer1k: 0.009,
+    description: 'Надежная модель для стандартных задач. Хороший выбор для большинства сценариев.'
   }
 ];
 

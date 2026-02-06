@@ -109,7 +109,7 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
 
       await aiAgentService.createAgent({
         name: template.name,
-        model: i === 0 ? 'claude-3-5-sonnet-20241022' : 'claude-3-5-haiku-20241022',
+        model: i === 0 ? 'claude-sonnet-4-5-20250929' : 'claude-haiku-4-5-20251001',
         role: role,
         status: i === 0 ? 'active' : 'inactive',
         triggers: i === 0 ? ['creatium_webhook', 'whatsapp_incoming'] : [],

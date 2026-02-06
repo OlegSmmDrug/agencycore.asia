@@ -215,12 +215,12 @@ function extractProposedAction(text: string, _agent: AIAgent): any {
 
 function calculateCost(totalTokens: number, model: string): number {
   const costPer1k: Record<string, number> = {
-    'claude-3-5-sonnet-20241022': 0.003,
-    'claude-3-5-haiku-20241022': 0.0008,
-    'claude-3-opus-20240229': 0.015,
+    'claude-sonnet-4-5-20250929': 0.009,
+    'claude-haiku-4-5-20251001': 0.003,
+    'claude-sonnet-4-20250514': 0.009,
   };
 
-  const rate = costPer1k[model] || 0.003;
+  const rate = costPer1k[model] || 0.009;
   return (totalTokens / 1000) * rate;
 }
 
@@ -238,7 +238,7 @@ ${conversationText}
 
   try {
     const data = await callClaudeProxy({
-      model: 'claude-3-5-haiku-20241022',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 10,
       temperature: 0,
       messages: [{ role: 'user', content: prompt }],
