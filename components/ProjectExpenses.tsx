@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ProjectExpense, User, Project, DynamicExpenseItem } from '../types';
 import { projectExpensesService, calculateSmmExpenses, calculateProductionExpenses, calculateTotalExpenses, calculateMargin } from '../services/projectExpensesService';
 import { GLOBAL_RATES } from '../services/projectAnalytics';
@@ -283,6 +283,51 @@ const ProjectExpenses: React.FC<ProjectExpensesProps> = ({
   useEffect(() => {
     loadExpenseForMonth(selectedMonth);
   }, [selectedMonth]);
+
+  const AUTO_SYNC_INTERVAL = 180;
+  const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const runAutoSync = useCallback(async () => {
+    if (!canEdit || isMonthFrozen || isEditing) return;
+    try {
+      const synced = await projectExpensesService.syncDynamicExpenses(projectId, selectedMonth, currentUser.id);
+      setCurrentExpense(synced);
+      await loadExpenses();
+      setLastAutoSync(new Date());
+      setNextSyncIn(AUTO_SYNC_INTERVAL);
+    } catch (error) {
+      console.error('Auto-sync error:', error);
+    }
+  }, [canEdit, isMonthFrozen, isEditing, projectId, selectedMonth, currentUser.id]);
+
+  useEffect(() => {
+    if (!canEdit || isMonthFrozen) return;
+
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+
+    setLastAutoSync(new Date());
+    setNextSyncIn(AUTO_SYNC_INTERVAL);
+
+    countdownRef.current = setInterval(() => {
+      setNextSyncIn(prev => {
+        if (prev <= 1) return AUTO_SYNC_INTERVAL;
+        return prev - 1;
+      });
+    }, 1000);
+
+    syncIntervalRef.current = setInterval(() => {
+      if (!isEditing) {
+        runAutoSync();
+      }
+    }, AUTO_SYNC_INTERVAL * 1000);
+
+    return () => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+    };
+  }, [canEdit, isMonthFrozen, selectedMonth, projectId]);
 
   const loadCategories = async () => {
     try {
