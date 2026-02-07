@@ -2,13 +2,15 @@ import { WhatsAppMessage, WhatsAppChat } from '../types';
 import { wazzupService } from './wazzupService';
 import { greenApiService, GreenApiConfig } from './greenApiService';
 import { greenApiIntegrationService } from './greenApiIntegrationService';
+import { evolutionApiService } from './evolutionApiService';
 import { supabase } from '../lib/supabase';
 import { getCurrentOrganizationId } from '../utils/organizationContext';
 
-type WhatsAppProvider = 'wazzup' | 'greenapi';
+type WhatsAppProvider = 'wazzup' | 'greenapi' | 'evolution';
 
 const PROVIDER_KEY = 'whatsapp_provider';
 const ACTIVE_INTEGRATION_KEY = 'active_greenapi_integration';
+const ACTIVE_EVOLUTION_INSTANCE_KEY = 'active_evolution_instance';
 
 export const whatsappService = {
   getProvider(): WhatsAppProvider {
@@ -85,6 +87,39 @@ export const whatsappService = {
       name: i.name,
       isDefault: i.config?.is_default || false,
     }));
+  },
+
+  getActiveEvolutionInstanceName(): string | null {
+    return localStorage.getItem(ACTIVE_EVOLUTION_INSTANCE_KEY);
+  },
+
+  setActiveEvolutionInstanceName(instanceName: string) {
+    localStorage.setItem(ACTIVE_EVOLUTION_INSTANCE_KEY, instanceName);
+  },
+
+  async getActiveEvolutionInstance(): Promise<string | null> {
+    const stored = this.getActiveEvolutionInstanceName();
+    if (stored) {
+      const inst = await evolutionApiService.getInstanceByName(stored);
+      if (inst && inst.connection_status === 'open') return stored;
+    }
+
+    const organizationId = getCurrentOrganizationId();
+    if (!organizationId) return null;
+
+    const active = await evolutionApiService.getActiveInstance(organizationId);
+    if (active) {
+      this.setActiveEvolutionInstanceName(active.instance_name);
+      return active.instance_name;
+    }
+
+    return null;
+  },
+
+  async getAllEvolutionInstances() {
+    const organizationId = getCurrentOrganizationId();
+    if (!organizationId) return [];
+    return evolutionApiService.getInstancesByOrganization(organizationId);
   },
 
   async getAllChats(): Promise<WhatsAppChat[]> {
@@ -304,7 +339,65 @@ export const whatsappService = {
   ): Promise<WhatsAppMessage | null> {
     const provider = this.getProvider();
 
-    if (provider === 'greenapi') {
+    if (provider === 'evolution') {
+      const instanceName = await this.getActiveEvolutionInstance();
+      if (!instanceName) throw new Error('Нет активного Evolution API инстанса');
+      const cleanPhone = phone.replace(/\D/g, '');
+      await evolutionApiService.sendText(instanceName, cleanPhone, text);
+      const organizationId = getCurrentOrganizationId();
+      const chatId = `${cleanPhone}@s.whatsapp.net`;
+      const ts = new Date().toISOString();
+
+      await supabase.from('whatsapp_chats').upsert({
+        chat_id: chatId,
+        chat_name: phone,
+        chat_type: 'individual',
+        client_id: clientId,
+        phone: cleanPhone,
+        last_message_at: ts,
+        organization_id: organizationId,
+        provider_type: 'evolution',
+        updated_at: ts,
+      }, { onConflict: 'chat_id' });
+
+      const msgRecord = {
+        organization_id: organizationId,
+        client_id: clientId,
+        message_id: `out_${Date.now()}`,
+        direction: 'outgoing' as const,
+        content: text,
+        sender_name: 'Менеджер',
+        user_id: userId,
+        status: 'sent' as const,
+        timestamp: ts,
+        chat_id: chatId,
+        chat_type: 'whatsapp',
+        is_read: true,
+        provider_type: 'evolution',
+      };
+
+      const { data } = await supabase
+        .from('whatsapp_messages')
+        .insert(msgRecord)
+        .select()
+        .single();
+
+      if (!data) return null;
+      return {
+        id: data.id,
+        clientId: data.client_id,
+        messageId: data.message_id,
+        direction: 'outgoing',
+        content: text,
+        senderName: data.sender_name,
+        userId: data.user_id,
+        status: 'sent',
+        timestamp: data.timestamp,
+        chatId: data.chat_id,
+        chatType: data.chat_type,
+        isRead: true,
+      };
+    } else if (provider === 'greenapi') {
       const integration = await this.getActiveIntegrationConfig();
       if (integration) {
         return greenApiService.sendMessage(
@@ -332,7 +425,68 @@ export const whatsappService = {
   ): Promise<WhatsAppMessage | null> {
     const provider = this.getProvider();
 
-    if (provider === 'greenapi') {
+    if (provider === 'evolution') {
+      const instanceName = await this.getActiveEvolutionInstance();
+      if (!instanceName) throw new Error('Нет активного Evolution API инстанса');
+      const cleanPhone = phone.replace(/\D/g, '');
+
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+
+      let mediatype: 'image' | 'video' | 'audio' | 'document' = 'document';
+      if (file.type.startsWith('image/')) mediatype = 'image';
+      else if (file.type.startsWith('video/')) mediatype = 'video';
+      else if (file.type.startsWith('audio/')) mediatype = 'audio';
+
+      await evolutionApiService.sendMedia(instanceName, cleanPhone, mediatype, base64, text, file.name);
+
+      const organizationId = getCurrentOrganizationId();
+      const chatId = `${cleanPhone}@s.whatsapp.net`;
+      const ts = new Date().toISOString();
+
+      const { data } = await supabase
+        .from('whatsapp_messages')
+        .insert({
+          organization_id: organizationId,
+          client_id: clientId,
+          message_id: `out_${Date.now()}`,
+          direction: 'outgoing',
+          content: text || `[${mediatype}]`,
+          sender_name: 'Менеджер',
+          user_id: userId,
+          status: 'sent',
+          timestamp: ts,
+          media_type: mediatype,
+          media_filename: file.name,
+          chat_id: chatId,
+          chat_type: 'whatsapp',
+          is_read: true,
+          provider_type: 'evolution',
+        })
+        .select()
+        .single();
+
+      if (!data) return null;
+      return {
+        id: data.id,
+        clientId: data.client_id,
+        messageId: data.message_id,
+        direction: 'outgoing',
+        content: data.content,
+        senderName: data.sender_name,
+        userId: data.user_id,
+        status: 'sent',
+        timestamp: data.timestamp,
+        mediaType: mediatype,
+        mediaFilename: file.name,
+        chatId: data.chat_id,
+        chatType: data.chat_type,
+        isRead: true,
+      };
+    } else if (provider === 'greenapi') {
       const integration = await this.getActiveIntegrationConfig();
       if (integration) {
         return greenApiService.sendFileByUpload(
@@ -395,7 +549,14 @@ export const whatsappService = {
     const provider = this.getProvider();
 
     try {
-      if (provider === 'greenapi') {
+      if (provider === 'evolution') {
+        const instanceName = await this.getActiveEvolutionInstance();
+        if (!instanceName) {
+          return { provider: 'evolution', status: 'no_instance' };
+        }
+        const state = await evolutionApiService.getConnectionState(instanceName);
+        return { provider: 'evolution', status: state, info: { instanceName } };
+      } else if (provider === 'greenapi') {
         const integration = await this.getActiveIntegrationConfig();
         if (integration) {
           const state = await greenApiService.getStateInstance(integration.config);
@@ -457,7 +618,61 @@ export const whatsappService = {
   ): Promise<WhatsAppMessage | null> {
     const provider = this.getProvider();
 
-    if (provider === 'greenapi') {
+    if (provider === 'evolution') {
+      const instanceName = await this.getActiveEvolutionInstance();
+      if (!instanceName) throw new Error('Нет активного Evolution API инстанса');
+      const cleanPhone = phone.replace(/\D/g, '');
+
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(audioBlob);
+      });
+
+      await evolutionApiService.sendAudio(instanceName, cleanPhone, base64);
+
+      const organizationId = getCurrentOrganizationId();
+      const chatId = `${cleanPhone}@s.whatsapp.net`;
+      const ts = new Date().toISOString();
+
+      const { data } = await supabase
+        .from('whatsapp_messages')
+        .insert({
+          organization_id: organizationId,
+          client_id: clientId,
+          message_id: `out_${Date.now()}`,
+          direction: 'outgoing',
+          content: '[Audio]',
+          sender_name: 'Менеджер',
+          user_id: userId,
+          status: 'sent',
+          timestamp: ts,
+          media_type: 'audio',
+          chat_id: chatId,
+          chat_type: 'whatsapp',
+          is_read: true,
+          provider_type: 'evolution',
+        })
+        .select()
+        .single();
+
+      if (!data) return null;
+      return {
+        id: data.id,
+        clientId: data.client_id,
+        messageId: data.message_id,
+        direction: 'outgoing',
+        content: '[Audio]',
+        senderName: data.sender_name,
+        userId: data.user_id,
+        status: 'sent',
+        timestamp: data.timestamp,
+        mediaType: 'audio',
+        chatId: data.chat_id,
+        chatType: data.chat_type,
+        isRead: true,
+      };
+    } else if (provider === 'greenapi') {
       const integration = await this.getActiveIntegrationConfig();
       if (integration) {
         return greenApiService.sendAudio(

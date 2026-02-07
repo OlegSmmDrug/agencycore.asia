@@ -3,10 +3,12 @@ import { Client, User, WhatsAppMessage, ClientStatus } from '../types';
 import { whatsappService } from '../services/whatsappService';
 import { clientService } from '../services/clientService';
 import { greenApiIntegrationService } from '../services/greenApiIntegrationService';
+import { evolutionApiService, EvolutionInstance } from '../services/evolutionApiService';
 import { Integration } from '../services/integrationService';
-import { MessageCircle, Search, Phone, Clock, CheckCheck, X, Settings, Paperclip, Mic, Smile, Send, Image, File, Video, ExternalLink } from 'lucide-react';
+import { MessageCircle, Search, Phone, Clock, CheckCheck, X, Settings, Paperclip, Mic, Smile, Send, Image, File, Video, ExternalLink, Wifi } from 'lucide-react';
 import AudioRecorder from './AudioRecorder';
 import ClientModal from './ClientModal';
+import { EvolutionApiSettings } from './EvolutionApiSettings';
 
 interface WhatsAppManagerProps {
   currentUser: User;
@@ -30,7 +32,7 @@ const WhatsAppManager: React.FC<WhatsAppManagerProps> = ({ currentUser, users })
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [provider, setProvider] = useState<'wazzup' | 'greenapi'>(whatsappService.getProvider());
+  const [provider, setProvider] = useState<'wazzup' | 'greenapi' | 'evolution'>(whatsappService.getProvider());
   const [providerStatus, setProviderStatus] = useState<string>('checking');
   const [showAudioRecorder, setShowAudioRecorder] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -40,6 +42,9 @@ const WhatsAppManager: React.FC<WhatsAppManagerProps> = ({ currentUser, users })
   const [clientForModal, setClientForModal] = useState<Client | null>(null);
   const [greenApiIntegrations, setGreenApiIntegrations] = useState<Integration[]>([]);
   const [activeIntegrationId, setActiveIntegrationId] = useState<string | null>(null);
+  const [evolutionInstances, setEvolutionInstances] = useState<EvolutionInstance[]>([]);
+  const [activeEvolutionInstance, setActiveEvolutionInstance] = useState<string | null>(null);
+  const [showEvolutionSettings, setShowEvolutionSettings] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -48,6 +53,7 @@ const WhatsAppManager: React.FC<WhatsAppManagerProps> = ({ currentUser, users })
     loadChats();
     checkProviderStatus();
     loadGreenApiIntegrations();
+    loadEvolutionInstances();
   }, []);
 
   const loadGreenApiIntegrations = async () => {
@@ -67,6 +73,25 @@ const WhatsAppManager: React.FC<WhatsAppManagerProps> = ({ currentUser, users })
       }
     } catch (error) {
       console.error('Failed to load Green API integrations:', error);
+    }
+  };
+
+  const loadEvolutionInstances = async () => {
+    try {
+      const instances = await whatsappService.getAllEvolutionInstances();
+      setEvolutionInstances(instances);
+      const saved = whatsappService.getActiveEvolutionInstanceName();
+      if (saved && instances.some(i => i.instance_name === saved)) {
+        setActiveEvolutionInstance(saved);
+      } else {
+        const connected = instances.find(i => i.connection_status === 'open');
+        if (connected) {
+          setActiveEvolutionInstance(connected.instance_name);
+          whatsappService.setActiveEvolutionInstanceName(connected.instance_name);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load Evolution instances:', error);
     }
   };
 
@@ -309,12 +334,17 @@ const WhatsAppManager: React.FC<WhatsAppManagerProps> = ({ currentUser, users })
     }, 100);
   };
 
-  const handleProviderChange = (newProvider: 'wazzup' | 'greenapi') => {
+  const handleProviderChange = (newProvider: 'wazzup' | 'greenapi' | 'evolution') => {
     whatsappService.setProvider(newProvider);
     setProvider(newProvider);
-    setShowSettings(false);
     checkProviderStatus();
     loadChats();
+  };
+
+  const handleEvolutionInstanceChange = (instanceName: string) => {
+    setActiveEvolutionInstance(instanceName);
+    whatsappService.setActiveEvolutionInstanceName(instanceName);
+    checkProviderStatus();
   };
 
   const handleIntegrationChange = (integrationId: string) => {
@@ -455,6 +485,29 @@ const WhatsAppManager: React.FC<WhatsAppManagerProps> = ({ currentUser, users })
                   <input
                     type="radio"
                     name="provider"
+                    value="evolution"
+                    checked={provider === 'evolution'}
+                    onChange={() => handleProviderChange('evolution')}
+                    className="text-green-600"
+                  />
+                  <span className="text-sm text-slate-700">Evolution API</span>
+                  <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">FREE</span>
+                  {provider === 'evolution' && (
+                    <span className={`ml-auto text-xs px-2 py-0.5 rounded-full ${
+                      providerStatus === 'open' ? 'bg-green-100 text-green-700' :
+                      providerStatus === 'no_instance' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-slate-100 text-slate-600'
+                    }`}>
+                      {providerStatus === 'open' ? 'Подключен' :
+                       providerStatus === 'no_instance' ? 'Нет инстанса' :
+                       providerStatus}
+                    </span>
+                  )}
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="provider"
                     value="wazzup"
                     checked={provider === 'wazzup'}
                     onChange={() => handleProviderChange('wazzup')}
@@ -482,10 +535,38 @@ const WhatsAppManager: React.FC<WhatsAppManagerProps> = ({ currentUser, users })
                   >
                     {greenApiIntegrations.map(integration => (
                       <option key={integration.id} value={integration.id}>
-                        {integration.name} - {integration.status === 'active' ? '✓ Активен' : integration.status}
+                        {integration.name} - {integration.status === 'active' ? 'Активен' : integration.status}
                       </option>
                     ))}
                   </select>
+                </div>
+              )}
+
+              {provider === 'evolution' && (
+                <div className="mt-4">
+                  {evolutionInstances.length > 0 && (
+                    <>
+                      <p className="text-xs font-bold text-slate-600 uppercase mb-2">Инстанс Evolution</p>
+                      <select
+                        value={activeEvolutionInstance || ''}
+                        onChange={(e) => handleEvolutionInstanceChange(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent mb-2"
+                      >
+                        {evolutionInstances.map(inst => (
+                          <option key={inst.id} value={inst.instance_name}>
+                            {inst.instance_name} - {inst.connection_status === 'open' ? 'Подключен' : inst.connection_status}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                  <button
+                    onClick={() => setShowEvolutionSettings(true)}
+                    className="w-full px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Wifi className="w-4 h-4" />
+                    Управление инстансами
+                  </button>
                 </div>
               )}
             </div>
@@ -820,6 +901,26 @@ const WhatsAppManager: React.FC<WhatsAppManagerProps> = ({ currentUser, users })
           </div>
         )}
       </div>
+
+      {showEvolutionSettings && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-slate-800">Evolution API</h2>
+              <button
+                onClick={() => setShowEvolutionSettings(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+            <EvolutionApiSettings
+              onInstanceCreated={() => loadEvolutionInstances()}
+              onInstanceDeleted={() => loadEvolutionInstances()}
+            />
+          </div>
+        </div>
+      )}
 
       {showClientModal && clientForModal && (
         <ClientModal
