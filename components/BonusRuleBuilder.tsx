@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BonusRule, MetricSource, ConditionType, RewardType, TieredConfigItem } from '../types';
 import { bonusRuleService } from '../services/bonusRuleService';
 import Modal from './Modal';
+import ConfirmDialog from './ConfirmDialog';
 
 interface BonusRuleBuilderProps {
   ownerId: string;
@@ -34,6 +35,9 @@ const BonusRuleBuilder: React.FC<BonusRuleBuilderProps> = ({ ownerId, ownerType,
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<BonusRule | null>(null);
   const [loading, setLoading] = useState(false);
+  const [deleteRuleId, setDeleteRuleId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   const [formData, setFormData] = useState<Partial<BonusRule>>({
     name: '',
@@ -53,6 +57,13 @@ const BonusRuleBuilder: React.FC<BonusRuleBuilderProps> = ({ ownerId, ownerType,
     loadRules();
   }, [ownerId, ownerType]);
 
+  useEffect(() => {
+    if (errorMessage) {
+      const timer = setTimeout(() => setErrorMessage(''), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorMessage]);
+
   const loadRules = async () => {
     try {
       setLoading(true);
@@ -66,6 +77,7 @@ const BonusRuleBuilder: React.FC<BonusRuleBuilderProps> = ({ ownerId, ownerType,
   };
 
   const handleOpenModal = (rule?: BonusRule) => {
+    setValidationErrors([]);
     if (rule) {
       setEditingRule(rule);
       setFormData(rule);
@@ -91,9 +103,42 @@ const BonusRuleBuilder: React.FC<BonusRuleBuilderProps> = ({ ownerId, ownerType,
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingRule(null);
+    setValidationErrors([]);
+  };
+
+  const validateForm = (): string[] => {
+    const errors: string[] = [];
+    if (!formData.name?.trim()) {
+      errors.push('Название правила обязательно');
+    }
+    if (formData.conditionType !== 'tiered' && (formData.rewardValue || 0) <= 0) {
+      errors.push('Значение награды должно быть больше 0');
+    }
+    if (formData.conditionType === 'tiered') {
+      const tiers = formData.tieredConfig || [];
+      if (tiers.length === 0) {
+        errors.push('Добавьте хотя бы один уровень в шкалу');
+      }
+      for (let i = 0; i < tiers.length; i++) {
+        if (tiers[i].min >= tiers[i].max) {
+          errors.push(`Уровень ${i + 1}: "От" должно быть меньше "До"`);
+        }
+        if (tiers[i].reward < 0) {
+          errors.push(`Уровень ${i + 1}: Награда не может быть отрицательной`);
+        }
+      }
+    }
+    return errors;
   };
 
   const handleSave = async () => {
+    const errors = validateForm();
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+    setValidationErrors([]);
+
     try {
       setLoading(true);
       if (editingRule) {
@@ -109,23 +154,24 @@ const BonusRuleBuilder: React.FC<BonusRuleBuilderProps> = ({ ownerId, ownerType,
       handleCloseModal();
     } catch (error) {
       console.error('Error saving bonus rule:', error);
-      alert('Ошибка при сохранении правила');
+      setErrorMessage('Ошибка при сохранении правила');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Удалить это правило мотивации?')) return;
+  const handleDeleteConfirm = async () => {
+    if (!deleteRuleId) return;
     try {
       setLoading(true);
-      await bonusRuleService.delete(id);
+      await bonusRuleService.delete(deleteRuleId);
       await loadRules();
     } catch (error) {
       console.error('Error deleting bonus rule:', error);
-      alert('Ошибка при удалении правила');
+      setErrorMessage('Ошибка при удалении правила');
     } finally {
       setLoading(false);
+      setDeleteRuleId(null);
     }
   };
 
@@ -190,6 +236,12 @@ const BonusRuleBuilder: React.FC<BonusRuleBuilderProps> = ({ ownerId, ownerType,
         </button>
       </div>
 
+      {errorMessage && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 font-medium animate-fade-in">
+          {errorMessage}
+        </div>
+      )}
+
       {rules.length === 0 ? (
         <div className="py-12 text-center border-2 border-dashed border-slate-100 rounded-2xl">
           <p className="text-slate-400 text-sm font-bold">Нет правил мотивации</p>
@@ -226,7 +278,7 @@ const BonusRuleBuilder: React.FC<BonusRuleBuilderProps> = ({ ownerId, ownerType,
                     className="p-2 text-slate-400 hover:text-blue-600 transition-colors"
                     title={rule.isActive ? 'Деактивировать' : 'Активировать'}
                   >
-                    {rule.isActive ? '◉' : '○'}
+                    {rule.isActive ? '\u25C9' : '\u25CB'}
                   </button>
                   <button
                     onClick={() => handleOpenModal(rule)}
@@ -238,7 +290,7 @@ const BonusRuleBuilder: React.FC<BonusRuleBuilderProps> = ({ ownerId, ownerType,
                     </svg>
                   </button>
                   <button
-                    onClick={() => handleDelete(rule.id)}
+                    onClick={() => setDeleteRuleId(rule.id)}
                     className="p-2 text-slate-400 hover:text-red-600 transition-colors"
                     title="Удалить"
                   >
@@ -264,12 +316,31 @@ const BonusRuleBuilder: React.FC<BonusRuleBuilderProps> = ({ ownerId, ownerType,
         </div>
       )}
 
+      <ConfirmDialog
+        isOpen={!!deleteRuleId}
+        onClose={() => setDeleteRuleId(null)}
+        onConfirm={handleDeleteConfirm}
+        title="Удалить правило?"
+        message="Это правило мотивации будет удалено. Это действие необратимо."
+        confirmText="Удалить"
+        variant="danger"
+        loading={loading}
+      />
+
       <Modal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         title={editingRule ? 'Редактировать правило' : 'Новое правило мотивации'}
       >
         <div className="space-y-6 max-h-[70vh] overflow-y-auto p-1">
+          {validationErrors.length > 0 && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-1">
+              {validationErrors.map((err, i) => (
+                <p key={i} className="text-xs text-red-600 font-medium">{err}</p>
+              ))}
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-2">Название правила</label>
             <input
@@ -376,7 +447,7 @@ const BonusRuleBuilder: React.FC<BonusRuleBuilderProps> = ({ ownerId, ownerType,
                       onClick={() => removeTieredLevel(index)}
                       className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                     >
-                      ×
+                      x
                     </button>
                   </div>
                 ))}

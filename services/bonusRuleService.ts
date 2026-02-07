@@ -56,7 +56,6 @@ export const bonusRuleService = {
       .eq('owner_id', ownerId)
       .eq('owner_type', ownerType)
       .eq('organization_id', organizationId)
-      .eq('is_active', true)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -192,10 +191,16 @@ export const bonusRuleService = {
   },
 
   async delete(id: string): Promise<void> {
+    const organizationId = getCurrentOrganizationId();
+    if (!organizationId) {
+      throw new Error('Organization ID is required');
+    }
+
     const { error } = await supabase
       .from('bonus_rules')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('organization_id', organizationId);
 
     if (error) {
       console.error('Error deleting bonus rule:', error);

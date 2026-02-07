@@ -187,59 +187,59 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
         setLoading(true);
         try {
             const filteredUsers = selectedRoleFilter === 'all' ? users : users.filter(u => u.jobTitle === selectedRoleFilter);
-            console.log(`[Payroll] Total users: ${users.length}, Filtered: ${filteredUsers.length}, Role filter: ${selectedRoleFilter}, Month: ${selectedMonth}`);
-            const rowsData: RowData[] = [];
 
-            for (const user of filteredUsers) {
-                const existingRecord = payrollRecords.find(r => r.userId === user.id && r.month === selectedMonth);
-                const cacheKey = `${user.id}_${selectedMonth}`;
+            const BATCH_SIZE = 8;
+            const allResults: RowData[] = [];
 
-                let stats;
-                if (recalculateKpi || !kpiCacheRef.current.has(cacheKey)) {
-                    stats = await calculateUserStats(user, tasks, projects, salarySchemes, selectedMonth);
-                    kpiCacheRef.current.set(cacheKey, { stats, timestamp: Date.now() });
-                } else {
-                    stats = kpiCacheRef.current.get(cacheKey)!.stats;
-                }
+            for (let i = 0; i < filteredUsers.length; i += BATCH_SIZE) {
+                const batch = filteredUsers.slice(i, i + BATCH_SIZE);
+                const batchResults = await Promise.all(batch.map(async (user) => {
+                    const existingRecord = payrollRecords.find(r => r.userId === user.id && r.month === selectedMonth);
+                    const cacheKey = `${user.id}_${selectedMonth}`;
 
-                const isFrozen = existingRecord?.status === 'FROZEN' || existingRecord?.status === 'PAID';
+                    let stats;
+                    if (recalculateKpi || !kpiCacheRef.current.has(cacheKey)) {
+                        stats = await calculateUserStats(user, tasks, projects, salarySchemes, selectedMonth);
+                        kpiCacheRef.current.set(cacheKey, { stats, timestamp: Date.now() });
+                    } else {
+                        stats = kpiCacheRef.current.get(cacheKey)!.stats;
+                    }
 
-                const record: PayrollRecord = existingRecord || {
-                    id: `pr_${user.id}_${selectedMonth}`,
-                    userId: user.id,
-                    month: selectedMonth,
-                    fixSalary: stats.baseSalary,
-                    calculatedKpi: stats.kpiEarned + stats.bonusesEarned,
-                    manualBonus: 0,
-                    manualPenalty: 0,
-                    advance: 0,
-                    status: 'DRAFT',
-                    balanceAtStart: user.balance || 0
-                };
+                    const isFrozen = existingRecord?.status === 'FROZEN' || existingRecord?.status === 'PAID';
 
-                if (!isFrozen) {
-                    record.calculatedKpi = stats.kpiEarned + stats.bonusesEarned;
-                    record.fixSalary = stats.baseSalary;
-                }
+                    const record: PayrollRecord = existingRecord || {
+                        id: `pr_${user.id}_${selectedMonth}`,
+                        userId: user.id,
+                        month: selectedMonth,
+                        fixSalary: stats.baseSalary,
+                        calculatedKpi: stats.kpiEarned + stats.bonusesEarned,
+                        manualBonus: 0,
+                        manualPenalty: 0,
+                        advance: 0,
+                        status: 'DRAFT',
+                        balanceAtStart: user.balance || 0
+                    };
 
-                const total = (record.fixSalary || 0) + (record.calculatedKpi || 0) + (record.manualBonus || 0) - (record.manualPenalty || 0) - (record.advance || 0);
+                    if (!isFrozen) {
+                        record.calculatedKpi = stats.kpiEarned + stats.bonusesEarned;
+                        record.fixSalary = stats.baseSalary;
+                    }
 
-                rowsData.push({
-                    user,
-                    record,
-                    total,
-                    details: stats.details,
-                    contentDetails: stats.contentDetails || [],
-                    bonusDetails: stats.bonusDetails
-                });
+                    const total = (record.fixSalary || 0) + (record.calculatedKpi || 0) + (record.manualBonus || 0) - (record.manualPenalty || 0) - (record.advance || 0);
+
+                    return {
+                        user,
+                        record,
+                        total,
+                        details: stats.details,
+                        contentDetails: stats.contentDetails || [],
+                        bonusDetails: stats.bonusDetails
+                    };
+                }));
+                allResults.push(...batchResults);
             }
 
-            setRows(rowsData);
-            console.log(`[Payroll] Loaded ${rowsData.length} rows for display`);
-            if (rowsData.length > 0) {
-                console.log(`[Payroll] First row:`, rowsData[0].user.name, `Total: ${rowsData[0].total}`);
-                console.log(`[Payroll] Last row:`, rowsData[rowsData.length - 1].user.name, `Total: ${rowsData[rowsData.length - 1].total}`);
-            }
+            setRows(allResults);
         } catch (error) {
             console.error('Error loading payroll data:', error);
         } finally {
@@ -247,14 +247,22 @@ const PayrollBoard: React.FC<PayrollBoardProps> = ({
         }
     }, [users, selectedMonth, tasks, projects, selectedRoleFilter, salarySchemes, payrollRecords]);
 
-    useEffect(() => {
-        kpiCacheRef.current.clear();
-        loadPayrollData(true);
-    }, [selectedMonth, selectedRoleFilter]);
+    const prevMonthRef = useRef(selectedMonth);
+    const prevRoleRef = useRef(selectedRoleFilter);
 
     useEffect(() => {
-        loadPayrollData(false);
-    }, [payrollRecords]);
+        const monthChanged = prevMonthRef.current !== selectedMonth;
+        const roleChanged = prevRoleRef.current !== selectedRoleFilter;
+
+        if (monthChanged || roleChanged) {
+            kpiCacheRef.current.clear();
+            prevMonthRef.current = selectedMonth;
+            prevRoleRef.current = selectedRoleFilter;
+            loadPayrollData(true);
+        } else {
+            loadPayrollData(false);
+        }
+    }, [selectedMonth, selectedRoleFilter, payrollRecords]);
 
     const handleUpdateField = useCallback((userId: string, field: 'manualBonus' | 'manualPenalty' | 'advance', value: number) => {
         if (updateTimerRef.current) {

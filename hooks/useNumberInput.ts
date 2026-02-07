@@ -79,7 +79,7 @@ export const useNumberInput = (
   }, []);
 
   return {
-    value: localValue || '',
+    value: localValue === 0 ? '' : localValue,
     onChange: handleChange,
     onBlur: handleBlur,
     onFocus: handleFocus,
