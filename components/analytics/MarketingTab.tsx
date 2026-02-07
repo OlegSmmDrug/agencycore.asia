@@ -29,11 +29,11 @@ const PLATFORM_CONFIG: Record<string, { label: string; color: string; bg: string
 };
 
 const USD_TO_KZT = 490;
-const fmtKzt = (usd: number) => {
+const fmtTg = (v: number) => `${Math.round(v).toLocaleString()} ₸`;
+const fmtUsd = (usd: number) => {
   const kzt = Math.round(usd * USD_TO_KZT);
   return `${kzt.toLocaleString()} ₸ ($${Math.round(usd).toLocaleString()})`;
 };
-const fmt = fmtKzt;
 
 type AdPeriod = '7d' | '14d' | '30d';
 
@@ -108,8 +108,9 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions, onNa
     monthClients.filter(c => [ClientStatus.IN_WORK, ClientStatus.WON, ClientStatus.CONTRACT].includes(c.status)).length,
   [monthClients]);
 
-  const combinedAdSpend = adData?.totalSpend || 0;
-  const combinedSpend = totalSpend + combinedAdSpend;
+  const combinedAdSpendUsd = adData?.totalSpend || 0;
+  const combinedAdSpendTg = combinedAdSpendUsd * USD_TO_KZT;
+  const combinedSpend = totalSpend + combinedAdSpendTg;
   const totalLeads = totalLeadsFromSpend + (adData?.totalLeads || 0) || monthClients.length;
   const cpl = totalLeads > 0 && combinedSpend > 0 ? combinedSpend / totalLeads : 0;
   const cac = newClientsWon > 0 && combinedSpend > 0 ? combinedSpend / newClientsWon : 0;
@@ -242,10 +243,10 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions, onNa
 
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         {[
-          { label: 'Расходы на маркетинг', value: combinedSpend > 0 ? fmt(combinedSpend) : '0 ₸', color: 'text-slate-900' },
+          { label: 'Расходы на маркетинг', value: combinedSpend > 0 ? fmtTg(combinedSpend) : '0 ₸', color: 'text-slate-900' },
           { label: 'Лиды за месяц', value: totalLeads, color: 'text-blue-600' },
-          { label: 'CPL (за лид)', value: cpl > 0 ? fmt(cpl) : '--', color: cpl > 0 ? 'text-slate-900' : 'text-slate-400' },
-          { label: 'CAC (за клиента)', value: cac > 0 ? fmt(cac) : '--', color: cac > 0 ? 'text-slate-900' : 'text-slate-400', onClick: () => onNavigateToTab?.('sales') },
+          { label: 'CPL (за лид)', value: cpl > 0 ? fmtTg(cpl) : '--', color: cpl > 0 ? 'text-slate-900' : 'text-slate-400' },
+          { label: 'CAC (за клиента)', value: cac > 0 ? fmtTg(cac) : '--', color: cac > 0 ? 'text-slate-900' : 'text-slate-400', onClick: () => onNavigateToTab?.('sales') },
           { label: 'ROAS', value: roas > 0 ? `${roas.toFixed(1)}x` : '--', color: roas > 2 ? 'text-emerald-600' : roas > 1 ? 'text-blue-600' : roas > 0 ? 'text-amber-600' : 'text-slate-400' },
           { label: 'Каналов активно', value: channels.filter(c => c.isActive).length, color: 'text-slate-900', onClick: onNavigateToIntegrations },
         ].map((kpi, i) => (
@@ -320,7 +321,7 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions, onNa
                   <div className="space-y-2.5">
                     <div className="flex justify-between items-center">
                       <span className="text-[10px] text-slate-500 font-bold">Расходы</span>
-                      <span className="text-sm font-black text-slate-900">{fmt(p.spend)}</span>
+                      <span className="text-sm font-black text-slate-900">{fmtUsd(p.spend)}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-[10px] text-slate-500 font-bold">Лиды</span>
@@ -334,12 +335,12 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions, onNa
                     )}
                     <div className="flex justify-between items-center">
                       <span className="text-[10px] text-slate-500 font-bold">CPL</span>
-                      <span className="text-sm font-black text-slate-700">{p.cpl > 0 ? fmt(p.cpl) : '--'}</span>
+                      <span className="text-sm font-black text-slate-700">{p.cpl > 0 ? fmtUsd(p.cpl) : '--'}</span>
                     </div>
                     {(p.messagingConversations || 0) > 0 && (p.costPerMessage || 0) > 0 && (
                       <div className="flex justify-between items-center">
                         <span className="text-[10px] text-slate-500 font-bold">Цена за сообщение</span>
-                        <span className="text-sm font-black text-slate-700">{fmt(p.costPerMessage!)}</span>
+                        <span className="text-sm font-black text-slate-700">{fmtUsd(p.costPerMessage!)}</span>
                       </div>
                     )}
                     <div className="flex justify-between items-center">
@@ -474,7 +475,7 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions, onNa
                           {s.conversion.toFixed(1)}%
                         </span>
                       </td>
-                      <td className="py-3 text-right text-sm font-black text-slate-900">{s.revenue > 0 ? fmt(s.revenue) : '0 ₸'}</td>
+                      <td className="py-3 text-right text-sm font-black text-slate-900">{s.revenue > 0 ? fmtTg(s.revenue) : '0 ₸'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -502,7 +503,7 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions, onNa
                   <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={v => `${(v / 1000).toFixed(0)}K`} />
                   <Tooltip
                     contentStyle={{ borderRadius: 16, border: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700 }}
-                    formatter={(value: any) => [fmt(value), '']}
+                    formatter={(value: any) => [fmtTg(value), '']}
                   />
                   <Bar dataKey="total" fill="#3b82f6" radius={[8, 8, 0, 0]} maxBarSize={40} />
                 </BarChart>
@@ -526,10 +527,10 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions, onNa
                 <LineChart data={cplByMonth}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="label" tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={v => fmt(v)} />
+                  <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={v => fmtTg(v)} />
                   <Tooltip
                     contentStyle={{ borderRadius: 16, border: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700 }}
-                    formatter={(value: any) => [fmt(value), 'CPL']}
+                    formatter={(value: any) => [fmtTg(value), 'CPL']}
                   />
                   <Line type="monotone" dataKey="cpl" stroke="#06b6d4" strokeWidth={2.5} dot={{ r: 4, fill: '#06b6d4' }} />
                 </LineChart>

@@ -171,8 +171,13 @@ async function fetchGoogleAdsMetrics(
 
     if (!campaignResponse.ok) {
       const errorText = await campaignResponse.text();
-      console.error("Google Ads API error:", errorText);
-      return { error: `Ошибка Google Ads API: ${campaignResponse.status}` };
+      console.error("Google Ads API error:", campaignResponse.status, errorText);
+      let detail = "";
+      try {
+        const errJson = JSON.parse(errorText);
+        detail = errJson?.error?.message || errorText.slice(0, 200);
+      } catch { detail = errorText.slice(0, 200); }
+      return { error: `Google Ads API ${campaignResponse.status}: ${detail}` };
     }
 
     const campaignData = await campaignResponse.json();
