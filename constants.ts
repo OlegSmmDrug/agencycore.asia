@@ -47,6 +47,7 @@ export const ALL_MODULES = [
     'team',
     'integrations',
     'ai-agents',
+    'brief-architect',
     'whatsapp',
     'settings'
 ];

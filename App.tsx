@@ -16,6 +16,7 @@ import LoginPage from './components/LoginPage';
 import RegisterPage from './components/RegisterPage';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
 import AIAgentsModule from './components/AIAgentsModule';
+import BriefArchitectModule from './components/brief_architect/app';
 import ProfileSettingsPage from './components/ProfileSettingsPage';
 import Modal from './components/Modal';
 import NewTaskModal from './components/taskmodal';
@@ -1670,6 +1671,8 @@ const App: React.FC = () => {
         return <WhatsAppManager currentUser={currentUser!} users={users} />;
       case 'ai-agents':
         return <AIAgentsModule onNavigateToIntegrations={() => setActiveTab('integrations')} />;
+      case 'brief-architect':
+        return <BriefArchitectModule clients={clients} currentUserId={users.find(u => u.email === currentUser.email)?.id} />;
       case 'settings':
         return (
           <ProfileSettingsPage
