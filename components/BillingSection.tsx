@@ -333,43 +333,42 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
         </div>
       </div>
 
-      {/* Section tabs */}
-      <div className="flex gap-2 border-b border-slate-200">
+      <div className="flex gap-1 sm:gap-2 border-b border-slate-200 overflow-x-auto -mx-1 px-1">
         <button
           onClick={() => setActiveSection('plans')}
-          className={`px-4 py-2 font-medium transition-colors border-b-2 ${
+          className={`px-3 sm:px-4 py-2 font-medium transition-colors border-b-2 whitespace-nowrap shrink-0 text-sm ${
             activeSection === 'plans'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-slate-600 hover:text-slate-800'
           }`}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <CreditCard className="w-4 h-4" />
             <span>Тарифы</span>
           </div>
         </button>
         <button
           onClick={() => setActiveSection('modules')}
-          className={`px-4 py-2 font-medium transition-colors border-b-2 ${
+          className={`px-3 sm:px-4 py-2 font-medium transition-colors border-b-2 whitespace-nowrap shrink-0 text-sm ${
             activeSection === 'modules'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-slate-600 hover:text-slate-800'
           }`}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <Package className="w-4 h-4" />
             <span>Модули</span>
           </div>
         </button>
         <button
           onClick={() => setActiveSection('usage')}
-          className={`px-4 py-2 font-medium transition-colors border-b-2 ${
+          className={`px-3 sm:px-4 py-2 font-medium transition-colors border-b-2 whitespace-nowrap shrink-0 text-sm ${
             activeSection === 'usage'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-slate-600 hover:text-slate-800'
           }`}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <TrendingUp className="w-4 h-4" />
             <span>Использование</span>
           </div>
@@ -596,6 +595,135 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
               </div>
             </div>
           </div>
+
+          {(additionalUsers > 0 || subscriptionPeriod !== periodBonuses[0]?.id) && (
+            <div className="bg-white rounded-xl border-2 border-blue-200 p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-blue-600" />
+                Сводка заказа
+              </h3>
+              <div className="space-y-3 mb-4">
+                {(() => {
+                  const selected = periodBonuses.find(p => p.id === subscriptionPeriod);
+                  if (!selected) return null;
+                  const currentPlanData = plans.find(p => p.name === currentPlanUpper);
+                  const planMonthly = currentPlanData?.priceMonthly || 0;
+                  const planMonthlyKzt = currentPlanData?.priceRu || 0;
+                  const usersCostMonthly = additionalUsers * additionalUserPriceKzt;
+                  const totalMonthly = planMonthlyKzt + usersCostMonthly;
+                  const totalForPeriod = totalMonthly * selected.months;
+
+                  return (
+                    <>
+                      {planMonthlyKzt > 0 && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-600">
+                            Тариф {currentPlanData?.displayName} x {selected.months} мес.
+                          </span>
+                          <span className="font-bold text-slate-800">{(planMonthlyKzt * selected.months).toLocaleString()} ₸</span>
+                        </div>
+                      )}
+                      {additionalUsers > 0 && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-600">
+                            {additionalUsers} доп. {additionalUsers === 1 ? 'пользователь' : additionalUsers < 5 ? 'пользователя' : 'пользователей'} x {selected.months} мес.
+                          </span>
+                          <span className="font-bold text-slate-800">{(usersCostMonthly * selected.months).toLocaleString()} ₸</span>
+                        </div>
+                      )}
+                      {selected.bonusMonths > 0 && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-emerald-600 font-medium">
+                            Бонус: +{selected.bonusMonths} {selected.bonusMonths === 1 ? 'месяц' : selected.bonusMonths < 5 ? 'месяца' : 'месяцев'}
+                          </span>
+                          <span className="font-bold text-emerald-600">бесплатно</span>
+                        </div>
+                      )}
+                      <div className="border-t border-slate-200 pt-3 flex items-center justify-between">
+                        <span className="font-bold text-slate-800">Итого:</span>
+                        <span className="text-xl font-bold text-blue-600">{totalForPeriod.toLocaleString()} ₸</span>
+                      </div>
+                      {totalForPeriod > balance && (
+                        <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 p-3 rounded-lg">
+                          <AlertTriangle className="w-4 h-4 shrink-0" />
+                          <span>Недостаточно средств. На балансе {balance.toLocaleString()} ₸, нужно ещё {(totalForPeriod - balance).toLocaleString()} ₸</span>
+                        </div>
+                      )}
+                      <button
+                        onClick={async () => {
+                          if (totalForPeriod > balance) {
+                            setShowTopUpModal(true);
+                            return;
+                          }
+                          if (!confirm(`Применить изменения? С баланса будет списано ${totalForPeriod.toLocaleString()} ₸`)) return;
+
+                          setIsLoading(true);
+                          try {
+                            const newBalance = balance - totalForPeriod;
+                            const endDate = new Date();
+                            endDate.setMonth(endDate.getMonth() + selected.months + selected.bonusMonths);
+
+                            const { error } = await supabase
+                              .from('organizations')
+                              .update({
+                                billing_extra_users: additionalUsers,
+                                billing_period_months: selected.months,
+                                subscription_end_date: endDate.toISOString(),
+                                subscription_status: 'active',
+                                updated_at: new Date().toISOString(),
+                              })
+                              .eq('id', organization!.id);
+
+                            if (!error) {
+                              await supabase
+                                .from('users')
+                                .update({ balance: newBalance })
+                                .eq('id', userId);
+
+                              setBalance(newBalance);
+                              setTrialInfo({
+                                isTrial: false,
+                                trialEndDate: null,
+                                subscriptionEndDate: endDate.toISOString(),
+                              });
+                              alert('Подписка успешно оформлена!');
+                            } else {
+                              throw error;
+                            }
+                          } catch (error) {
+                            console.error('Error applying subscription:', error);
+                            alert('Ошибка при оформлении подписки');
+                          } finally {
+                            setIsLoading(false);
+                          }
+                        }}
+                        disabled={isLoading}
+                        className={`w-full py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
+                          totalForPeriod > balance
+                            ? 'bg-amber-500 text-white hover:bg-amber-600'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                      >
+                        {isLoading ? (
+                          <Loader className="w-5 h-5 animate-spin" />
+                        ) : totalForPeriod > balance ? (
+                          <>
+                            <Plus className="w-4 h-4" />
+                            Пополнить баланс
+                          </>
+                        ) : (
+                          <>
+                            <CreditCard className="w-4 h-4" />
+                            Оформить подписку за {totalForPeriod.toLocaleString()} ₸
+                          </>
+                        )}
+                      </button>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -604,15 +732,15 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold text-slate-800">Модули платформы</h2>
-              <p className="text-slate-600">Активировано модулей: {availableModules.length} / {modules.length}</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Модули платформы</h2>
+              <p className="text-sm sm:text-base text-slate-600">Активировано модулей: {availableModules.length} / {modules.length}</p>
             </div>
           </div>
 
           {availableModules.length > 0 && (
             <div>
               <h3 className="text-lg font-semibold text-slate-800 mb-4">Доступные модули</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 {availableModules.map((module) => (
                   <div
                     key={module.module_slug}
@@ -652,7 +780,7 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
                   </p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 {lockedModules.map((module) => (
                   <div
                     key={module.module_slug}
@@ -679,12 +807,12 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
       {activeSection === 'usage' && usageStats && (
         <div className="space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">Использование ресурсов</h2>
-            <p className="text-slate-600">Текущее использование вашего тарифа</p>
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-800 mb-2">Использование ресурсов</h2>
+            <p className="text-sm sm:text-base text-slate-600">Текущее использование вашего тарифа</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
+            <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
                   <Users className="w-6 h-6 text-blue-600" />
@@ -718,7 +846,7 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
               )}
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 p-6">
+            <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 bg-teal-100 rounded-lg flex items-center justify-center">
                   <Briefcase className="w-6 h-6 text-teal-600" />
@@ -752,7 +880,7 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
               )}
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 p-6">
+            <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
                   <HardDrive className="w-6 h-6 text-amber-600" />
@@ -795,9 +923,9 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
             </div>
           </div>
 
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 sm:p-6">
             <h3 className="font-semibold text-slate-800 mb-3">Ограничения вашего тарифа</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div className="flex items-center gap-2">
                 <Check className="w-5 h-5 text-green-600" />
                 <span className="text-sm text-slate-700">
