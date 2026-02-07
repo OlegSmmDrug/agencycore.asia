@@ -52,7 +52,7 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
     try {
       const result = await parseStatementFile(file, clients, existingDocNumbers);
       if (result.transactions.length === 0) {
-        alert('Не удалось распознать платежи в файле. Убедитесь, что формат файла поддерживается (1C .txt, CSV или Excel).');
+        alert('Не удалось распознать платежи в файле. Убедитесь, что формат файла поддерживается (1C .txt или CSV).');
         setIsProcessing(false);
         return;
       }
@@ -196,7 +196,7 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
                 ref={fileInputRef}
                 type="file"
                 className="hidden"
-                accept=".txt,.csv,.xls,.xlsx,.xlsm"
+                accept=".txt,.csv,.xls,.xlsx"
                 onChange={handleFileSelect}
               />
               {isProcessing ? (
@@ -216,15 +216,11 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
                   <div className="flex items-center justify-center gap-4 text-xs text-gray-400">
                     <span className="flex items-center gap-1">
                       <FileText className="h-3 w-3" />
-                      1С (.txt)
+                      1С формат (.txt)
                     </span>
                     <span className="flex items-center gap-1">
                       <FileText className="h-3 w-3" />
-                      CSV (.csv)
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <FileText className="h-3 w-3" />
-                      Excel (.xls, .xlsx)
+                      CSV выписка (.csv)
                     </span>
                   </div>
                 </>
@@ -235,8 +231,7 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
               <h4 className="text-sm font-semibold text-blue-800 mb-2">Поддерживаемые форматы:</h4>
               <ul className="text-sm text-blue-700 space-y-1">
                 <li>-- Формат 1С (txt) - АО "Банк ЦентрКредит"</li>
-                <li>-- CSV выписка с разделителями</li>
-                <li>-- Excel выписка (.xls, .xlsx)</li>
+                <li>-- CSV/XLS выписка с разделителями</li>
               </ul>
             </div>
           </div>
