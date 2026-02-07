@@ -340,6 +340,7 @@ export const IntegrationModal: React.FC<IntegrationModalProps> = ({
           { key: 'client_secret', label: 'Client Secret', type: 'text', required: true },
           { key: 'refresh_token', label: 'Refresh Token', type: 'text', required: true },
           { key: 'customer_id', label: 'Customer ID', type: 'text', required: true },
+          { key: 'developer_token', label: 'Developer Token', type: 'text', required: true },
         ];
       case 'google_analytics':
         return [
@@ -542,6 +543,12 @@ export const IntegrationModal: React.FC<IntegrationModalProps> = ({
                 <h4 className="font-medium text-gray-900 mb-2">4. Найдите Customer ID</h4>
                 <p className="text-sm text-gray-600">
                   Customer ID (ID аккаунта) указан в верхнем правом углу вашего аккаунта Google Ads в формате XXX-XXX-XXXX (вводите без дефисов).
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">5. Получите Developer Token</h4>
+                <p className="text-sm text-gray-600">
+                  В Google Ads перейдите в Tools & Settings &rarr; API Center. Скопируйте Developer Token. Если у вас MCC-аккаунт, токен находится в настройках управляющего аккаунта.
                 </p>
               </div>
             </div>

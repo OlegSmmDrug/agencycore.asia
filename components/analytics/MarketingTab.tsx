@@ -30,6 +30,14 @@ const PLATFORM_CONFIG: Record<string, { label: string; color: string; bg: string
 
 const fmt = (v: number) => `${Math.round(v).toLocaleString()} ₸`;
 
+type AdPeriod = '7d' | '14d' | '30d';
+
+const AD_PERIODS: { value: AdPeriod; label: string }[] = [
+  { value: '7d', label: '7 дней' },
+  { value: '14d', label: '14 дней' },
+  { value: '30d', label: '30 дней' },
+];
+
 const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions, onNavigateToTab, onNavigateToIntegrations }) => {
   const [channels, setChannels] = useState<MarketingChannel[]>([]);
   const [spendData, setSpendData] = useState<MarketingSpend[]>([]);
@@ -38,6 +46,7 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions, onNa
   const [showSpendEntry, setShowSpendEntry] = useState<MarketingChannel | null>(null);
   const [adData, setAdData] = useState<AggregatedAdData | null>(null);
   const [adLoading, setAdLoading] = useState(false);
+  const [adPeriod, setAdPeriod] = useState<AdPeriod>('30d');
 
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
 
@@ -62,11 +71,11 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions, onNa
 
   useEffect(() => {
     setAdLoading(true);
-    adPlatformAggregatorService.getAggregatedMetrics('30d').then(data => {
+    adPlatformAggregatorService.getAggregatedMetrics(adPeriod).then(data => {
       setAdData(data);
       setAdLoading(false);
     }).catch(() => setAdLoading(false));
-  }, []);
+  }, [adPeriod]);
 
   const currentMonthSpend = useMemo(() => spendData.filter(s => s.month === selectedMonth), [spendData, selectedMonth]);
 
@@ -202,7 +211,6 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions, onNa
   }
 
   const connectedPlatforms = adData?.platforms.filter(p => p.isConnected) || [];
-  const hasAdPlatforms = connectedPlatforms.length > 0 && connectedPlatforms.some(p => p.spend > 0);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -252,79 +260,102 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions, onNa
         ))}
       </div>
 
-      {(connectedPlatforms.length > 0 || !adLoading) && (
-        <div className={UI.CARD}>
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="font-black text-xs uppercase tracking-widest text-slate-900 flex items-center gap-2">
-              <div className="w-1 h-4 bg-blue-500 rounded-full" /> Рекламные платформы
-            </h3>
+      <div className={UI.CARD}>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="font-black text-xs uppercase tracking-widest text-slate-900 flex items-center gap-2">
+            <div className="w-1 h-4 bg-blue-500 rounded-full" /> Рекламные платформы
+          </h3>
+          <div className="flex items-center gap-3">
+            <div className="flex bg-slate-100 rounded-xl p-0.5">
+              {AD_PERIODS.map(period => (
+                <button
+                  key={period.value}
+                  onClick={() => setAdPeriod(period.value)}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                    adPeriod === period.value
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {period.label}
+                </button>
+              ))}
+            </div>
             {adLoading && (
               <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
             )}
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {['facebook', 'google', 'tiktok'].map(platform => {
-              const p = adData?.platforms.find(pp => pp.platform === platform);
-              const cfg = PLATFORM_CONFIG[platform];
-              const connected = p?.isConnected;
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {['facebook', 'google', 'tiktok'].map(platform => {
+            const p = adData?.platforms.find(pp => pp.platform === platform);
+            const cfg = PLATFORM_CONFIG[platform];
+            const connected = p?.isConnected;
 
-              return (
-                <div key={platform} className={`p-4 rounded-2xl border ${connected ? cfg.border + ' ' + cfg.bg : 'border-slate-200 bg-slate-50'}`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className={`text-[10px] font-black uppercase tracking-wider ${connected ? cfg.color : 'text-slate-400'}`}>
-                      {cfg.label}
-                    </span>
-                    {connected ? (
-                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    ) : (
-                      <button
-                        onClick={onNavigateToIntegrations}
-                        className="text-[9px] font-bold text-blue-500 hover:text-blue-700 transition-colors"
-                      >
-                        Подключить
-                      </button>
-                    )}
-                  </div>
-
-                  {connected && p && p.spend > 0 ? (
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-[9px] text-slate-500 font-bold">Расходы</span>
-                        <span className="text-sm font-black text-slate-900">{fmt(p.spend)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-[9px] text-slate-500 font-bold">Лиды</span>
-                        <span className="text-sm font-black text-blue-600">{p.leads}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-[9px] text-slate-500 font-bold">CPL</span>
-                        <span className="text-sm font-black text-slate-700">{p.cpl > 0 ? fmt(p.cpl) : '--'}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-[9px] text-slate-500 font-bold">CTR</span>
-                        <span className="text-sm font-black text-slate-700">{p.ctr > 0 ? `${p.ctr.toFixed(2)}%` : '--'}</span>
-                      </div>
-                    </div>
-                  ) : connected && p?.error ? (
-                    <div className="py-3">
-                      <p className="text-[10px] text-amber-600 font-bold">{p.error === 'API integration pending' ? 'API интеграция в подготовке' : p.error}</p>
-                    </div>
-                  ) : connected ? (
-                    <div className="py-3">
-                      <p className="text-[10px] text-slate-400 font-bold">Нет данных за период</p>
-                    </div>
+            return (
+              <div key={platform} className={`p-5 rounded-2xl border transition-all ${connected ? cfg.border + ' ' + cfg.bg : 'border-slate-200 bg-slate-50'}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <span className={`text-[10px] font-black uppercase tracking-wider ${connected ? cfg.color : 'text-slate-400'}`}>
+                    {cfg.label}
+                  </span>
+                  {connected ? (
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
                   ) : (
-                    <div className="py-3">
-                      <p className="text-[10px] text-slate-400 font-bold">Не подключено</p>
-                    </div>
+                    <button
+                      onClick={onNavigateToIntegrations}
+                      className="text-[9px] font-bold text-blue-500 hover:text-blue-700 transition-colors"
+                    >
+                      Подключить
+                    </button>
                   )}
                 </div>
-              );
-            })}
-          </div>
+
+                {connected && p && p.spend > 0 ? (
+                  <div className="space-y-2.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] text-slate-500 font-bold">Расходы</span>
+                      <span className="text-sm font-black text-slate-900">{fmt(p.spend)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] text-slate-500 font-bold">Лиды / Конверсии</span>
+                      <span className="text-sm font-black text-blue-600">{p.leads}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] text-slate-500 font-bold">CPL</span>
+                      <span className="text-sm font-black text-slate-700">{p.cpl > 0 ? fmt(p.cpl) : '--'}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] text-slate-500 font-bold">Клики</span>
+                      <span className="text-sm font-black text-slate-700">{p.clicks > 0 ? p.clicks.toLocaleString() : '--'}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] text-slate-500 font-bold">Показы</span>
+                      <span className="text-sm font-black text-slate-700">{p.impressions > 0 ? p.impressions.toLocaleString() : '--'}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] text-slate-500 font-bold">CTR</span>
+                      <span className="text-sm font-black text-slate-700">{p.ctr > 0 ? `${p.ctr.toFixed(2)}%` : '--'}</span>
+                    </div>
+                  </div>
+                ) : connected && p?.error ? (
+                  <div className="py-4">
+                    <p className="text-[10px] text-amber-600 font-bold leading-relaxed">{p.error}</p>
+                  </div>
+                ) : connected ? (
+                  <div className="py-4">
+                    <p className="text-[10px] text-slate-400 font-bold">Нет данных за период</p>
+                  </div>
+                ) : (
+                  <div className="py-4">
+                    <p className="text-[10px] text-slate-400 font-bold">Не подключено</p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      )}
+      </div>
 
       <ChannelTable
         channels={channels}

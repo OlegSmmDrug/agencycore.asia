@@ -14,6 +14,24 @@ export interface AdPlatformMetrics {
   isConnected: boolean;
   lastSyncAt?: string;
   error?: string;
+  campaigns?: Array<{
+    id: string;
+    name: string;
+    status: string;
+    spend: number;
+    clicks: number;
+    impressions: number;
+    conversions: number;
+    ctr: number;
+    cpc: number;
+  }>;
+  dailyStats?: Array<{
+    date: string;
+    spend: number;
+    clicks: number;
+    impressions: number;
+    conversions: number;
+  }>;
 }
 
 export interface AggregatedAdData {
@@ -37,6 +55,28 @@ const EMPTY_METRICS = (platform: AdPlatformMetrics['platform']): AdPlatformMetri
   isConnected: false,
 });
 
+const ADS_PROXY_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ads-proxy`;
+const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+async function callAdsProxy(body: Record<string, any>): Promise<any> {
+  const response = await fetch(ADS_PROXY_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${ANON_KEY}`,
+      'apikey': ANON_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`ads-proxy error ${response.status}: ${text}`);
+  }
+
+  return response.json();
+}
+
 class AdPlatformAggregatorService {
   async getAggregatedMetrics(dateRange: string = '30d'): Promise<AggregatedAdData> {
     const orgId = getCurrentOrganizationId();
@@ -51,19 +91,21 @@ class AdPlatformAggregatorService {
 
     const platforms: AdPlatformMetrics[] = [];
 
-    for (const integration of (integrations || [])) {
+    const fetchPromises = (integrations || []).map(async (integration) => {
       try {
-        const metrics = await this.fetchPlatformMetrics(integration, dateRange);
-        platforms.push(metrics);
+        return await this.fetchPlatformMetrics(integration, dateRange);
       } catch (e) {
         const platformType = this.mapIntegrationType(integration.integration_type);
-        platforms.push({
+        return {
           ...EMPTY_METRICS(platformType),
           isConnected: true,
           error: 'Failed to fetch data',
-        });
+        };
       }
-    }
+    });
+
+    const results = await Promise.all(fetchPromises);
+    platforms.push(...results);
 
     if (!platforms.find(p => p.platform === 'facebook')) {
       const fbFromProjects = await this.getFacebookFromProjects(orgId, dateRange);
@@ -153,46 +195,149 @@ class AdPlatformAggregatorService {
 
   private async fetchGoogleMetrics(
     integration: any,
-    _dateRange: string
+    dateRange: string
   ): Promise<AdPlatformMetrics> {
-    let accessToken = '';
+    let clientId = '';
+    let clientSecret = '';
+    let refreshToken = '';
+    let customerId = '';
+    let developerToken = '';
+
     try {
-      accessToken = await integrationCredentialService.getCredential(integration.id, 'access_token') || '';
+      const [ci, cs, rt, cid, dt] = await Promise.all([
+        integrationCredentialService.getCredential(integration.id, 'client_id'),
+        integrationCredentialService.getCredential(integration.id, 'client_secret'),
+        integrationCredentialService.getCredential(integration.id, 'refresh_token'),
+        integrationCredentialService.getCredential(integration.id, 'customer_id'),
+        integrationCredentialService.getCredential(integration.id, 'developer_token').catch(() => null),
+      ]);
+      clientId = ci || '';
+      clientSecret = cs || '';
+      refreshToken = rt || '';
+      customerId = cid || '';
+      developerToken = dt || '';
     } catch {
-      accessToken = integration.config?.access_token || '';
+      clientId = integration.config?.client_id || '';
+      clientSecret = integration.config?.client_secret || '';
+      refreshToken = integration.config?.refresh_token || '';
+      customerId = integration.config?.customer_id || '';
+      developerToken = integration.config?.developer_token || '';
     }
 
-    if (!accessToken) {
-      return { ...EMPTY_METRICS('google'), isConnected: true, error: 'Missing credentials' };
+    if (!refreshToken || !customerId) {
+      return { ...EMPTY_METRICS('google'), isConnected: true, error: 'Отсутствуют Refresh Token или Customer ID' };
     }
 
-    return {
-      ...EMPTY_METRICS('google'),
-      isConnected: true,
-      error: 'API integration pending',
-    };
+    if (!clientId || !clientSecret) {
+      return { ...EMPTY_METRICS('google'), isConnected: true, error: 'Отсутствуют Client ID или Client Secret' };
+    }
+
+    if (!developerToken) {
+      return { ...EMPTY_METRICS('google'), isConnected: true, error: 'Отсутствует Developer Token' };
+    }
+
+    try {
+      const result = await callAdsProxy({
+        platform: 'google',
+        credentials: {
+          client_id: clientId,
+          client_secret: clientSecret,
+          refresh_token: refreshToken,
+          customer_id: customerId,
+          developer_token: developerToken,
+        },
+        dateRange,
+      });
+
+      if (result.error) {
+        return { ...EMPTY_METRICS('google'), isConnected: true, error: result.error };
+      }
+
+      const data = result.data;
+      return {
+        platform: 'google',
+        spend: data.spend || 0,
+        leads: data.leads || 0,
+        clicks: data.clicks || 0,
+        impressions: data.impressions || 0,
+        cpl: data.cpl || 0,
+        ctr: data.ctr || 0,
+        isConnected: true,
+        lastSyncAt: new Date().toISOString(),
+        campaigns: data.campaigns || [],
+        dailyStats: data.dailyStats || [],
+      };
+    } catch (e) {
+      return {
+        ...EMPTY_METRICS('google'),
+        isConnected: true,
+        error: e instanceof Error ? e.message : 'Ошибка запроса к API',
+      };
+    }
   }
 
   private async fetchTikTokMetrics(
     integration: any,
-    _dateRange: string
+    dateRange: string
   ): Promise<AdPlatformMetrics> {
     let accessToken = '';
+    let advertiserId = '';
+
     try {
-      accessToken = await integrationCredentialService.getCredential(integration.id, 'access_token') || '';
+      const [at, ai] = await Promise.all([
+        integrationCredentialService.getCredential(integration.id, 'access_token'),
+        integrationCredentialService.getCredential(integration.id, 'advertiser_id'),
+      ]);
+      accessToken = at || '';
+      advertiserId = ai || '';
     } catch {
       accessToken = integration.config?.access_token || '';
+      advertiserId = integration.config?.advertiser_id || '';
     }
 
     if (!accessToken) {
-      return { ...EMPTY_METRICS('tiktok'), isConnected: true, error: 'Missing credentials' };
+      return { ...EMPTY_METRICS('tiktok'), isConnected: true, error: 'Отсутствует Access Token' };
     }
 
-    return {
-      ...EMPTY_METRICS('tiktok'),
-      isConnected: true,
-      error: 'API integration pending',
-    };
+    if (!advertiserId) {
+      return { ...EMPTY_METRICS('tiktok'), isConnected: true, error: 'Отсутствует Advertiser ID' };
+    }
+
+    try {
+      const result = await callAdsProxy({
+        platform: 'tiktok',
+        credentials: {
+          access_token: accessToken,
+          advertiser_id: advertiserId,
+        },
+        dateRange,
+      });
+
+      if (result.error) {
+        return { ...EMPTY_METRICS('tiktok'), isConnected: true, error: result.error };
+      }
+
+      const data = result.data;
+      return {
+        platform: 'tiktok',
+        spend: data.spend || 0,
+        leads: data.leads || 0,
+        clicks: data.clicks || 0,
+        impressions: data.impressions || 0,
+        cpl: data.cpl || 0,
+        ctr: data.ctr || 0,
+        isConnected: true,
+        lastSyncAt: new Date().toISOString(),
+        campaigns: data.campaigns || [],
+        dailyStats: data.dailyStats || [],
+      };
+    } catch (e) {
+      return {
+        ...EMPTY_METRICS('tiktok'),
+        isConnected: true,
+        error: e instanceof Error ? e.message : 'Ошибка запроса к API',
+      };
+    }
   }
 
   private async getFacebookFromProjects(
