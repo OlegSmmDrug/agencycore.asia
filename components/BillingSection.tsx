@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useOrganization } from './OrganizationProvider';
 import { moduleAccessService, ModuleAccess } from '../services/moduleAccessService';
 import { planLimitsService } from '../services/planLimitsService';
+import ResourceSwap from './admin/ResourceSwap';
 
 interface BillingSectionProps {
   userId: string;
@@ -922,6 +923,14 @@ const BillingSection: React.FC<BillingSectionProps> = ({ userId }) => {
               )}
             </div>
           </div>
+
+          <ResourceSwap
+            organizationId={organization!.id}
+            planName={currentPlan}
+            usageStats={usageStats}
+            subscriptionEndDate={trialInfo.subscriptionEndDate}
+            onApplied={() => loadUsageStats()}
+          />
 
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 sm:p-6">
             <h3 className="font-semibold text-slate-800 mb-3">Ограничения вашего тарифа</h3>
