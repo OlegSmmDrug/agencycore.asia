@@ -400,20 +400,20 @@ const ClientModal: React.FC<ClientModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 bg-white flex flex-col">
       <div className="bg-white w-full shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white">
-            <div className="flex items-center gap-4">
-              <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 bg-white gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors shrink-0">
                 <svg className="w-5 h-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
               </button>
-              <div>
-                <h1 className="text-lg font-bold text-slate-800">Карточка сделки</h1>
+              <div className="min-w-0">
+                <h1 className="text-base sm:text-lg font-bold text-slate-800 truncate">Карточка сделки</h1>
                 <p className="text-xs text-slate-400">{CLIENT_STATUS_LABELS[formData.status as ClientStatus] || 'Новый лид'}</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+            <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto pb-1 sm:pb-0">
+              <div className="hidden sm:flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 shrink-0">
                 <div className={`w-6 h-6 rounded-full ${formData.managerId ? 'bg-teal-500' : 'bg-slate-300'} flex items-center justify-center text-white text-xs font-bold`}>
                   {formData.managerId ? (users.find(u => u.id === formData.managerId)?.name?.[0] || 'M') : '?'}
                 </div>
@@ -439,7 +439,7 @@ const ClientModal: React.FC<ClientModalProps> = ({
                       onClose();
                     }
                   }}
-                  className={`px-4 py-2 text-sm rounded-lg transition-colors font-medium ${
+                  className={`px-3 py-2 text-xs sm:text-sm rounded-lg transition-colors font-medium whitespace-nowrap shrink-0 ${
                     formData.isArchived
                       ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200'
                       : 'bg-orange-50 text-orange-600 hover:bg-orange-100 border border-orange-200'
@@ -448,18 +448,36 @@ const ClientModal: React.FC<ClientModalProps> = ({
                   {formData.isArchived ? 'Восстановить' : 'В архив'}
                 </button>
               )}
-              <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+              <button onClick={onClose} className="hidden sm:block px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors whitespace-nowrap shrink-0">
                 Закрыть
               </button>
-              <button onClick={handleSave} className="px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium">
-                Сохранить изменения
+              <button onClick={handleSave} className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium whitespace-nowrap shrink-0">
+                Сохранить
               </button>
             </div>
           </div>
         </div>
 
         <form onSubmit={handleSave} className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-6 lg:p-8 space-y-6 max-w-5xl">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6 max-w-5xl">
+              <div className="sm:hidden flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
+                <div className={`w-6 h-6 rounded-full ${formData.managerId ? 'bg-teal-500' : 'bg-slate-300'} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
+                  {formData.managerId ? (users.find(u => u.id === formData.managerId)?.name?.[0] || 'M') : '?'}
+                </div>
+                <div className="text-xs flex-1">
+                  <div className="text-slate-400">Ответственный</div>
+                  <select
+                    className="font-medium text-slate-700 bg-transparent border-0 p-0 text-xs focus:ring-0 cursor-pointer w-full"
+                    value={formData.managerId || ''}
+                    onChange={e => setFormData({ ...formData, managerId: e.target.value || undefined })}
+                  >
+                    <option value="">Не назначен</option>
+                    {getAvailableManagers(users).map(u => (
+                      <option key={u.id} value={u.id}>{u.name} ({u.jobTitle})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               <div className="bg-white rounded-xl border border-slate-200 p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold">1</span>
@@ -688,15 +706,15 @@ const ClientModal: React.FC<ClientModalProps> = ({
 
               {formData.status !== ClientStatus.NEW_LEAD && (
                 <div className="bg-white rounded-xl border border-slate-200 p-5">
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                     <div className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-xs font-bold">2</span>
+                      <span className="w-6 h-6 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-xs font-bold shrink-0">2</span>
                       <h3 className="font-bold text-slate-700 uppercase text-xs tracking-wide">Детали сделки и бюджет</h3>
                     </div>
                     <button
                       type="button"
                       onClick={() => setShowCalculator(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg text-sm font-medium hover:from-teal-600 hover:to-teal-700 transition-all shadow-sm"
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg text-sm font-medium hover:from-teal-600 hover:to-teal-700 transition-all shadow-sm w-full sm:w-auto"
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
@@ -871,24 +889,24 @@ const ClientModal: React.FC<ClientModalProps> = ({
                 </div>
 
                 {isContractReady && (
-                  <div className="flex items-center justify-between bg-white rounded-lg p-4 mb-4 border border-green-200">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
+                  <div className="bg-white rounded-lg p-4 mb-4 border border-green-200">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center shrink-0">
                         <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                         </svg>
                       </div>
                       <div>
-                        <p className="font-medium text-slate-800">Договор полностью готов</p>
-                        <p className="text-xs text-slate-500">№ {formData.contractNumber} от {new Date().toLocaleDateString()}</p>
+                        <p className="font-medium text-slate-800 text-sm sm:text-base">Договор полностью готов</p>
+                        <p className="text-xs text-slate-500">No {formData.contractNumber} от {new Date().toLocaleDateString()}</p>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2">
                       <button
                         type="button"
                         onClick={handleDownloadContract}
                         disabled={!isContractReady}
-                        className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                       >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -904,7 +922,7 @@ const ClientModal: React.FC<ClientModalProps> = ({
                           }
                         }}
                         disabled={!canLaunchProject || isProjectLaunched}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                           isProjectLaunched
                             ? 'bg-slate-100 text-slate-500 cursor-not-allowed border border-slate-200'
                             : 'bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed'
@@ -1114,7 +1132,7 @@ const ClientModal: React.FC<ClientModalProps> = ({
               )}
             </div>
 
-            <div className="w-full lg:w-[480px] xl:w-[520px] bg-slate-800 p-6 space-y-6 overflow-y-auto">
+            <div className="w-full lg:w-[420px] xl:w-[520px] bg-slate-800 p-4 sm:p-6 space-y-6 overflow-y-auto">
               <div className="bg-slate-700/50 rounded-xl p-4">
                 <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-3">Текущий этап воронки</p>
                 <select

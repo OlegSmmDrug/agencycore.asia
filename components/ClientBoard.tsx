@@ -274,150 +274,210 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
     </div>
   );
 
+  const renderClientBaseCard = (client: Client) => {
+    const manager = users.find(u => u.id === client.managerId);
+    const project = projects.find(p => p.clientId === client.id && !p.isArchived);
+    return (
+      <div
+        key={client.id}
+        onClick={() => onClientClick(client)}
+        className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer"
+      >
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {client.logoUrl ? (
+              <img src={client.logoUrl} alt="" className="w-9 h-9 rounded-lg object-cover shrink-0" />
+            ) : (
+              <div className="w-9 h-9 rounded-lg bg-teal-100 text-teal-600 flex items-center justify-center text-sm font-bold shrink-0">
+                {(client.company || client.name || '?')[0].toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="font-bold text-slate-700 text-sm truncate">{client.company || client.name}</div>
+              <div className="text-xs text-slate-400 truncate">{client.name}{client.phone ? ` \u00B7 ${client.phone}` : ''}</div>
+            </div>
+          </div>
+          {project ? (
+            <span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded-md text-[10px] font-medium border border-teal-200 shrink-0">Проект</span>
+          ) : client.status === ClientStatus.WON ? (
+            <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded-md text-[10px] font-medium border border-green-200 shrink-0">Завершен</span>
+          ) : (
+            <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md text-[10px] font-medium border border-blue-200 shrink-0">В работе</span>
+          )}
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {manager && (
+              <div className="flex items-center gap-1.5">
+                <div className="w-5 h-5 rounded-full bg-teal-500 flex items-center justify-center text-white text-[10px] font-bold">{manager.name[0]}</div>
+                <span className="text-[11px] text-slate-500">{manager.name}</span>
+              </div>
+            )}
+          </div>
+          <div className="font-bold text-sm text-slate-800">{client.budget.toLocaleString()} ₸</div>
+        </div>
+        {((client.services && client.services.length > 0) || client.service) && (
+          <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100">
+            {(client.services || []).slice(0, 3).map((s, i) => (
+              <span key={i} className="px-2 py-0.5 bg-slate-50 rounded text-[10px] font-medium text-slate-500 border border-slate-100">{s}</span>
+            ))}
+            {(client.services || []).length > 3 && (
+              <span className="px-2 py-0.5 bg-slate-50 rounded text-[10px] font-medium text-slate-400">+{(client.services || []).length - 3}</span>
+            )}
+            {(!client.services || client.services.length === 0) && client.service && (
+              <span className="px-2 py-0.5 bg-slate-50 rounded text-[10px] font-medium text-slate-500 border border-slate-100">{client.service}</span>
+            )}
+          </div>
+        )}
+        {client.source === 'Repeat' && client.parentClientId && (
+          <div className="mt-2 pt-2 border-t border-slate-100">
+            <span className="text-[10px] text-teal-600 font-medium">Повторная продажа</span>
+          </div>
+        )}
+        {onRepeatSale && (
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <button
+              onClick={(e) => { e.stopPropagation(); onRepeatSale(client); }}
+              className="w-full py-2 bg-teal-50 text-teal-700 rounded-lg text-xs font-medium hover:bg-teal-100 transition-colors border border-teal-200"
+            >
+              Новая сделка
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderClientBase = () => {
     const clientBaseClients = filteredClients;
     const totalMonthlyRevenue = clientBaseClients.reduce((acc, c) => acc + c.budget, 0);
     const withProject = clientBaseClients.filter(c => c.projectLaunched);
-    const withoutProject = clientBaseClients.filter(c => !c.projectLaunched);
 
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full">
-        <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-wrap gap-4 items-center">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-slate-500">Активных клиентов:</span>
-            <span className="font-bold text-slate-800">{clientBaseClients.length}</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-slate-500">Общий бюджет:</span>
-            <span className="font-bold text-teal-600">{totalMonthlyRevenue.toLocaleString()} ₸</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-slate-500">С проектами:</span>
-            <span className="font-bold text-slate-800">{withProject.length}</span>
-          </div>
-        </div>
-        <div className="overflow-auto custom-scrollbar flex-1">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 sticky top-0 z-20 shadow-sm">
-              <tr>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Компания</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Контакт</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Менеджер</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Услуги</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Бюджет</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Статус</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Действия</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {clientBaseClients.map(client => {
-                const manager = users.find(u => u.id === client.managerId);
-                const project = projects.find(p => p.clientId === client.id && !p.isArchived);
-                return (
-                  <tr key={client.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-4 cursor-pointer" onClick={() => onClientClick(client)}>
-                      <div className="flex items-center gap-3">
-                        {client.logoUrl ? (
-                          <img src={client.logoUrl} alt="" className="w-8 h-8 rounded-lg object-cover" />
-                        ) : (
-                          <div className="w-8 h-8 rounded-lg bg-teal-100 text-teal-600 flex items-center justify-center text-xs font-bold">
-                            {(client.company || client.name || '?')[0].toUpperCase()}
+      <div className="flex flex-col h-full gap-3">
+        <div className="hidden lg:block bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-col h-full">
+          <div className="overflow-auto custom-scrollbar flex-1">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-slate-50 sticky top-0 z-20 shadow-sm">
+                <tr>
+                  <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Компания</th>
+                  <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Контакт</th>
+                  <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Менеджер</th>
+                  <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Услуги</th>
+                  <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Бюджет</th>
+                  <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Статус</th>
+                  <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Действия</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {clientBaseClients.map(client => {
+                  const manager = users.find(u => u.id === client.managerId);
+                  const project = projects.find(p => p.clientId === client.id && !p.isArchived);
+                  return (
+                    <tr key={client.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-4 cursor-pointer" onClick={() => onClientClick(client)}>
+                        <div className="flex items-center gap-3">
+                          {client.logoUrl ? (
+                            <img src={client.logoUrl} alt="" className="w-8 h-8 rounded-lg object-cover" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-lg bg-teal-100 text-teal-600 flex items-center justify-center text-xs font-bold">
+                              {(client.company || client.name || '?')[0].toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <div className="font-bold text-slate-700 text-sm">{client.company || client.name}</div>
+                            {client.source === 'Repeat' && client.parentClientId && (
+                              <span className="text-[10px] text-teal-600 font-medium">Повторная продажа</span>
+                            )}
                           </div>
+                        </div>
+                      </td>
+                      <td className="p-4 cursor-pointer" onClick={() => onClientClick(client)}>
+                        <div className="text-sm font-medium text-slate-700">{client.name}</div>
+                        <div className="text-xs text-slate-400">{client.phone || client.email || '-'}</div>
+                      </td>
+                      <td className="p-4">
+                        {manager ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-teal-500 flex items-center justify-center text-white text-[10px] font-bold">
+                              {manager.name[0]}
+                            </div>
+                            <span className="text-xs text-slate-600">{manager.name}</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400">-</span>
                         )}
-                        <div>
-                          <div className="font-bold text-slate-700 text-sm">{client.company || client.name}</div>
-                          {client.source === 'Repeat' && client.parentClientId && (
-                            <span className="text-[10px] text-teal-600 font-medium">Повторная продажа</span>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex flex-wrap gap-1">
+                          {(client.services || []).slice(0, 2).map((s, i) => (
+                            <span key={i} className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-medium text-slate-600 border border-slate-200">{s}</span>
+                          ))}
+                          {(client.services || []).length > 2 && (
+                            <span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-medium text-slate-500">+{(client.services || []).length - 2}</span>
+                          )}
+                          {(!client.services || client.services.length === 0) && client.service && (
+                            <span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-medium text-slate-600 border border-slate-200">{client.service}</span>
                           )}
                         </div>
-                      </div>
-                    </td>
-                    <td className="p-4 cursor-pointer" onClick={() => onClientClick(client)}>
-                      <div className="text-sm font-medium text-slate-700">{client.name}</div>
-                      <div className="text-xs text-slate-400">{client.phone || client.email || '-'}</div>
-                    </td>
-                    <td className="p-4">
-                      {manager ? (
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-full bg-teal-500 flex items-center justify-center text-white text-[10px] font-bold">
-                            {manager.name[0]}
-                          </div>
-                          <span className="text-xs text-slate-600">{manager.name}</span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-400">-</span>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      <div className="flex flex-wrap gap-1">
-                        {(client.services || []).slice(0, 2).map((s, i) => (
-                          <span key={i} className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-medium text-slate-600 border border-slate-200">{s}</span>
-                        ))}
-                        {(client.services || []).length > 2 && (
-                          <span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-medium text-slate-500">+{(client.services || []).length - 2}</span>
+                      </td>
+                      <td className="p-4">
+                        <div className="font-bold text-sm text-slate-800">{client.budget.toLocaleString()} ₸</div>
+                      </td>
+                      <td className="p-4">
+                        {project ? (
+                          <span className="px-2 py-1 bg-teal-50 text-teal-700 rounded-md text-xs font-medium border border-teal-200">Проект активен</span>
+                        ) : client.status === ClientStatus.WON ? (
+                          <span className="px-2 py-1 bg-green-50 text-green-700 rounded-md text-xs font-medium border border-green-200">Завершен</span>
+                        ) : (
+                          <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-md text-xs font-medium border border-blue-200">В работе</span>
                         )}
-                        {(!client.services || client.services.length === 0) && client.service && (
-                          <span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-medium text-slate-600 border border-slate-200">{client.service}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="font-bold text-sm text-slate-800">{client.budget.toLocaleString()} ₸</div>
-                    </td>
-                    <td className="p-4">
-                      {project ? (
-                        <span className="px-2 py-1 bg-teal-50 text-teal-700 rounded-md text-xs font-medium border border-teal-200">
-                          Проект активен
-                        </span>
-                      ) : client.status === ClientStatus.WON ? (
-                        <span className="px-2 py-1 bg-green-50 text-green-700 rounded-md text-xs font-medium border border-green-200">
-                          Завершен
-                        </span>
-                      ) : (
-                        <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-md text-xs font-medium border border-blue-200">
-                          В работе
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onClientClick(client);
-                          }}
-                          className="px-3 py-1.5 bg-slate-50 text-slate-600 rounded-lg text-xs font-medium hover:bg-slate-100 transition-colors border border-slate-200"
-                          title="Открыть карточку"
-                        >
-                          Открыть
-                        </button>
-                        {onRepeatSale && (
+                      </td>
+                      <td className="p-4">
+                        <div className="flex gap-2">
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onRepeatSale(client);
-                            }}
-                            className="px-3 py-1.5 bg-teal-50 text-teal-700 rounded-lg text-xs font-medium hover:bg-teal-100 transition-colors border border-teal-200"
-                            title="Создать новую сделку на основе этого клиента"
+                            onClick={(e) => { e.stopPropagation(); onClientClick(client); }}
+                            className="px-3 py-1.5 bg-slate-50 text-slate-600 rounded-lg text-xs font-medium hover:bg-slate-100 transition-colors border border-slate-200"
                           >
-                            Новая сделка
+                            Открыть
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {clientBaseClients.length === 0 && (
-            <div className="p-12 text-center text-slate-400">
+                          {onRepeatSale && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onRepeatSale(client); }}
+                              className="px-3 py-1.5 bg-teal-50 text-teal-700 rounded-lg text-xs font-medium hover:bg-teal-100 transition-colors border border-teal-200"
+                            >
+                              Новая сделка
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {clientBaseClients.length === 0 && (
+              <div className="p-12 text-center text-slate-400">
+                <svg className="w-12 h-12 mx-auto mb-3 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <p className="text-sm font-medium">Нет активных клиентов</p>
+                <p className="text-xs mt-1">Клиенты появятся здесь после запуска проекта</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="lg:hidden flex-1 overflow-y-auto space-y-3">
+          {clientBaseClients.length === 0 ? (
+            <div className="p-12 text-center text-slate-400 bg-white rounded-xl border border-slate-200">
               <svg className="w-12 h-12 mx-auto mb-3 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
               <p className="text-sm font-medium">Нет активных клиентов</p>
-              <p className="text-xs mt-1">Клиенты появятся здесь после запуска проекта</p>
             </div>
+          ) : (
+            clientBaseClients.map(c => renderClientBaseCard(c))
           )}
         </div>
       </div>
@@ -425,55 +485,92 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
   };
 
   const renderArchiveList = () => (
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full">
-          <div className="overflow-auto custom-scrollbar flex-1">
-              <table className="w-full text-left border-collapse">
-                  <thead className="bg-slate-50 sticky top-0 z-20 shadow-sm">
-                      <tr>
-                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Компания</th>
-                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Контакт</th>
-                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Статус</th>
-                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Сумма сделки</th>
-                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Дата создания</th>
-                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Действия</th>
-                      </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                      {filteredClients.map(client => (
-                          <tr key={client.id} className="hover:bg-slate-50 transition-colors">
-                              <td className="p-4 font-bold text-slate-700 cursor-pointer" onClick={() => onClientClick(client)}>{client.company}</td>
-                              <td className="p-4 cursor-pointer" onClick={() => onClientClick(client)}>
-                                  <div className="text-sm font-medium">{client.name}</div>
-                                  <div className="text-xs text-slate-400">{client.phone}</div>
-                              </td>
-                              <td className="p-4 cursor-pointer" onClick={() => onClientClick(client)}>
-                                  <span className={`px-2 py-1 rounded text-xs font-bold ${client.status === ClientStatus.WON ? 'bg-green-100 text-green-700' : client.status === ClientStatus.LOST ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
-                                      {CLIENT_STATUS_LABELS[client.status]}
-                                  </span>
-                              </td>
-                              <td className="p-4 font-mono text-sm cursor-pointer" onClick={() => onClientClick(client)}>{client.budget.toLocaleString()} ₸</td>
-                              <td className="p-4 text-xs text-slate-500 cursor-pointer" onClick={() => onClientClick(client)}>{new Date(client.createdAt).toLocaleDateString()}</td>
-                              <td className="p-4">
-                                  <button
-                                      onClick={(e) => {
-                                          e.stopPropagation();
-                                          if (confirm('Восстановить сделку из архива?')) {
-                                              onArchiveClient(client.id, false);
-                                          }
-                                      }}
-                                      className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors border border-blue-200"
-                                  >
-                                      Восстановить
-                                  </button>
-                              </td>
-                          </tr>
-                      ))}
-                  </tbody>
-              </table>
-              {filteredClients.length === 0 && (
-                  <div className="p-12 text-center text-slate-400">В архиве пока пусто</div>
-              )}
-          </div>
+      <div className="flex flex-col h-full gap-3">
+        <div className="hidden md:flex bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-col h-full">
+            <div className="overflow-auto custom-scrollbar flex-1">
+                <table className="w-full text-left border-collapse">
+                    <thead className="bg-slate-50 sticky top-0 z-20 shadow-sm">
+                        <tr>
+                            <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Компания</th>
+                            <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Контакт</th>
+                            <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Статус</th>
+                            <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Сумма</th>
+                            <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Дата</th>
+                            <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {filteredClients.map(client => (
+                            <tr key={client.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="p-4 font-bold text-slate-700 cursor-pointer" onClick={() => onClientClick(client)}>{client.company}</td>
+                                <td className="p-4 cursor-pointer" onClick={() => onClientClick(client)}>
+                                    <div className="text-sm font-medium">{client.name}</div>
+                                    <div className="text-xs text-slate-400">{client.phone}</div>
+                                </td>
+                                <td className="p-4 cursor-pointer" onClick={() => onClientClick(client)}>
+                                    <span className={`px-2 py-1 rounded text-xs font-bold ${client.status === ClientStatus.WON ? 'bg-green-100 text-green-700' : client.status === ClientStatus.LOST ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                                        {CLIENT_STATUS_LABELS[client.status]}
+                                    </span>
+                                </td>
+                                <td className="p-4 font-mono text-sm cursor-pointer" onClick={() => onClientClick(client)}>{client.budget.toLocaleString()} ₸</td>
+                                <td className="p-4 text-xs text-slate-500 cursor-pointer" onClick={() => onClientClick(client)}>{new Date(client.createdAt).toLocaleDateString()}</td>
+                                <td className="p-4">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (confirm('Восстановить сделку из архива?')) {
+                                                onArchiveClient(client.id, false);
+                                            }
+                                        }}
+                                        className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors border border-blue-200"
+                                    >
+                                        Восстановить
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                {filteredClients.length === 0 && (
+                    <div className="p-12 text-center text-slate-400">В архиве пока пусто</div>
+                )}
+            </div>
+        </div>
+
+        <div className="md:hidden flex-1 overflow-y-auto space-y-3">
+          {filteredClients.length === 0 ? (
+            <div className="p-12 text-center text-slate-400 bg-white rounded-xl border border-slate-200">В архиве пока пусто</div>
+          ) : (
+            filteredClients.map(client => (
+              <div key={client.id} onClick={() => onClientClick(client)} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm cursor-pointer">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="min-w-0">
+                    <div className="font-bold text-slate-700 text-sm truncate">{client.company}</div>
+                    <div className="text-xs text-slate-400">{client.name}{client.phone ? ` \u00B7 ${client.phone}` : ''}</div>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ml-2 ${client.status === ClientStatus.WON ? 'bg-green-100 text-green-700' : client.status === ClientStatus.LOST ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                    {CLIENT_STATUS_LABELS[client.status]}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mt-3">
+                  <div className="text-xs text-slate-400">{new Date(client.createdAt).toLocaleDateString()}</div>
+                  <div className="font-bold text-sm text-slate-800">{client.budget.toLocaleString()} ₸</div>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm('Восстановить сделку из архива?')) {
+                      onArchiveClient(client.id, false);
+                    }
+                  }}
+                  className="mt-3 w-full py-2 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors border border-blue-200"
+                >
+                  Восстановить
+                </button>
+              </div>
+            ))
+          )}
+        </div>
       </div>
   );
 
@@ -561,71 +658,72 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
             </div>
         )}
 
-        <div className="mb-4 flex flex-col xl:flex-row gap-3 justify-between items-start xl:items-center flex-shrink-0">
-             <div className="flex flex-col md:flex-row gap-3 w-full xl:w-auto items-center">
-                 <div className="bg-slate-100 p-1 rounded-lg flex shrink-0">
-                     <button onClick={() => setViewScope('active')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewScope === 'active' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Воронка</button>
-                     <button onClick={() => setViewScope('clients')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all relative ${viewScope === 'clients' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                       База клиентов
-                       {inWorkClients.length > 0 && (
-                         <span className="ml-1.5 bg-teal-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{inWorkClients.length}</span>
+        <div className="mb-4 flex flex-col gap-3 flex-shrink-0">
+             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+                 <div className="flex items-center gap-2 w-full sm:w-auto">
+                   <div className="bg-slate-100 p-1 rounded-lg flex overflow-x-auto shrink-0 max-w-full">
+                       <button onClick={() => setViewScope('active')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap ${viewScope === 'active' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Воронка</button>
+                       <button onClick={() => setViewScope('clients')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all relative whitespace-nowrap ${viewScope === 'clients' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                         База клиентов
+                         {inWorkClients.length > 0 && (
+                           <span className="ml-1.5 bg-teal-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{inWorkClients.length}</span>
+                         )}
+                       </button>
+                       <button onClick={() => setViewScope('transactions')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap ${viewScope === 'transactions' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Платежи</button>
+                       {currentUser?.systemRole === SystemRole.ADMIN && (
+                         <button onClick={() => setViewScope('archive')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap ${viewScope === 'archive' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Архив</button>
                        )}
+                   </div>
+                   {currentUser?.systemRole === SystemRole.ADMIN && viewScope === 'active' && (
+                     <button
+                       onClick={() => setShowStageManager(true)}
+                       className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors shrink-0"
+                       title="Управление этапами"
+                     >
+                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                       </svg>
                      </button>
-                     <button onClick={() => setViewScope('transactions')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewScope === 'transactions' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Журнал платежей</button>
-                     {currentUser?.systemRole === SystemRole.ADMIN && (
-                       <button onClick={() => setViewScope('archive')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewScope === 'archive' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Архив</button>
-                     )}
+                   )}
                  </div>
-                 {currentUser?.systemRole === SystemRole.ADMIN && viewScope === 'active' && (
-                   <button
-                     onClick={() => setShowStageManager(true)}
-                     className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors whitespace-nowrap"
-                     title="Управление этапами"
-                   >
-                     <svg className="w-4 h-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                     </svg>
-                     Этапы
-                   </button>
-                 )}
-                 {(viewScope === 'active' || viewScope === 'clients') && (
-                    <>
-                        <div className="relative flex-1 min-w-[200px] w-full md:w-auto">
-                            <input type="text" placeholder="Поиск клиента..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" />
-                            <svg className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                        </div>
-                        <div className="flex gap-2 overflow-x-auto pb-1 items-center w-full md:w-auto">
-                            <select value={selectedSource} onChange={(e) => setSelectedSource(e.target.value)} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer min-w-[140px]">
-                                <option value="all">Все источники</option>
-                                {uniqueSources.map(s => <option key={s} value={s}>{SOURCE_LABELS[s] || s}</option>)}
-                            </select>
-                            <select value={selectedManagerId} onChange={(e) => setSelectedManagerId(e.target.value)} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer min-w-[160px]">
-                                <option value="all">Все менеджеры</option>
-                                {getAvailableManagers(users).map(u => <option key={u.id} value={u.id}>{u.name} ({u.jobTitle})</option>)}
-                            </select>
-                            {viewScope === 'active' && (
-                              <button
-                                onClick={() => setHideBankImports(!hideBankImports)}
-                                className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors border whitespace-nowrap ${
-                                  hideBankImports
-                                    ? 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
-                                    : 'bg-orange-50 border-orange-200 text-orange-600'
-                                }`}
-                                title={hideBankImports ? 'Показать контрагентов из банковского импорта' : 'Скрыть контрагентов из банковского импорта'}
-                              >
-                                {hideBankImports ? `Банк (${bankImportCount})` : `Банк: показаны`}
-                              </button>
-                            )}
-                        </div>
-                    </>
+                 {viewScope !== 'transactions' && (
+                    <button onClick={onAddClient} className="flex items-center justify-center space-x-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm whitespace-nowrap w-full sm:w-auto shrink-0">
+                        <span className="text-lg">+</span>
+                        <span>Новый лид</span>
+                    </button>
                  )}
              </div>
-             {viewScope !== 'transactions' && (
-                <button onClick={onAddClient} className="flex items-center justify-center space-x-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm whitespace-nowrap w-full md:w-auto">
-                    <span className="text-lg">+</span>
-                    <span>Новый лид</span>
-                </button>
+             {(viewScope === 'active' || viewScope === 'clients') && (
+                <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                    <div className="relative flex-1 min-w-0">
+                        <input type="text" placeholder="Поиск клиента..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" />
+                        <svg className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
+                    <div className="flex gap-2 items-center overflow-x-auto">
+                        <select value={selectedSource} onChange={(e) => setSelectedSource(e.target.value)} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer min-w-0 flex-1 sm:flex-none sm:min-w-[140px]">
+                            <option value="all">Все источники</option>
+                            {uniqueSources.map(s => <option key={s} value={s}>{SOURCE_LABELS[s] || s}</option>)}
+                        </select>
+                        <select value={selectedManagerId} onChange={(e) => setSelectedManagerId(e.target.value)} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer min-w-0 flex-1 sm:flex-none sm:min-w-[160px]">
+                            <option value="all">Все менеджеры</option>
+                            {getAvailableManagers(users).map(u => <option key={u.id} value={u.id}>{u.name} ({u.jobTitle})</option>)}
+                        </select>
+                        {viewScope === 'active' && (
+                          <button
+                            onClick={() => setHideBankImports(!hideBankImports)}
+                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors border whitespace-nowrap shrink-0 ${
+                              hideBankImports
+                                ? 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                                : 'bg-orange-50 border-orange-200 text-orange-600'
+                            }`}
+                            title={hideBankImports ? 'Показать контрагентов из банковского импорта' : 'Скрыть контрагентов из банковского импорта'}
+                          >
+                            {hideBankImports ? `Банк (${bankImportCount})` : `Банк: вкл`}
+                          </button>
+                        )}
+                    </div>
+                </div>
              )}
         </div>
 
