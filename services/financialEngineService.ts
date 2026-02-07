@@ -18,6 +18,36 @@ export interface PnlResult {
   netMargin: number;
 }
 
+export interface PayrollBreakdown {
+  fixSalary: number;
+  kpiEarned: number;
+  bonuses: number;
+  penalties: number;
+  total: number;
+  byStatus: { draft: number; frozen: number; paid: number };
+  employeeCount: number;
+}
+
+export interface PayrollUserBreakdown {
+  userId: string;
+  fixSalary: number;
+  kpiEarned: number;
+  bonuses: number;
+  penalties: number;
+  total: number;
+  status: string;
+}
+
+export interface CogsBreakdown {
+  smm: number;
+  production: number;
+  target: number;
+  fot: number;
+  models: number;
+  other: number;
+  total: number;
+}
+
 export interface CashFlowResult {
   openingBalance: number;
   operatingInflow: number;
@@ -461,5 +491,108 @@ export const financialEngineService = {
       result[r.user_id] = (result[r.user_id] || 0) + cost;
     });
     return result;
+  },
+
+  async loadPayrollBreakdown(month: string): Promise<PayrollBreakdown> {
+    const orgId = getCurrentOrganizationId();
+    if (!orgId) return { fixSalary: 0, kpiEarned: 0, bonuses: 0, penalties: 0, total: 0, byStatus: { draft: 0, frozen: 0, paid: 0 }, employeeCount: 0 };
+
+    const { data } = await supabase
+      .from('payroll_records')
+      .select('user_id, fix_salary, calculated_kpi, manual_bonus, manual_penalty, status')
+      .eq('organization_id', orgId)
+      .eq('month', month);
+
+    if (!data || data.length === 0) {
+      return { fixSalary: 0, kpiEarned: 0, bonuses: 0, penalties: 0, total: 0, byStatus: { draft: 0, frozen: 0, paid: 0 }, employeeCount: 0 };
+    }
+
+    const uniqueUsers = new Set(data.map(r => r.user_id));
+    let fixSalary = 0, kpiEarned = 0, bonuses = 0, penalties = 0;
+    const byStatus = { draft: 0, frozen: 0, paid: 0 };
+
+    data.forEach(r => {
+      const fix = Number(r.fix_salary) || 0;
+      const kpi = Number(r.calculated_kpi) || 0;
+      const bonus = Number(r.manual_bonus) || 0;
+      const penalty = Number(r.manual_penalty) || 0;
+      const rowTotal = fix + kpi + bonus - penalty;
+
+      fixSalary += fix;
+      kpiEarned += kpi;
+      bonuses += bonus;
+      penalties += penalty;
+
+      const st = (r.status || 'DRAFT').toUpperCase();
+      if (st === 'PAID') byStatus.paid += rowTotal;
+      else if (st === 'FROZEN') byStatus.frozen += rowTotal;
+      else byStatus.draft += rowTotal;
+    });
+
+    return { fixSalary, kpiEarned, bonuses, penalties, total: fixSalary + kpiEarned + bonuses - penalties, byStatus, employeeCount: uniqueUsers.size };
+  },
+
+  async loadPayrollBreakdownPerUser(month: string): Promise<PayrollUserBreakdown[]> {
+    const orgId = getCurrentOrganizationId();
+    if (!orgId) return [];
+
+    const { data } = await supabase
+      .from('payroll_records')
+      .select('user_id, fix_salary, calculated_kpi, manual_bonus, manual_penalty, status')
+      .eq('organization_id', orgId)
+      .eq('month', month);
+
+    return (data || []).map(r => ({
+      userId: r.user_id,
+      fixSalary: Number(r.fix_salary) || 0,
+      kpiEarned: Number(r.calculated_kpi) || 0,
+      bonuses: Number(r.manual_bonus) || 0,
+      penalties: Number(r.manual_penalty) || 0,
+      total: (Number(r.fix_salary) || 0) + (Number(r.calculated_kpi) || 0) + (Number(r.manual_bonus) || 0) - (Number(r.manual_penalty) || 0),
+      status: r.status || 'DRAFT',
+    }));
+  },
+
+  async loadCogsBreakdown(month: string, projects: Project[]): Promise<CogsBreakdown> {
+    const activeProjectIds = projects
+      .filter(p => p.status !== ProjectStatus.COMPLETED && p.status !== ProjectStatus.ARCHIVED)
+      .map(p => p.id);
+
+    if (activeProjectIds.length === 0) return { smm: 0, production: 0, target: 0, fot: 0, models: 0, other: 0, total: 0 };
+
+    const { data } = await supabase
+      .from('project_expenses')
+      .select('smm_expenses, production_expenses, targetologist_expenses, fot_expenses, models_expenses, other_expenses, total_expenses')
+      .in('project_id', activeProjectIds)
+      .eq('month', month);
+
+    if (!data || data.length === 0) return { smm: 0, production: 0, target: 0, fot: 0, models: 0, other: 0, total: 0 };
+
+    const result = { smm: 0, production: 0, target: 0, fot: 0, models: 0, other: 0, total: 0 };
+    data.forEach(r => {
+      result.smm += Number(r.smm_expenses) || 0;
+      result.production += Number(r.production_expenses) || 0;
+      result.target += Number(r.targetologist_expenses) || 0;
+      result.fot += Number(r.fot_expenses) || 0;
+      result.models += Number(r.models_expenses) || 0;
+      result.other += Number(r.other_expenses) || 0;
+      result.total += Number(r.total_expenses) || 0;
+    });
+    return result;
+  },
+
+  calcPayrollTax(grossPayroll: number, taxRate: number = 0.155): number {
+    return Math.round(grossPayroll * taxRate);
+  },
+
+  isSalesRole(jobTitle: string | undefined): boolean {
+    if (!jobTitle) return false;
+    const lower = jobTitle.toLowerCase();
+    return lower.includes('sales') ||
+      lower.includes('продаж') ||
+      lower.includes('аккаунт') ||
+      lower.includes('коммерческ') ||
+      lower === 'ceo' ||
+      lower === 'директор';
   }
 };

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, Task, Project, Transaction, ProjectStatus, TaskStatus } from '../../types';
-import { financialEngineService } from '../../services/financialEngineService';
+import { financialEngineService, PayrollUserBreakdown } from '../../services/financialEngineService';
 import UserAvatar from '../UserAvatar';
 
 interface TeamTabProps {
@@ -20,12 +20,24 @@ const fmt = (v: number) => `${Math.round(v).toLocaleString()} ₸`;
 
 const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions }) => {
   const [payrollCosts, setPayrollCosts] = useState<Record<string, number>>({});
+  const [payrollPerUser, setPayrollPerUser] = useState<PayrollUserBreakdown[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
 
-  const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    const date = new Date(selectedMonth + '-01');
+    date.setMonth(date.getMonth() + (direction === 'prev' ? -1 : 1));
+    setSelectedMonth(date.toISOString().slice(0, 7));
+  };
 
   useEffect(() => {
-    financialEngineService.loadPayrollCostPerUser(currentMonth).then(setPayrollCosts);
-  }, [currentMonth]);
+    Promise.all([
+      financialEngineService.loadPayrollCostPerUser(selectedMonth),
+      financialEngineService.loadPayrollBreakdownPerUser(selectedMonth),
+    ]).then(([costs, breakdown]) => {
+      setPayrollCosts(costs);
+      setPayrollPerUser(breakdown);
+    });
+  }, [selectedMonth]);
 
   const totalRevenue = useMemo(
     () => (Array.isArray(transactions) ? transactions : []).filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0),
@@ -58,8 +70,10 @@ const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions 
       const userCompletedTasks = userTasks.filter(t => t.status === TaskStatus.DONE);
       const projectRevenue = userProjects.reduce((sum, p) => sum + (p.budget || 0), 0);
       const cost = payrollCosts[u.id] || 0;
+      const userPayroll = payrollPerUser.find(p => p.userId === u.id);
       const roleMax = maxProjectsForRole[u.jobTitle || ''] || 8;
       const utilization = roleMax > 0 ? (userProjects.length / roleMax) * 100 : 0;
+      const roi = cost > 0 ? ((projectRevenue / cost) - 1) * 100 : 0;
 
       return {
         id: u.id,
@@ -72,7 +86,13 @@ const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions 
         taskCompletion: userTasks.length > 0 ? (userCompletedTasks.length / userTasks.length) * 100 : 0,
         projectRevenue,
         cost,
+        fixSalary: userPayroll?.fixSalary || 0,
+        kpiEarned: userPayroll?.kpiEarned || 0,
+        bonuses: userPayroll?.bonuses || 0,
+        penalties: userPayroll?.penalties || 0,
+        payrollStatus: userPayroll?.status || '',
         profit: projectRevenue - cost,
+        roi,
         utilization: Math.min(100, utilization),
         roleMax,
       };
@@ -86,6 +106,8 @@ const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions 
       acc[role].totalCost += payrollCosts[u.id] || 0;
       return acc;
     }, {} as Record<string, { count: number; projects: number; totalCost: number }>);
+
+    const totalWorkloadRevenue = workload.reduce((s, w) => s + w.projectRevenue, 0);
 
     const totalPayrollCost = Object.values(payrollCosts).reduce((s, v) => s + v, 0);
     const avgUtilization = workload.length > 0
@@ -109,11 +131,42 @@ const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions 
       avgUtilization,
       capacityLeft,
       costPerRevenue: totalRevenue > 0 ? (totalPayrollCost / totalRevenue) * 100 : 0,
+      totalWorkloadRevenue,
+      teamRoi: totalPayrollCost > 0 ? ((totalWorkloadRevenue / totalPayrollCost) - 1) * 100 : 0,
     };
-  }, [users, projects, tasks, totalRevenue, payrollCosts]);
+  }, [users, projects, tasks, totalRevenue, payrollCosts, payrollPerUser]);
+
+  const monthLabel = useMemo(() =>
+    new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }),
+    [selectedMonth]
+  );
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h3 className="text-2xl font-black text-slate-900">Команда и HR</h3>
+          <p className="text-xs text-slate-500 font-bold uppercase mt-1">Эффективность за {monthLabel}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigateMonth('prev')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200">
+            <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <div className="text-center min-w-[140px]">
+            <div className="text-sm font-black text-slate-900">
+              {new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long' })}
+            </div>
+            <div className="text-xs text-slate-500 font-bold">{new Date(selectedMonth + '-01').getFullYear()}</div>
+          </div>
+          <button onClick={() => navigateMonth('next')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200">
+            <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      </div>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div className={UI.CARD}>
           <p className={UI.LABEL}>Сотрудников</p>
@@ -204,6 +257,12 @@ const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions 
                   teamData.costPerRevenue < 35 ? 'text-emerald-600' : teamData.costPerRevenue < 50 ? 'text-amber-600' : 'text-rose-600'
                 }`}>{teamData.costPerRevenue.toFixed(1)}%</span>
               </div>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-[10px] font-black text-slate-500 uppercase">ROI команды</span>
+                <span className={`text-sm font-black ${
+                  teamData.teamRoi > 100 ? 'text-emerald-600' : teamData.teamRoi > 0 ? 'text-blue-600' : 'text-rose-600'
+                }`}>{teamData.teamRoi > 0 ? '+' : ''}{teamData.teamRoi.toFixed(0)}%</span>
+              </div>
             </div>
           )}
         </div>
@@ -222,7 +281,14 @@ const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions 
                     <th className="pb-4 text-right">Задачи</th>
                     <th className="pb-4 text-right">Выполнено</th>
                     <th className="pb-4 text-right">Утилизация</th>
-                    {teamData.totalPayrollCost > 0 && <th className="pb-4 text-right">Стоимость</th>}
+                    {teamData.totalPayrollCost > 0 && (
+                      <>
+                        <th className="pb-4 text-right">Фикс</th>
+                        <th className="pb-4 text-right">KPI</th>
+                        <th className="pb-4 text-right">Итого ФОТ</th>
+                        <th className="pb-4 text-right">ROI</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -271,9 +337,28 @@ const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions 
                           </div>
                         </td>
                         {teamData.totalPayrollCost > 0 && (
-                          <td className="py-4 text-right text-xs font-bold text-slate-500">
-                            {u.cost > 0 ? fmt(u.cost) : '--'}
-                          </td>
+                          <>
+                            <td className="py-4 text-right text-[10px] font-bold text-slate-400">
+                              {u.fixSalary > 0 ? fmt(u.fixSalary) : '--'}
+                            </td>
+                            <td className="py-4 text-right text-[10px] font-bold text-blue-500">
+                              {u.kpiEarned > 0 ? fmt(u.kpiEarned) : '--'}
+                              {u.bonuses > 0 && <div className="text-emerald-500">+{fmt(u.bonuses)}</div>}
+                            </td>
+                            <td className="py-4 text-right text-xs font-bold text-slate-700">
+                              {u.cost > 0 ? fmt(u.cost) : '--'}
+                            </td>
+                            <td className="py-4 text-right">
+                              {u.cost > 0 ? (
+                                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black ${
+                                  u.roi > 100 ? 'bg-emerald-50 text-emerald-600' :
+                                  u.roi > 0 ? 'bg-blue-50 text-blue-600' : 'bg-rose-50 text-rose-600'
+                                }`}>
+                                  {u.roi > 0 ? '+' : ''}{u.roi.toFixed(0)}%
+                                </span>
+                              ) : <span className="text-xs text-slate-300">--</span>}
+                            </td>
+                          </>
                         )}
                       </tr>
                     );

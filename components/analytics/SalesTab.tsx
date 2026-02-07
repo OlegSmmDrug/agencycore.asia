@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Client, User, Transaction, ClientStatus } from '../../types';
 import { financialEngineService, PipelineForecast } from '../../services/financialEngineService';
 
@@ -17,6 +17,13 @@ const UI = {
 const fmt = (v: number) => `${Math.round(v).toLocaleString()} ₸`;
 
 const SalesTab: React.FC<SalesTabProps> = ({ clients, users, transactions }) => {
+  const [payrollCosts, setPayrollCosts] = useState<Record<string, number>>({});
+  const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
+
+  useEffect(() => {
+    financialEngineService.loadPayrollCostPerUser(currentMonth).then(setPayrollCosts);
+  }, [currentMonth]);
+
   const salesData = useMemo(() => {
     const newLeads = clients.filter(c => c.status === ClientStatus.NEW_LEAD).length;
     const contacted = clients.filter(c => c.status === ClientStatus.CONTACTED).length;
@@ -51,17 +58,19 @@ const SalesTab: React.FC<SalesTabProps> = ({ clients, users, transactions }) => 
     });
 
     const managerPerformance = users
-      .filter(u => u.jobTitle && (u.jobTitle.toLowerCase().includes('sales') || u.jobTitle === 'CEO'))
+      .filter(u => financialEngineService.isSalesRole(u.jobTitle))
       .map(u => {
         const mc = clients.filter(c => c.managerId === u.id);
         const mWon = mc.filter(c => [ClientStatus.WON, ClientStatus.IN_WORK, ClientStatus.CONTRACT].includes(c.status));
         const rev = mc.reduce((s, c) => s + (clientRevenue[c.id] || 0), 0);
-        return { name: u.name, revenue: rev, leads: mc.length, won: mWon.length, lost: mc.filter(c => c.status === ClientStatus.LOST).length };
+        const cost = payrollCosts[u.id] || 0;
+        return { name: u.name, revenue: rev, leads: mc.length, won: mWon.length, lost: mc.filter(c => c.status === ClientStatus.LOST).length, cost };
       })
       .map(m => ({
         ...m,
         conversion: m.leads > 0 ? (m.won / m.leads) * 100 : 0,
-        avgCheck: m.won > 0 ? m.revenue / m.won : 0
+        avgCheck: m.won > 0 ? m.revenue / m.won : 0,
+        roi: m.cost > 0 ? ((m.revenue / m.cost) - 1) * 100 : 0,
       }))
       .sort((a, b) => b.revenue - a.revenue);
 
@@ -69,7 +78,7 @@ const SalesTab: React.FC<SalesTabProps> = ({ clients, users, transactions }) => 
       ? transactions.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0) / activeClients : 0;
 
     return { funnel, managerPerformance, cac, overallConversion, lostRate, totalLeads, activeClients, lost, avgDealSize };
-  }, [clients, users, transactions]);
+  }, [clients, users, transactions, payrollCosts]);
 
   const pipeline = useMemo(() => financialEngineService.calcPipelineForecast(clients), [clients]);
   const pipelineTotal = useMemo(() => pipeline.reduce((s, p) => s + p.weightedValue, 0), [pipeline]);
@@ -191,6 +200,8 @@ const SalesTab: React.FC<SalesTabProps> = ({ clients, users, transactions }) => 
                     <th className="pb-5 text-right">Клиенты</th>
                     <th className="pb-5 text-right">Конверсия</th>
                     <th className="pb-5 text-right">Ср. чек</th>
+                    <th className="pb-5 text-right">ФОТ</th>
+                    <th className="pb-5 text-right">ROI</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -213,6 +224,19 @@ const SalesTab: React.FC<SalesTabProps> = ({ clients, users, transactions }) => 
                         </span>
                       </td>
                       <td className="py-5 text-right text-slate-500 font-mono text-sm">{Math.round(m.avgCheck).toLocaleString()} &#8376;</td>
+                      <td className="py-5 text-right text-xs font-bold text-slate-500">
+                        {m.cost > 0 ? fmt(m.cost) : '--'}
+                      </td>
+                      <td className="py-5 text-right">
+                        {m.cost > 0 ? (
+                          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black ${
+                            m.roi > 200 ? 'bg-emerald-50 text-emerald-600' :
+                            m.roi > 0 ? 'bg-blue-50 text-blue-600' : 'bg-rose-50 text-rose-600'
+                          }`}>
+                            {m.roi > 0 ? '+' : ''}{m.roi.toFixed(0)}%
+                          </span>
+                        ) : <span className="text-xs text-slate-300">--</span>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -221,7 +245,7 @@ const SalesTab: React.FC<SalesTabProps> = ({ clients, users, transactions }) => 
           ) : (
             <div className="text-center py-12">
               <p className="text-slate-400 text-sm">Нет данных по менеджерам продаж</p>
-              <p className="text-slate-300 text-xs mt-2">Добавьте сотрудников с должностью "Sales manager" или "CEO"</p>
+              <p className="text-slate-300 text-xs mt-2">Добавьте сотрудников с должностью "Sales manager", "Аккаунт-менеджер", "Менеджер по продажам" или "CEO/Директор"</p>
             </div>
           )}
         </div>

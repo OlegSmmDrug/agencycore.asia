@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Client, User, Task, Project, Transaction, ProjectStatus, ClientStatus, TaskStatus } from '../../types';
-import { financialEngineService, BusinessHealthResult, LtvMetrics, BurnRateResult, ArAgingBucket } from '../../services/financialEngineService';
+import { financialEngineService, BusinessHealthResult, LtvMetrics, BurnRateResult, PayrollBreakdown } from '../../services/financialEngineService';
 
 interface OverviewTabProps {
   clients: Client[];
@@ -25,8 +25,11 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
 }) => {
   const [health, setHealth] = useState<BusinessHealthResult | null>(null);
   const [ltv, setLtv] = useState<LtvMetrics | null>(null);
+  const [payrollBreakdown, setPayrollBreakdown] = useState<PayrollBreakdown | null>(null);
+  const [payrollTotal, setPayrollTotal] = useState(0);
 
   const safeTrans = useMemo(() => Array.isArray(transactions) ? transactions : [], [transactions]);
+  const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
 
   const overview = useMemo(() => {
     const totalIncome = safeTrans.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
@@ -57,7 +60,8 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
       .filter(t => t.amount < 0 && t.date?.slice(0, 10) >= thisMonthStart && t.date?.slice(0, 10) < thisMonthEnd)
       .reduce((s, t) => s + t.amount, 0));
 
-    const salaryExpenses = Math.abs(safeTrans.filter(t => t.category === 'Salary').reduce((s, t) => s + t.amount, 0));
+    const salaryFromTx = Math.abs(safeTrans.filter(t => t.category === 'Salary').reduce((s, t) => s + t.amount, 0));
+    const salaryExpenses = Math.max(salaryFromTx, payrollTotal);
     const fotPercent = totalIncome > 0 ? (salaryExpenses / totalIncome) * 100 : 0;
 
     const activeProjects = projects.filter(p => p.status !== ProjectStatus.COMPLETED && p.status !== ProjectStatus.ARCHIVED);
@@ -76,7 +80,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
       revPerEmployee: totalIncome / (users.length || 1),
       lostRate,
     };
-  }, [safeTrans, projects, clients, users]);
+  }, [safeTrans, projects, clients, users, payrollTotal]);
 
   const burnRate = useMemo(() => financialEngineService.calcBurnRate(safeTrans), [safeTrans]);
 
@@ -115,6 +119,13 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
         profit: d.income - d.expenses
       }));
   }, [safeTrans]);
+
+  useEffect(() => {
+    financialEngineService.loadPayrollBreakdown(currentMonth).then(result => {
+      setPayrollTotal(result.total);
+      setPayrollBreakdown(result);
+    });
+  }, [currentMonth]);
 
   useEffect(() => {
     financialEngineService.calcLtv(clients, safeTrans).then(setLtv);
@@ -281,6 +292,28 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
             />
           </div>
           <p className="text-[8px] text-slate-400 font-bold uppercase mt-1.5">Норма для агентства: 25-35%</p>
+          {payrollBreakdown && payrollBreakdown.total > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] text-slate-500 font-bold">Оклады</span>
+                <span className="text-[10px] font-black text-slate-700">{fmt(payrollBreakdown.fixSalary)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] text-slate-500 font-bold">KPI</span>
+                <span className="text-[10px] font-black text-blue-600">{fmt(payrollBreakdown.kpiEarned)}</span>
+              </div>
+              {payrollBreakdown.bonuses > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] text-slate-500 font-bold">Бонусы</span>
+                  <span className="text-[10px] font-black text-emerald-600">{fmt(payrollBreakdown.bonuses)}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between pt-1 border-t border-slate-50">
+                <span className="text-[9px] text-slate-400 font-bold">{payrollBreakdown.employeeCount} чел.</span>
+                <span className="text-[10px] font-black text-slate-900">{fmt(payrollBreakdown.total)}</span>
+              </div>
+            </div>
+          )}
           <div className="mt-3 pt-3 border-t border-slate-100">
             <p className="text-[9px] font-bold text-slate-400 uppercase">Сотрудников</p>
             <div className="flex items-end gap-2 mt-1">

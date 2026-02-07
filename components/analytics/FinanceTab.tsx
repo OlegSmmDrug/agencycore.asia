@@ -6,7 +6,7 @@ import {
 import { Transaction, Project, ProjectStatus } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { financialPlanService, FinancialPlan } from '../../services/financialPlanService';
-import { financialEngineService, CashFlowResult, BurnRateResult } from '../../services/financialEngineService';
+import { financialEngineService, CashFlowResult, BurnRateResult, PayrollBreakdown, CogsBreakdown } from '../../services/financialEngineService';
 import { getCurrentOrganizationId } from '../../utils/organizationContext';
 
 interface FinanceTabProps {
@@ -37,12 +37,16 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
   const [payrollTotal, setPayrollTotal] = useState(0);
   const [projectExpensesTotal, setProjectExpensesTotal] = useState(0);
   const [editingPlan, setEditingPlan] = useState(false);
-  const [planForm, setPlanForm] = useState({ revenue: 0, expenses: 0, netProfit: 0 });
+  const [planForm, setPlanForm] = useState({ revenue: 0, payroll: 0, expenses: 0, netProfit: 0 });
   const [loading, setLoading] = useState(false);
   const [prevPayrollTotal, setPrevPayrollTotal] = useState(0);
   const [prevProjectExpensesTotal, setPrevProjectExpensesTotal] = useState(0);
   const [taxRate, setTaxRate] = useState(0.15);
   const [showTaxSettings, setShowTaxSettings] = useState(false);
+  const [payrollBreakdown, setPayrollBreakdown] = useState<PayrollBreakdown | null>(null);
+  const [cogsBreakdown, setCogsBreakdown] = useState<CogsBreakdown | null>(null);
+  const [showFotDetail, setShowFotDetail] = useState(false);
+  const [showCogsDetail, setShowCogsDetail] = useState(false);
 
   const navigateMonth = (direction: 'prev' | 'next') => {
     const date = new Date(selectedMonth + '-01');
@@ -66,16 +70,25 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
       const orgId = getCurrentOrganizationId();
       if (!orgId) { setLoading(false); return; }
 
-      const planData = await financialPlanService.getByMonth(selectedMonth);
+      const [planData, breakdown, cogs] = await Promise.all([
+        financialPlanService.getByMonth(selectedMonth),
+        financialEngineService.loadPayrollBreakdown(selectedMonth),
+        financialEngineService.loadCogsBreakdown(selectedMonth, projects),
+      ]);
+
       setPlan(planData);
+      setPayrollBreakdown(breakdown);
+      setCogsBreakdown(cogs);
+
       if (planData) {
         setPlanForm({
           revenue: planData.plannedRevenue,
+          payroll: planData.plannedPayroll || 0,
           expenses: planData.plannedExpenses,
           netProfit: planData.plannedNetProfit,
         });
       } else {
-        setPlanForm({ revenue: 0, expenses: 0, netProfit: 0 });
+        setPlanForm({ revenue: 0, payroll: 0, expenses: 0, netProfit: 0 });
       }
 
       const { data: payrollData } = await supabase
@@ -169,10 +182,14 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
     { name: 'Прочее', value: pnl.otherExpenses },
   ].filter(e => e.value > 0), [pnl]);
 
-  const planFact = useMemo(() => [
-    { name: 'Выручка', plan: plan?.plannedRevenue || 0, fact: pnl.revenue },
-    { name: 'Чистая прибыль', plan: plan?.plannedNetProfit || 0, fact: pnl.netProfit },
-  ], [plan, pnl]);
+  const planFact = useMemo(() => {
+    const items = [
+      { name: 'Выручка', plan: plan?.plannedRevenue || 0, fact: pnl.revenue },
+      { name: 'ФОТ', plan: plan?.plannedPayroll || planForm.payroll || 0, fact: pnl.salaries },
+      { name: 'Чистая прибыль', plan: plan?.plannedNetProfit || 0, fact: pnl.netProfit },
+    ];
+    return items;
+  }, [plan, pnl, planForm]);
 
   const getChangePercent = (current: number, prev: number) => {
     if (prev === 0) return null;
@@ -184,11 +201,18 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
     return ((pnl.revenue / plan.plannedRevenue) - 1) * 100;
   }, [pnl.revenue, plan]);
 
+  const fotPlanPercent = useMemo(() => {
+    const plannedPayroll = plan?.plannedPayroll || 0;
+    if (plannedPayroll === 0) return null;
+    return ((pnl.salaries / plannedPayroll) - 1) * 100;
+  }, [pnl.salaries, plan]);
+
   const revenueVsPrev = getChangePercent(pnl.revenue, prevPnl.revenue);
 
   const handleSavePlan = useCallback(async () => {
     await financialPlanService.upsert(selectedMonth, {
       plannedRevenue: planForm.revenue,
+      plannedPayroll: planForm.payroll,
       plannedExpenses: planForm.expenses,
       plannedNetProfit: planForm.netProfit,
     });
@@ -198,6 +222,8 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
   }, [selectedMonth, planForm]);
 
   const totalAllExpenses = pnl.cogs + pnl.totalOpex;
+
+  const fotPercent = pnl.revenue > 0 ? (pnl.salaries / pnl.revenue) * 100 : 0;
 
   const insights = useMemo(() => {
     const items: { type: 'success' | 'warning' | 'danger'; title: string; text: string }[] = [];
@@ -216,7 +242,6 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
       });
     }
 
-    const fotPercent = pnl.revenue > 0 ? (pnl.salaries / pnl.revenue) * 100 : 0;
     if (fotPercent > 50) {
       items.push({
         type: 'danger',
@@ -228,6 +253,22 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
         type: 'warning',
         title: `ФОТ = ${fotPercent.toFixed(0)}% от выручки (норма 25-35%)`,
         text: 'Фонд оплаты труда выше рекомендуемого. Проверьте загрузку команды во вкладке "Команда и HR".'
+      });
+    }
+
+    if (payrollBreakdown && payrollBreakdown.byStatus.draft > 0) {
+      items.push({
+        type: 'warning',
+        title: `Незафиксированный ФОТ: ${formatCurrency(payrollBreakdown.byStatus.draft)}`,
+        text: `${formatCurrency(payrollBreakdown.byStatus.draft)} находится в статусе "Черновик". Зафиксируйте расчет зарплат в модуле "Расчет Зарплат" для корректного учета.`
+      });
+    }
+
+    if (fotPlanPercent !== null && fotPlanPercent > 20) {
+      items.push({
+        type: 'danger',
+        title: `ФОТ превышает план на ${fotPlanPercent.toFixed(0)}%`,
+        text: `Факт: ${formatCurrency(pnl.salaries)} vs План: ${formatCurrency(plan?.plannedPayroll || 0)}. Проверьте, какие KPI-выплаты или бонусы вызвали перерасход.`
       });
     }
 
@@ -273,7 +314,7 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
     }
 
     return items;
-  }, [pnl, prevPnl, plan, cashFlow, burnRate]);
+  }, [pnl, plan, cashFlow, burnRate, payrollBreakdown, fotPercent, fotPlanPercent]);
 
   if (loading) {
     return (
@@ -402,19 +443,57 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
                 <th className="pb-4 pr-4">Статья</th>
                 <th className="pb-4 text-right">Сумма</th>
                 <th className="pb-4 text-right">% от выручки</th>
+                <th className="pb-4 text-right">План</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              <PnlRow label="Выручка" value={pnl.revenue} revenue={pnl.revenue} bold />
-              <PnlRow label="Себестоимость (COGS)" value={-pnl.cogs} revenue={pnl.revenue} sub />
+              <PnlRow label="Выручка" value={pnl.revenue} revenue={pnl.revenue} planValue={plan?.plannedRevenue} bold />
+              <PnlRow label="Себестоимость (COGS)" value={-pnl.cogs} revenue={pnl.revenue} sub
+                expandable={!!cogsBreakdown && cogsBreakdown.total > 0}
+                expanded={showCogsDetail}
+                onToggle={() => setShowCogsDetail(!showCogsDetail)} />
+              {showCogsDetail && cogsBreakdown && (
+                <>
+                  {cogsBreakdown.smm > 0 && <PnlRow label="SMM-контент" value={-cogsBreakdown.smm} revenue={pnl.revenue} indent />}
+                  {cogsBreakdown.production > 0 && <PnlRow label="Продакшен (видео/фото)" value={-cogsBreakdown.production} revenue={pnl.revenue} indent />}
+                  {cogsBreakdown.target > 0 && <PnlRow label="Таргетинг" value={-cogsBreakdown.target} revenue={pnl.revenue} indent />}
+                  {cogsBreakdown.fot > 0 && <PnlRow label="ФОТ (доля на проекты)" value={-cogsBreakdown.fot} revenue={pnl.revenue} indent />}
+                  {cogsBreakdown.models > 0 && <PnlRow label="Модели" value={-cogsBreakdown.models} revenue={pnl.revenue} indent />}
+                  {cogsBreakdown.other > 0 && <PnlRow label="Прочее" value={-cogsBreakdown.other} revenue={pnl.revenue} indent />}
+                </>
+              )}
               <PnlRow label="Валовая прибыль" value={pnl.grossProfit} revenue={pnl.revenue} bold accent="blue" />
-              <PnlRow label="ФОТ (Зарплаты)" value={-pnl.salaries} revenue={pnl.revenue} sub />
-              <PnlRow label="Маркетинг" value={-pnl.marketing} revenue={pnl.revenue} sub />
-              <PnlRow label="Офис и ПО" value={-pnl.office} revenue={pnl.revenue} sub />
+              <PnlRow label="ФОТ (Зарплаты)" value={-pnl.salaries} revenue={pnl.revenue} sub
+                planValue={plan?.plannedPayroll}
+                expandable={!!payrollBreakdown && payrollBreakdown.total > 0}
+                expanded={showFotDetail}
+                onToggle={() => setShowFotDetail(!showFotDetail)} />
+              {showFotDetail && payrollBreakdown && (
+                <>
+                  <PnlRow label="Оклады (фикс)" value={-payrollBreakdown.fixSalary} revenue={pnl.revenue} indent />
+                  <PnlRow label="KPI за задачи" value={-payrollBreakdown.kpiEarned} revenue={pnl.revenue} indent />
+                  {payrollBreakdown.bonuses > 0 && <PnlRow label="Бонусы" value={-payrollBreakdown.bonuses} revenue={pnl.revenue} indent />}
+                  {payrollBreakdown.penalties > 0 && <PnlRow label="Штрафы (вычет)" value={payrollBreakdown.penalties} revenue={pnl.revenue} indent accent="emerald" />}
+                  <tr className="bg-slate-50/30">
+                    <td colSpan={4} className="py-2 px-6">
+                      <div className="flex items-center gap-4 text-[9px] font-bold">
+                        <span className="text-slate-400">Статус:</span>
+                        {payrollBreakdown.byStatus.paid > 0 && <span className="text-emerald-600">Выплачено: {formatCurrency(payrollBreakdown.byStatus.paid)}</span>}
+                        {payrollBreakdown.byStatus.frozen > 0 && <span className="text-blue-600">Зафиксировано: {formatCurrency(payrollBreakdown.byStatus.frozen)}</span>}
+                        {payrollBreakdown.byStatus.draft > 0 && <span className="text-amber-600">Черновик: {formatCurrency(payrollBreakdown.byStatus.draft)}</span>}
+                        <span className="text-slate-400">|</span>
+                        <span className="text-slate-500">{payrollBreakdown.employeeCount} сотрудников</span>
+                      </div>
+                    </td>
+                  </tr>
+                </>
+              )}
+              <PnlRow label="Маркетинг" value={-pnl.marketing} revenue={pnl.revenue} sub planValue={plan?.plannedMarketing} />
+              <PnlRow label="Офис и ПО" value={-pnl.office} revenue={pnl.revenue} sub planValue={plan?.plannedOffice} />
               <PnlRow label="Прочие расходы" value={-pnl.otherExpenses} revenue={pnl.revenue} sub />
-              <PnlRow label="EBITDA" value={pnl.ebitda} revenue={pnl.revenue} bold accent="emerald" />
+              <PnlRow label="EBITDA" value={pnl.ebitda} revenue={pnl.revenue} bold accent="emerald" planValue={plan?.plannedEbitda} />
               <PnlRow label={`Налоги (${(taxRate * 100).toFixed(0)}%)`} value={-pnl.taxes} revenue={pnl.revenue} sub />
-              <PnlRow label="Чистая прибыль" value={pnl.netProfit} revenue={pnl.revenue} bold accent="emerald" />
+              <PnlRow label="Чистая прибыль" value={pnl.netProfit} revenue={pnl.revenue} bold accent="emerald" planValue={plan?.plannedNetProfit} />
             </tbody>
           </table>
         </div>
@@ -580,8 +659,8 @@ const PlanFactChart = ({
 }: {
   editingPlan: boolean;
   setEditingPlan: (v: boolean) => void;
-  planForm: { revenue: number; expenses: number; netProfit: number };
-  setPlanForm: React.Dispatch<React.SetStateAction<{ revenue: number; expenses: number; netProfit: number }>>;
+  planForm: { revenue: number; payroll: number; expenses: number; netProfit: number };
+  setPlanForm: React.Dispatch<React.SetStateAction<{ revenue: number; payroll: number; expenses: number; netProfit: number }>>;
   handleSavePlan: () => void;
   plan: FinancialPlan | null;
   planFact: { name: string; plan: number; fact: number }[];
@@ -610,7 +689,15 @@ const PlanFactChart = ({
           />
         </div>
         <div>
-          <label className="text-[10px] font-bold text-slate-500 uppercase">План расходов</label>
+          <label className="text-[10px] font-bold text-slate-500 uppercase">План ФОТ</label>
+          <input
+            type="number" value={planForm.payroll || ''}
+            onChange={e => setPlanForm(p => ({ ...p, payroll: Number(e.target.value) }))}
+            className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold" placeholder="0"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-slate-500 uppercase">План расходов (итого)</label>
           <input
             type="number" value={planForm.expenses || ''}
             onChange={e => setPlanForm(p => ({ ...p, expenses: Number(e.target.value) }))}
@@ -646,8 +733,8 @@ const PlanFactChart = ({
               contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
               formatter={(v: number) => formatCurrency(v)}
             />
-            <Bar dataKey="plan" name="План" fill="#e2e8f0" radius={[6, 6, 0, 0]} barSize={50} />
-            <Bar dataKey="fact" name="Факт" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={50} />
+            <Bar dataKey="plan" name="План" fill="#e2e8f0" radius={[6, 6, 0, 0]} barSize={40} />
+            <Bar dataKey="fact" name="Факт" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={40} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -734,8 +821,9 @@ const ExpenseStructureChart = ({
   </div>
 );
 
-const PnlRow = ({ label, value, revenue, bold, sub, accent }: {
-  label: string; value: number; revenue: number; bold?: boolean; sub?: boolean; accent?: string;
+const PnlRow = ({ label, value, revenue, bold, sub, accent, indent, expandable, expanded, onToggle, planValue }: {
+  label: string; value: number; revenue: number; bold?: boolean; sub?: boolean; accent?: string; indent?: boolean;
+  expandable?: boolean; expanded?: boolean; onToggle?: () => void; planValue?: number;
 }) => {
   const pct = revenue > 0 ? (Math.abs(value) / revenue) * 100 : 0;
   const colorClass = accent === 'emerald'
@@ -743,17 +831,45 @@ const PnlRow = ({ label, value, revenue, bold, sub, accent }: {
     : accent === 'blue' ? 'text-blue-600'
     : (value < 0 ? 'text-rose-500' : 'text-slate-900');
 
+  const planDeviation = planValue && planValue > 0 && Math.abs(value) > 0
+    ? ((Math.abs(value) / planValue) - 1) * 100
+    : null;
+
   return (
-    <tr className={`group hover:bg-slate-50/50 transition-all ${bold ? 'bg-slate-50/30' : ''}`}>
-      <td className={`py-3 pr-4 ${bold ? 'font-black text-slate-900 text-sm' : 'text-xs text-slate-600 font-bold'} ${sub ? 'pl-6' : ''}`}>
-        {sub && <span className="text-slate-300 mr-2">-</span>}
-        {label}
+    <tr className={`group hover:bg-slate-50/50 transition-all ${bold ? 'bg-slate-50/30' : ''} ${indent ? 'bg-slate-50/20' : ''}`}>
+      <td className={`py-3 pr-4 ${bold ? 'font-black text-slate-900 text-sm' : 'text-xs text-slate-600 font-bold'} ${sub ? 'pl-6' : ''} ${indent ? 'pl-10' : ''}`}>
+        <div className="flex items-center gap-1.5">
+          {sub && !indent && <span className="text-slate-300 mr-1">-</span>}
+          {indent && <span className="text-slate-200 mr-1 text-[9px]">&#9492;</span>}
+          <span>{label}</span>
+          {expandable && (
+            <button onClick={onToggle} className="ml-1 text-blue-500 hover:text-blue-700 transition-colors">
+              <svg className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          )}
+        </div>
       </td>
       <td className={`py-3 text-right ${bold ? 'font-black text-sm' : 'text-xs font-bold'} ${colorClass}`}>
         {formatCurrency(value)}
       </td>
       <td className="py-3 text-right text-[10px] font-bold text-slate-400">
         {value === revenue && revenue > 0 ? '100%' : `${pct.toFixed(1)}%`}
+      </td>
+      <td className="py-3 text-right text-[10px] font-bold">
+        {planValue && planValue > 0 ? (
+          <div>
+            <span className="text-slate-400">{formatCurrency(planValue)}</span>
+            {planDeviation !== null && (
+              <span className={`ml-1 ${Math.abs(planDeviation) < 5 ? 'text-emerald-500' : planDeviation > 0 ? 'text-rose-500' : 'text-amber-500'}`}>
+                ({planDeviation > 0 ? '+' : ''}{planDeviation.toFixed(0)}%)
+              </span>
+            )}
+          </div>
+        ) : indent ? null : (
+          <span className="text-slate-200">--</span>
+        )}
       </td>
     </tr>
   );

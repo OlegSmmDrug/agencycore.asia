@@ -344,6 +344,11 @@ const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clie
         otherOut += Math.abs(mTx.filter(t => t.category === 'Other' && t.amount < 0).reduce((s, t) => s + t.amount, 0));
       }
 
+      let accruedPayroll = 0;
+      for (const mk of mks) {
+        accruedPayroll += factPayroll[mk] || 0;
+      }
+
       const totalOutflow = salaryOut + marketingOut + officeOut + otherOut;
       const operatingNet = inflow - totalOutflow;
       const investingFlow = 0;
@@ -355,9 +360,10 @@ const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clie
         startBalance, inflow, salaryOut, marketingOut, officeOut, otherOut,
         totalOutflow, operatingNet, investingFlow, financingFlow, totalFlow,
         endBalance: cumulativeBalance,
+        accruedPayroll,
       };
     });
-  }, [transactions, months, grouping]);
+  }, [transactions, months, grouping, factPayroll]);
 
   const EditableCell = ({ month, field, value, isBold, isNeg }: {
     month: string; field: string; value: number; isBold?: boolean; isNeg?: boolean;
@@ -758,9 +764,31 @@ const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clie
                 <tr className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-2.5 px-4 sticky left-0 bg-white z-20 border-r border-slate-100 w-[260px] min-w-[260px] shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
                     <div className="text-xs font-bold text-rose-600">Выплата зарплат (ФОТ)</div>
+                    <div className="text-[9px] text-slate-400 font-bold uppercase mt-0.5">Фактические переводы</div>
                   </td>
                   {ddsData.map((d, i) => <ReadOnlyCell key={i} value={-d.salaryOut} accent="rose" />)}
                 </tr>
+                {ddsData.some(d => d.accruedPayroll > 0) && (
+                  <tr className="hover:bg-amber-50/30 transition-colors">
+                    <td className="py-2.5 px-4 sticky left-0 bg-amber-50/20 z-20 border-r border-slate-100 w-[260px] min-w-[260px] shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
+                      <div className="text-xs font-bold text-amber-700">Начислено ФОТ (ведомость)</div>
+                      <div className="text-[9px] text-amber-500 font-bold uppercase mt-0.5">Разница = долг по зарплатам</div>
+                    </td>
+                    {ddsData.map((d, i) => {
+                      const delta = d.accruedPayroll - d.salaryOut;
+                      return (
+                        <td key={i} className="py-2.5 px-4 text-right w-[150px] min-w-[150px] whitespace-nowrap">
+                          <div className="text-xs font-bold text-amber-700">{formatVal(d.accruedPayroll)}</div>
+                          {delta !== 0 && (
+                            <div className={`text-[9px] font-black mt-0.5 ${delta > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                              {delta > 0 ? 'Долг: ' : 'Переплата: '}{formatVal(Math.abs(delta))}
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                )}
                 <tr className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-2.5 px-4 sticky left-0 bg-white z-20 border-r border-slate-100 w-[260px] min-w-[260px] shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
                     <div className="text-xs font-bold text-rose-600">Маркетинг и реклама</div>
