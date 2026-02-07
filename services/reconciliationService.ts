@@ -3,11 +3,23 @@ import { Client, Transaction, ReconciliationStatus, BankCounterpartyAlias } from
 import { getCurrentOrganizationId } from '../utils/organizationContext';
 
 export function sanitizeCounterpartyName(raw: string): string {
-  return raw
-    .replace(/[\r\n]+/g, ' ')
+  let result = raw
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/[\n\/]+/g, ' ')
     .replace(/\s{2,}/g, ' ')
-    .replace(/\s*\/\s*/g, '')
     .trim();
+
+  result = result
+    .replace(/Товарище\s+ство/gi, 'Товарищество')
+    .replace(/Обще\s+ство/gi, 'Общество')
+    .replace(/Предприя\s+тие/gi, 'Предприятие')
+    .replace(/Учрежде\s+ние/gi, 'Учреждение')
+    .replace(/Акционер\s+ное/gi, 'Акционерное')
+    .replace(/ответствен\s+ностью/gi, 'ответственностью')
+    .replace(/ограничен\s+ной/gi, 'ограниченной');
+
+  return result;
 }
 
 export function extractBin(text: string): string {

@@ -132,20 +132,36 @@ function parseCSVLine(line: string, delimiter: string): string[] {
 }
 
 function extractOurAccount(content: string): string {
-  const accountMatch = content.match(/СекцияРасworkers|РасsectionСчет|СекцияРасчСчет[\s\S]*?РасsectionСчет=(\S+)|НомерСчета=(\S+)/i);
-  if (accountMatch) return (accountMatch[1] || accountMatch[2] || '').trim();
-
-  const simpleMatch = content.match(/РасsectionСчет=(\S+)/i) || content.match(/НомерСчета=(\S+)/i);
-  if (simpleMatch) return simpleMatch[1].trim();
-
   const accountSection = content.match(/СекцияРасчСчет([\s\S]*?)КонецРасчСчет/i);
   if (accountSection) {
-    const accMatch = accountSection[1].match(/(?:РасчСчет|НомерСчета|ДатаНачала)[\s\S]*?(?:РасчСчет|НомерСчета)=(\S+)/i);
+    const accMatch = accountSection[1].match(/РасчСчет=(\S+)/i);
     if (accMatch) return accMatch[1].trim();
+    const numMatch = accountSection[1].match(/НомерСчета=(\S+)/i);
+    if (numMatch) return numMatch[1].trim();
   }
 
-  const anyAccount = content.match(/РасчСчет=(\S+)/i);
-  if (anyAccount) return anyAccount[1].trim();
+  const headerPart = content.split(/СекцияДокумент/i)[0] || '';
+  const fallbackMatch = headerPart.match(/РасчСчет=(\S+)/i);
+  if (fallbackMatch) return fallbackMatch[1].trim();
+
+  const sections = content.split(/СекцияДокумент/g).slice(1);
+  if (sections.length === 0) return '';
+
+  const accountCounts = new Map<string, number>();
+  for (const section of sections) {
+    const payer = section.match(/ПлательщикСчет=(\S+)/i);
+    const recipient = section.match(/ПолучательСчет=(\S+)/i);
+    if (payer) accountCounts.set(payer[1].trim(), (accountCounts.get(payer[1].trim()) || 0) + 1);
+    if (recipient) accountCounts.set(recipient[1].trim(), (accountCounts.get(recipient[1].trim()) || 0) + 1);
+  }
+
+  let maxCount = 0;
+  let mostFrequent = '';
+  accountCounts.forEach((count, acc) => {
+    if (count > maxCount) { maxCount = count; mostFrequent = acc; }
+  });
+
+  if (mostFrequent && maxCount > sections.length * 0.4) return mostFrequent;
 
   return '';
 }
@@ -159,17 +175,28 @@ function parse1CFormat(content: string): Omit<ParsedTransaction, 'matchedClientI
   for (const section of sections) {
     if (!section.includes('КонецДокумента')) continue;
 
-    const getField = (name: string): string => {
-      const patterns = [
-        new RegExp(`^${name}=(.*)$`, 'mi'),
-        new RegExp(`${name}=(.*)`, 'i'),
-      ];
-      for (const pattern of patterns) {
-        const match = section.match(pattern);
-        if (match) return match[1].trim();
+    const fieldMap = new Map<string, string>();
+    const sectionLines = section.split(/\r?\n/);
+    let curKey = '';
+    let curVal = '';
+    for (const line of sectionLines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === 'КонецДокумента') {
+        if (curKey) { fieldMap.set(curKey, curVal); curKey = ''; curVal = ''; }
+        continue;
       }
-      return '';
-    };
+      const fm = trimmed.match(/^([А-Яа-яA-Za-z_0-9]+)=(.*)/);
+      if (fm) {
+        if (curKey) fieldMap.set(curKey, curVal);
+        curKey = fm[1];
+        curVal = fm[2];
+      } else if (curKey) {
+        curVal += '\n' + trimmed;
+      }
+    }
+    if (curKey) fieldMap.set(curKey, curVal);
+
+    const getField = (name: string): string => fieldMap.get(name)?.trim() || '';
 
     const dateStr = getField('ДатаДокумента') || getField('ДатаОперации');
     const amountStr = getField('Сумма');
@@ -178,8 +205,8 @@ function parse1CFormat(content: string): Omit<ParsedTransaction, 'matchedClientI
     const knpCode = getField('КодНазначенияПлатежа') || '';
     const currency = getField('Валюта') || 'KZT';
 
-    const payerAccount = getField('ПлательщикСчет') || getField('ПлательщикРасWorkers') || '';
-    const recipientAccount = getField('ПолучательСчет') || getField('ПолучательРасWorkers') || '';
+    const payerAccount = getField('ПлательщикСчет') || getField('ПлательщикРасчСчет') || '';
+    const recipientAccount = getField('ПолучательСчет') || getField('ПолучательРасчСчет') || '';
 
     const payerNameRaw = getField('ПлательщикНаименование') || getField('Плательщик') || '';
     const payerBinRaw = getField('Плательщик_ИНН') || getField('Плательщик_БИН') || getField('ПлательщикИНН') || '';
