@@ -788,6 +788,44 @@ const App: React.FC = () => {
     }
   };
 
+  const handleCreateClientFromBank = async (clientData: { name: string; company: string; bin: string }): Promise<Client> => {
+    const newClient = await clientService.create({
+      name: clientData.name,
+      company: clientData.company,
+      inn: clientData.bin,
+      bin: clientData.bin,
+      status: ClientStatus.NEW_LEAD,
+      source: 'Other',
+      email: '',
+      phone: '',
+      budget: 0,
+      prepayment: 0,
+      managerId: '',
+      filesLink: '',
+      service: '',
+    } as Omit<Client, 'id' | 'createdAt'>);
+    setClients(prev => [newClient, ...prev]);
+    addNotification('Клиент создан из банковской выписки', 'success');
+    return newClient;
+  };
+
+  const handleReconcileTransaction = async (existingId: string, bankData: {
+    amount: number;
+    clientName: string;
+    bin: string;
+    docNumber: string;
+  }): Promise<void> => {
+    await transactionService.reconcileTransaction(
+      existingId,
+      bankData.amount,
+      bankData.clientName,
+      bankData.bin,
+      bankData.docNumber
+    );
+    const updated = await transactionService.getAll();
+    setTransactions(updated);
+  };
+
   const handleAddManualTransaction = async (transactionData: Omit<Transaction, 'id' | 'createdAt' | 'isVerified'>) => {
     if (!transactionData.amount || !transactionData.clientId) return;
 
@@ -1277,6 +1315,8 @@ const App: React.FC = () => {
             transactions={transactions}
             currentUser={currentUser}
             onAddTransaction={handleAddManualTransaction}
+            onCreateClient={handleCreateClientFromBank}
+            onReconcile={handleReconcileTransaction}
           />
         );
       case 'calculator':

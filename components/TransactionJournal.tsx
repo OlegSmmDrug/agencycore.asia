@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Download, Upload, Search, Calendar, DollarSign, User as UserIcon, X } from 'lucide-react';
-import { Transaction, Client, PaymentType, Project, User } from '../types';
+import { Plus, Download, Upload, Search, Calendar, DollarSign, User as UserIcon, X, Clock, CheckCircle, AlertTriangle, Building2 } from 'lucide-react';
+import { Transaction, Client, PaymentType, Project, User, ReconciliationStatus } from '../types';
 import Modal from './Modal';
 import BankImportModal from './BankImportModal';
 
@@ -10,6 +10,13 @@ interface Props {
   projects: Project[];
   users: User[];
   onAddTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'isVerified'>) => void;
+  onCreateClient?: (client: { name: string; company: string; bin: string }) => Promise<Client>;
+  onReconcile?: (existingId: string, bankData: {
+    amount: number;
+    clientName: string;
+    bin: string;
+    docNumber: string;
+  }) => Promise<void>;
 }
 
 const PAYMENT_TYPES = [
@@ -20,7 +27,14 @@ const PAYMENT_TYPES = [
   { value: PaymentType.REFUND, label: 'Возврат' },
 ];
 
-export default function TransactionJournal({ transactions, clients, projects, users, onAddTransaction }: Props) {
+const RECONCILIATION_STATUS_CONFIG: Record<string, { icon: typeof Clock; text: string; bg: string; label: string }> = {
+  manual: { icon: Clock, text: 'text-gray-500', bg: 'bg-gray-100', label: 'Ручной ввод' },
+  verified: { icon: CheckCircle, text: 'text-emerald-700', bg: 'bg-emerald-50', label: 'Сверено' },
+  discrepancy: { icon: AlertTriangle, text: 'text-amber-700', bg: 'bg-amber-50', label: 'Расхождение' },
+  bank_import: { icon: Building2, text: 'text-blue-700', bg: 'bg-blue-50', label: 'Банковский импорт' },
+};
+
+export default function TransactionJournal({ transactions, clients, projects, users, onAddTransaction, onCreateClient, onReconcile }: Props) {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -30,6 +44,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
   const [filterProject, setFilterProject] = useState<string>('all');
   const [filterDateFrom, setFilterDateFrom] = useState<string>('');
   const [filterDateTo, setFilterDateTo] = useState<string>('');
+  const [filterReconciliation, setFilterReconciliation] = useState<ReconciliationStatus | 'all'>('all');
 
   const [newTransaction, setNewTransaction] = useState<{
     clientId: string;
@@ -57,7 +72,8 @@ export default function TransactionJournal({ transactions, clients, projects, us
         return (
           client?.company.toLowerCase().includes(query) ||
           client?.name.toLowerCase().includes(query) ||
-          t.description?.toLowerCase().includes(query)
+          t.description?.toLowerCase().includes(query) ||
+          t.bankClientName?.toLowerCase().includes(query)
         );
       });
     }
@@ -86,8 +102,12 @@ export default function TransactionJournal({ transactions, clients, projects, us
       filtered = filtered.filter(t => new Date(t.date) <= new Date(filterDateTo));
     }
 
+    if (filterReconciliation !== 'all') {
+      filtered = filtered.filter(t => t.reconciliationStatus === filterReconciliation);
+    }
+
     return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, clients, searchQuery, filterType, filterClient, filterManager, filterProject, filterDateFrom, filterDateTo]);
+  }, [transactions, clients, searchQuery, filterType, filterClient, filterManager, filterProject, filterDateFrom, filterDateTo, filterReconciliation]);
 
   const totalAmount = useMemo(() => {
     return filteredTransactions.reduce((sum, t) => sum + t.amount, 0);
@@ -104,6 +124,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
     onAddTransaction({
       ...newTransaction,
       date: newTransaction.date || new Date().toISOString(),
+      reconciliationStatus: 'manual',
     });
 
     setNewTransaction({
@@ -145,6 +166,11 @@ export default function TransactionJournal({ transactions, clients, projects, us
     date: string;
     type: PaymentType;
     description: string;
+    reconciliationStatus: ReconciliationStatus;
+    bankDocumentNumber: string;
+    bankAmount: number;
+    bankClientName: string;
+    bankBin: string;
   }>) => {
     items.forEach(item => {
       onAddTransaction(item);
@@ -152,12 +178,13 @@ export default function TransactionJournal({ transactions, clients, projects, us
   };
 
   const exportToCSV = () => {
-    const headers = ['Дата', 'Клиент', 'Тип платежа', 'Сумма', 'Описание'];
+    const headers = ['Дата', 'Клиент', 'Тип платежа', 'Сумма', 'Статус сверки', 'Описание'];
     const rows = filteredTransactions.map(t => [
       new Date(t.date).toLocaleDateString('ru-RU'),
       getClientName(t.clientId),
       getPaymentTypeLabel(t.type),
       t.amount.toString(),
+      RECONCILIATION_STATUS_CONFIG[t.reconciliationStatus || 'manual']?.label || '',
       t.description || '',
     ]);
 
@@ -173,13 +200,24 @@ export default function TransactionJournal({ transactions, clients, projects, us
     link.click();
   };
 
+  const getReconciliationBadge = (status: ReconciliationStatus | undefined) => {
+    const config = RECONCILIATION_STATUS_CONFIG[status || 'manual'];
+    const Icon = config.icon;
+    return (
+      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium ${config.text} ${config.bg}`}>
+        <Icon className="h-3 w-3" />
+        {config.label}
+      </span>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-gray-900">Журнал платежей</h1>
           <p className="text-gray-600 mt-1 text-sm">
-            Всего транзакций: {filteredTransactions.length} на сумму {totalAmount.toLocaleString('ru-RU')} ₸
+            Всего транзакций: {filteredTransactions.length} на сумму {totalAmount.toLocaleString('ru-RU')} T
           </p>
         </div>
         <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
@@ -211,7 +249,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
 
       <div className="bg-white rounded-lg border border-gray-200 p-4">
         <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
@@ -255,6 +293,18 @@ export default function TransactionJournal({ transactions, clients, projects, us
                 <option key={user.id} value={user.id}>{user.name}</option>
               ))}
             </select>
+
+            <select
+              value={filterReconciliation}
+              onChange={(e) => setFilterReconciliation(e.target.value as ReconciliationStatus | 'all')}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">Все статусы сверки</option>
+              <option value="manual">Ручной ввод</option>
+              <option value="verified">Сверено</option>
+              <option value="discrepancy">Расхождение</option>
+              <option value="bank_import">Банковский импорт</option>
+            </select>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -290,7 +340,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
             </div>
           </div>
 
-          {(searchQuery || filterType !== 'all' || filterClient !== 'all' || filterManager !== 'all' || filterProject !== 'all' || filterDateFrom || filterDateTo) && (
+          {(searchQuery || filterType !== 'all' || filterClient !== 'all' || filterManager !== 'all' || filterProject !== 'all' || filterDateFrom || filterDateTo || filterReconciliation !== 'all') && (
             <button
               onClick={() => {
                 setSearchQuery('');
@@ -300,6 +350,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
                 setFilterProject('all');
                 setFilterDateFrom('');
                 setFilterDateTo('');
+                setFilterReconciliation('all');
               }}
               className="flex items-center justify-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg w-full md:w-auto"
             >
@@ -336,12 +387,16 @@ export default function TransactionJournal({ transactions, clients, projects, us
                   <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Клиент</th>
                   <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Тип платежа</th>
                   <th className="px-3 md:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Сумма</th>
+                  <th className="px-3 md:px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Сверка</th>
                   <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Описание</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredTransactions.map(transaction => (
-                  <tr key={transaction.id} className="hover:bg-gray-50">
+                  <tr
+                    key={transaction.id}
+                    className={`hover:bg-gray-50 ${transaction.amountDiscrepancy ? 'bg-amber-50/40' : ''}`}
+                  >
                     <td className="px-3 md:px-6 py-3 md:py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2 text-sm text-gray-900">
                         <Calendar className="h-4 w-4 text-gray-400" />
@@ -351,9 +406,14 @@ export default function TransactionJournal({ transactions, clients, projects, us
                     <td className="px-3 md:px-6 py-3 md:py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <UserIcon className="h-4 w-4 text-gray-400" />
-                        <span className="text-sm font-medium text-gray-900">
-                          {getClientName(transaction.clientId)}
-                        </span>
+                        <div>
+                          <span className="text-sm font-medium text-gray-900">
+                            {getClientName(transaction.clientId)}
+                          </span>
+                          {transaction.bankBin && (
+                            <span className="ml-1 text-xs text-gray-400">({transaction.bankBin})</span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-3 md:px-6 py-3 md:py-4 whitespace-nowrap">
@@ -362,12 +422,20 @@ export default function TransactionJournal({ transactions, clients, projects, us
                       </span>
                     </td>
                     <td className="px-3 md:px-6 py-3 md:py-4 whitespace-nowrap text-right">
-                      <span className="text-sm font-semibold text-green-600">
-                        +{transaction.amount.toLocaleString('ru-RU')} ₸
+                      <span className={`text-sm font-semibold ${transaction.amountDiscrepancy ? 'text-amber-600' : 'text-green-600'}`}>
+                        +{transaction.amount.toLocaleString('ru-RU')} T
                       </span>
+                      {transaction.amountDiscrepancy && transaction.bankAmount && transaction.bankAmount !== transaction.amount && (
+                        <div className="text-xs text-amber-500">
+                          банк: {transaction.bankAmount.toLocaleString('ru-RU')} T
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 md:px-6 py-3 md:py-4 whitespace-nowrap text-center">
+                      {getReconciliationBadge(transaction.reconciliationStatus)}
                     </td>
                     <td className="px-3 md:px-6 py-3 md:py-4">
-                      <span className="text-sm text-gray-600">{transaction.description || '—'}</span>
+                      <span className="text-sm text-gray-600 line-clamp-1">{transaction.description || '--'}</span>
                     </td>
                   </tr>
                 ))}
@@ -383,14 +451,14 @@ export default function TransactionJournal({ transactions, clients, projects, us
         clients={clients}
         transactions={transactions}
         onImport={handleBankImport}
+        onCreateClient={onCreateClient}
+        onReconcile={onReconcile}
       />
 
       <Modal isOpen={isAddModalOpen} onClose={resetForm} title="Добавить платеж">
         <form onSubmit={handleAddTransaction} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Клиент / Юр. лицо *
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Клиент / Юр. лицо *</label>
             <select
               value={newTransaction.clientId}
               onChange={(e) => setNewTransaction({ ...newTransaction, clientId: e.target.value })}
@@ -408,9 +476,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Сумма *
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Сумма *</label>
               <input
                 type="number"
                 value={newTransaction.amount || ''}
@@ -425,9 +491,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Дата *
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Дата *</label>
               <input
                 type="date"
                 value={newTransaction.date}
@@ -439,9 +503,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Тип платежа *
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Тип платежа *</label>
             <select
               value={newTransaction.type}
               onChange={(e) => setNewTransaction({ ...newTransaction, type: e.target.value as PaymentType })}
@@ -455,9 +517,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Описание
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Описание</label>
             <textarea
               value={newTransaction.description}
               onChange={(e) => setNewTransaction({ ...newTransaction, description: e.target.value })}

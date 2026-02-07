@@ -20,6 +20,8 @@ interface AnalyticsProps {
     activeTab?: string;
     onUpdatePnl?: (id: string, d: ProjectFinancials) => void;
     onAddTransaction?: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'isVerified'>) => void;
+    onCreateClient?: (client: { name: string; company: string; bin: string }) => Promise<Client>;
+    onReconcile?: (existingId: string, bankData: { amount: number; clientName: string; bin: string; docNumber: string }) => Promise<void>;
     currentUser: User;
 }
 
@@ -33,6 +35,8 @@ const Analytics: React.FC<AnalyticsProps> = ({
     transactions = [],
     activeTab: externalTab,
     onAddTransaction,
+    onCreateClient,
+    onReconcile,
     currentUser
 }) => {
     // Initialize tab from prop if possible to avoid empty initial render
@@ -412,6 +416,8 @@ const Analytics: React.FC<AnalyticsProps> = ({
                                 projects={projects}
                                 users={users}
                                 onAddTransaction={onAddTransaction}
+                                onCreateClient={onCreateClient}
+                                onReconcile={onReconcile}
                             />
                         ) : (
                             <div className="p-8 text-center text-slate-500">

@@ -458,18 +458,38 @@ export enum PaymentType {
 
 export type TransactionCategory = 'Salary' | 'Marketing' | 'Office' | 'Other' | 'Income';
 
+export type ReconciliationStatus = 'manual' | 'verified' | 'discrepancy' | 'bank_import';
+
 export interface Transaction {
     id: string;
     clientId: string;
-    projectId?: string; // Optional linkage
+    projectId?: string;
     amount: number;
-    date: string; // ISO Date
+    date: string;
     type: PaymentType;
     category?: TransactionCategory;
     description?: string;
-    isVerified: boolean; // Confirmed by accountant/admin
-    createdBy?: string; // User ID who created the transaction
-    createdAt?: string; // When the transaction was created
+    isVerified: boolean;
+    createdBy?: string;
+    createdAt?: string;
+    reconciliationStatus?: ReconciliationStatus;
+    bankDocumentNumber?: string;
+    bankAmount?: number;
+    bankClientName?: string;
+    bankBin?: string;
+    bankImportedAt?: string;
+    linkedTransactionId?: string;
+    amountDiscrepancy?: boolean;
+}
+
+export interface BankCounterpartyAlias {
+    id: string;
+    organizationId: string;
+    bankName: string;
+    bankBin: string;
+    clientId: string;
+    createdAt: string;
+    updatedAt: string;
 }
 
 export interface IntegrationStats {

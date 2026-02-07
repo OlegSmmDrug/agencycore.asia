@@ -1,4 +1,5 @@
-import { Client, PaymentType } from '../types';
+import { Client, PaymentType, Transaction, BankCounterpartyAlias, ReconciliationStatus } from '../types';
+import { sanitizeCounterpartyName, extractBin, reconciliationService, ReconciliationMatch } from './reconciliationService';
 
 export interface ParsedTransaction {
   date: string;
@@ -7,19 +8,29 @@ export interface ParsedTransaction {
   currency: string;
   exchangeRate: number | null;
   clientName: string;
+  clientNameRaw: string;
   clientBin: string;
   description: string;
   documentNumber: string;
   knpCode: string;
   paymentType: PaymentType;
   matchedClientId: string | null;
+  matchSource: 'bin' | 'alias' | 'name' | 'none';
   matchStatus: 'matched' | 'unmatched' | 'duplicate';
+  reconciliation: ReconciliationMatch;
 }
 
 export interface ImportResult {
   transactions: ParsedTransaction[];
   format: '1c' | 'csv' | 'unknown';
   fileName: string;
+  summary: {
+    total: number;
+    verified: number;
+    discrepancies: number;
+    newEntries: number;
+    duplicates: number;
+  };
 }
 
 function detectFormat(content: string, fileName: string): '1c' | 'csv' | 'unknown' {
@@ -64,8 +75,8 @@ function parseExchangeRate(description: string): number | null {
   return null;
 }
 
-function detectPaymentType(description: string): PaymentType {
-  const lower = description.toLowerCase();
+function detectPaymentTypeFromText(text: string): PaymentType {
+  const lower = text.toLowerCase();
   if (lower.includes('предоплат') || lower.includes('аванс')) {
     return PaymentType.PREPAYMENT;
   }
@@ -78,54 +89,53 @@ function detectPaymentType(description: string): PaymentType {
   if (lower.includes('полн') && lower.includes('оплат')) {
     return PaymentType.FULL;
   }
+  if (lower.includes('постоплат')) {
+    return PaymentType.POSTPAYMENT;
+  }
   return PaymentType.PREPAYMENT;
 }
 
-function matchClient(
-  clientName: string,
-  clientBin: string,
-  clients: Client[]
-): string | null {
-  if (clientBin) {
-    const byBin = clients.find(c =>
-      c.bin === clientBin || c.inn === clientBin
-    );
-    if (byBin) return byBin.id;
-  }
-
-  if (clientName) {
-    const normalized = clientName.toLowerCase().trim();
-    const exact = clients.find(c =>
-      c.company?.toLowerCase().trim() === normalized ||
-      c.name?.toLowerCase().trim() === normalized ||
-      c.legalName?.toLowerCase().trim() === normalized
-    );
-    if (exact) return exact.id;
-
-    const partial = clients.find(c => {
-      const company = c.company?.toLowerCase().trim() || '';
-      const name = c.name?.toLowerCase().trim() || '';
-      const legal = c.legalName?.toLowerCase().trim() || '';
-      return (
-        (company && normalized.includes(company)) ||
-        (company && company.includes(normalized)) ||
-        (name && normalized.includes(name)) ||
-        (legal && normalized.includes(legal))
-      );
-    });
-    if (partial) return partial.id;
-  }
-
-  return null;
+function mapPaymentTypeFromCSV(value: string): PaymentType {
+  const lower = value.toLowerCase().trim();
+  if (lower === 'предоплата' || lower.includes('предоплат')) return PaymentType.PREPAYMENT;
+  if (lower === 'полная оплата' || lower.includes('полн')) return PaymentType.FULL;
+  if (lower === 'постоплата' || lower.includes('постоплат')) return PaymentType.POSTPAYMENT;
+  if (lower.includes('ретейнер') || lower.includes('абон')) return PaymentType.RETAINER;
+  if (lower.includes('возврат') || lower.includes('refund')) return PaymentType.REFUND;
+  return PaymentType.PREPAYMENT;
 }
 
-function parse1CFormat(content: string): Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus'>[] {
-  const results: Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus'>[] = [];
+function parseCSVLine(line: string, delimiter: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
 
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === delimiter && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function parse1CFormat(content: string): Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] {
+  const results: Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] = [];
   const sections = content.split(/СекцияДокумент/g).slice(1);
 
   for (const section of sections) {
-    if (section.includes('КонецДокумента') === false) continue;
+    if (!section.includes('КонецДокумента')) continue;
 
     const getField = (name: string): string => {
       const patterns = [
@@ -142,8 +152,8 @@ function parse1CFormat(content: string): Omit<ParsedTransaction, 'matchedClientI
     const dateStr = getField('ДатаДокумента') || getField('ДатаОперации');
     const amountStr = getField('Сумма');
     const docNumber = getField('НомерДокумента');
-    const payerName = getField('ПлательщикНаименование') || getField('Плательщик');
-    const payerBin = getField('Плательщик_ИНН') || getField('Плательщик_БИН') || getField('ПлательщикИНН');
+    const payerNameRaw = getField('ПлательщикНаименование') || getField('Плательщик');
+    const payerBinRaw = getField('Плательщик_ИНН') || getField('Плательщик_БИН') || getField('ПлательщикИНН');
     const description = getField('НазначениеПлатежа');
     const knpCode = getField('КодНазначенияПлатежа') || '';
     const currency = getField('Валюта') || 'KZT';
@@ -156,57 +166,61 @@ function parse1CFormat(content: string): Omit<ParsedTransaction, 'matchedClientI
     const exchangeRate = currency.toUpperCase() === 'USD' ? parseExchangeRate(description) : null;
     const amountKZT = exchangeRate ? amountOriginal * exchangeRate : amountOriginal;
 
+    const clientNameSanitized = sanitizeCounterpartyName(payerNameRaw);
+    const clientBin = payerBinRaw || extractBin(payerNameRaw);
+
     results.push({
       date: parseDate(dateStr),
       amount: Math.round(amountKZT * 100) / 100,
       amountOriginal,
       currency: currency.toUpperCase(),
       exchangeRate,
-      clientName: payerName,
-      clientBin: payerBin,
+      clientName: clientNameSanitized,
+      clientNameRaw: payerNameRaw,
+      clientBin,
       description,
       documentNumber: docNumber,
       knpCode,
-      paymentType: detectPaymentType(description),
+      paymentType: detectPaymentTypeFromText(description),
     });
   }
 
   return results;
 }
 
-function parseCSVFormat(content: string): Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus'>[] {
-  const results: Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus'>[] = [];
+function parseCSVFormat(content: string): Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] {
+  const results: Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] = [];
 
   const lines = content.trim().split('\n').map(l => l.trim()).filter(l => l.length > 0);
   if (lines.length < 2) return results;
 
   const delimiter = lines[0].includes(';') ? ';' : ',';
-  const headers = lines[0].split(delimiter).map(h => h.replace(/"/g, '').trim().toLowerCase());
+  const headerCells = parseCSVLine(lines[0], delimiter);
+  const headers = headerCells.map(h => h.replace(/"/g, '').replace(/^\uFEFF/, '').trim().toLowerCase());
 
   const findCol = (...candidates: string[]): number => {
     for (const candidate of candidates) {
-      const idx = headers.findIndex(h =>
-        h.includes(candidate.toLowerCase())
-      );
+      const idx = headers.findIndex(h => h.includes(candidate.toLowerCase()));
       if (idx >= 0) return idx;
     }
     return -1;
   };
 
   const dateCol = findCol('дата', 'date');
-  const nameCol = findCol('наименование', 'фио', 'контрагент', 'плательщик', 'name');
+  const nameCol = findCol('клиент', 'наименование', 'фио', 'контрагент', 'плательщик', 'name', 'client');
   const creditCol = findCol('зачислен', 'приход', 'credit', 'кредит');
   const debitCol = findCol('списан', 'расход', 'debit', 'дебет');
   const amountCol = findCol('сумма', 'amount');
   const descCol = findCol('назначение', 'описание', 'description', 'purpose');
   const knpCol = findCol('кнп', 'knp', 'код');
   const binCol = findCol('бин', 'иин', 'bin', 'iin', 'инн', 'inn');
+  const typeCol = findCol('тип платежа', 'тип', 'payment type', 'type');
 
   for (let i = 1; i < lines.length; i++) {
-    const cells = lines[i].split(delimiter).map(c => c.replace(/"/g, '').trim());
-    if (cells.length < 3) continue;
+    const cells = parseCSVLine(lines[i], delimiter);
+    if (cells.length < 2) continue;
 
-    const dateStr = dateCol >= 0 ? cells[dateCol] : '';
+    const dateStr = dateCol >= 0 ? cells[dateCol]?.replace(/"/g, '') : '';
     if (!dateStr) continue;
 
     let amount = 0;
@@ -221,10 +235,17 @@ function parseCSVFormat(content: string): Omit<ParsedTransaction, 'matchedClient
     }
     if (amount <= 0) continue;
 
-    const clientName = nameCol >= 0 ? cells[nameCol] : '';
-    const description = descCol >= 0 ? cells[descCol] : '';
-    const knpCode = knpCol >= 0 ? cells[knpCol] : '';
-    const clientBin = binCol >= 0 ? cells[binCol] : '';
+    const clientNameRaw = nameCol >= 0 ? (cells[nameCol] || '') : '';
+    const clientNameSanitized = sanitizeCounterpartyName(clientNameRaw);
+    const description = descCol >= 0 ? (cells[descCol] || '') : '';
+    const knpCode = knpCol >= 0 ? (cells[knpCol] || '') : '';
+    const clientBinRaw = binCol >= 0 ? (cells[binCol] || '') : '';
+    const clientBin = clientBinRaw || extractBin(clientNameRaw);
+    const paymentTypeStr = typeCol >= 0 ? (cells[typeCol] || '') : '';
+
+    const paymentType = paymentTypeStr
+      ? mapPaymentTypeFromCSV(paymentTypeStr)
+      : detectPaymentTypeFromText(description);
 
     results.push({
       date: parseDate(dateStr),
@@ -232,12 +253,13 @@ function parseCSVFormat(content: string): Omit<ParsedTransaction, 'matchedClient
       amountOriginal: amount,
       currency: 'KZT',
       exchangeRate: null,
-      clientName,
+      clientName: clientNameSanitized,
+      clientNameRaw,
       clientBin,
       description,
       documentNumber: '',
       knpCode,
-      paymentType: detectPaymentType(description),
+      paymentType,
     });
   }
 
@@ -256,7 +278,8 @@ export function readFileAsText(file: File, encoding: string = 'windows-1251'): P
 export async function parseStatementFile(
   file: File,
   clients: Client[],
-  existingDocNumbers: string[]
+  existingTransactions: Transaction[],
+  aliases: BankCounterpartyAlias[]
 ): Promise<ImportResult> {
   let content = await readFileAsText(file, 'windows-1251');
 
@@ -266,7 +289,7 @@ export async function parseStatementFile(
 
   const format = detectFormat(content, file.name);
 
-  let rawTransactions: Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus'>[] = [];
+  let rawTransactions: Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] = [];
 
   if (format === '1c') {
     rawTransactions = parse1CFormat(content);
@@ -274,16 +297,51 @@ export async function parseStatementFile(
     rawTransactions = parseCSVFormat(content);
   }
 
+  const existingDocNumbers = existingTransactions
+    .map(t => t.bankDocumentNumber || t.description?.match(/\[DOC:([^\]]+)\]/)?.[1])
+    .filter(Boolean) as string[];
+
+  let verified = 0;
+  let discrepancies = 0;
+  let newEntries = 0;
+  let duplicates = 0;
+
   const transactions: ParsedTransaction[] = rawTransactions.map(t => {
-    const matchedClientId = matchClient(t.clientName, t.clientBin, clients);
+    const { clientId, matchSource } = reconciliationService.matchClientSmart(
+      t.clientName,
+      t.clientBin,
+      clients,
+      aliases
+    );
+
     const isDuplicate = t.documentNumber
       ? existingDocNumbers.includes(t.documentNumber)
       : false;
 
+    const reconciliation = reconciliationService.findMatchingTransaction(
+      t.date,
+      t.amount,
+      clientId,
+      t.documentNumber,
+      existingTransactions
+    );
+
+    if (isDuplicate) {
+      duplicates++;
+    } else if (reconciliation.type === 'verified') {
+      verified++;
+    } else if (reconciliation.type === 'discrepancy') {
+      discrepancies++;
+    } else {
+      newEntries++;
+    }
+
     return {
       ...t,
-      matchedClientId,
-      matchStatus: isDuplicate ? 'duplicate' : matchedClientId ? 'matched' : 'unmatched',
+      matchedClientId: clientId,
+      matchSource,
+      matchStatus: isDuplicate ? 'duplicate' as const : clientId ? 'matched' as const : 'unmatched' as const,
+      reconciliation,
     };
   });
 
@@ -291,5 +349,12 @@ export async function parseStatementFile(
     transactions,
     format,
     fileName: file.name,
+    summary: {
+      total: transactions.length,
+      verified,
+      discrepancies,
+      newEntries,
+      duplicates,
+    },
   };
 }
