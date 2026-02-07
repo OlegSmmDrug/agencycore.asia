@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { Transaction, Client } from '../types';
+import { Transaction, Client, Project, ProjectStatus } from '../types';
 import { supabase } from '../lib/supabase';
 import { financialPlanService, FinancialPlan } from '../services/financialPlanService';
 import { getCurrentOrganizationId } from '../utils/organizationContext';
@@ -7,6 +7,7 @@ import { getCurrentOrganizationId } from '../utils/organizationContext';
 interface FinancialModelProps {
   transactions: Transaction[];
   clients: Client[];
+  projects: Project[];
   viewMode?: 'opiu' | 'dds';
 }
 
@@ -37,7 +38,13 @@ interface EditableValues {
   };
 }
 
-const TAX_RATE = 0.10;
+const DEFAULT_TAX_RATE = 0.15;
+const TAX_RATE_OPTIONS = [
+  { label: '3% (ИП упрощ.)', value: 0.03 },
+  { label: '10% (КПН)', value: 0.10 },
+  { label: '15% (стандарт)', value: 0.15 },
+  { label: '20%', value: 0.20 },
+];
 
 const formatVal = (v: number, showSign = false) => {
   if (isNaN(v) || v === 0) return '₸ 0';
@@ -50,7 +57,7 @@ const formatPct = (v: number) => {
   return `${Math.round(v)} %`;
 };
 
-const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clients = [], viewMode }) => {
+const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clients = [], projects = [], viewMode }) => {
   const [viewType, setViewType] = useState<'opiu' | 'dds'>(viewMode || 'opiu');
   const [grouping, setGrouping] = useState<'monthly' | 'quarterly'>('monthly');
   const [startDate, setStartDate] = useState(new Date(2025, 11, 1));
@@ -60,9 +67,18 @@ const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clie
   const [plans, setPlans] = useState<FinancialPlan[]>([]);
   const [editValues, setEditValues] = useState<EditableValues>({});
   const [saving, setSaving] = useState(false);
+  const [taxRate, setTaxRate] = useState(DEFAULT_TAX_RATE);
+  const [showTaxSettings, setShowTaxSettings] = useState(false);
   const [factPayroll, setFactPayroll] = useState<Record<string, number>>({});
   const [factProjectExpenses, setFactProjectExpenses] = useState<Record<string, number>>({});
   const editInputRef = useRef<HTMLInputElement>(null);
+
+  const activeProjectIds = useMemo(() =>
+    projects
+      .filter(p => p.status !== ProjectStatus.COMPLETED && p.status !== ProjectStatus.ARCHIVED)
+      .map(p => p.id),
+    [projects]
+  );
 
   const months = useMemo(() => {
     const list: { label: string; key: string; month: string }[] = [];
@@ -106,20 +122,25 @@ const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clie
       });
       setFactPayroll(payrollMap);
 
-      const { data: expData } = await supabase
-        .from('project_expenses')
-        .select('month, total_expenses')
-        .gte('month', startMonth)
-        .lte('month', endMonth);
+      if (activeProjectIds.length > 0) {
+        const { data: expData } = await supabase
+          .from('project_expenses')
+          .select('month, total_expenses')
+          .in('project_id', activeProjectIds)
+          .gte('month', startMonth)
+          .lte('month', endMonth);
 
-      const expMap: Record<string, number> = {};
-      (expData || []).forEach(r => {
-        expMap[r.month] = (expMap[r.month] || 0) + (Number(r.total_expenses) || 0);
-      });
-      setFactProjectExpenses(expMap);
+        const expMap: Record<string, number> = {};
+        (expData || []).forEach(r => {
+          expMap[r.month] = (expMap[r.month] || 0) + (Number(r.total_expenses) || 0);
+        });
+        setFactProjectExpenses(expMap);
+      } else {
+        setFactProjectExpenses({});
+      }
     };
     load();
-  }, [months, startMonth, endMonth]);
+  }, [months, startMonth, endMonth, activeProjectIds]);
 
   const monthlyData: MonthData[] = useMemo(() => {
     const safeTransactions = Array.isArray(transactions) ? transactions : [];
@@ -136,9 +157,13 @@ const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clie
       });
 
       const revenue = mTxns.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+      const salariesFromTx = Math.abs(mTxns.filter(t => t.category === 'Salary').reduce((s, t) => s + t.amount, 0));
       const marketingTx = Math.abs(mTxns.filter(t => t.category === 'Marketing').reduce((s, t) => s + t.amount, 0));
       const officeTx = Math.abs(mTxns.filter(t => t.category === 'Office').reduce((s, t) => s + t.amount, 0));
       const otherTx = Math.abs(mTxns.filter(t => t.category === 'Other').reduce((s, t) => s + t.amount, 0));
+
+      const payrollFromRecords = factPayroll[m.month] || 0;
+      const salaries = Math.max(salariesFromTx, payrollFromRecords);
 
       const plan = plans.find(p => p.month === m.month) || null;
 
@@ -149,7 +174,7 @@ const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clie
         fact: {
           revenue,
           cogs: factProjectExpenses[m.month] || 0,
-          payroll: factPayroll[m.month] || 0,
+          payroll: salaries,
           marketing: marketingTx,
           office: officeTx,
           otherOpex: otherTx,
@@ -182,7 +207,7 @@ const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clie
     const totalOpex = marketing + payroll + office + otherOpex + depreciation;
     const ebitda = grossProfit - marketing - payroll - office - otherOpex;
     const ebitdaMargin = revenue > 0 ? (ebitda / revenue) * 100 : 0;
-    const taxes = editValues[md.month]?.taxes ?? (md.plan?.plannedTaxes || Math.max(0, Math.round(ebitda * TAX_RATE)));
+    const taxes = editValues[md.month]?.taxes ?? (md.plan?.plannedTaxes || Math.max(0, Math.round(ebitda * taxRate)));
     const netProfit = ebitda - depreciation - taxes;
     const netMargin = revenue > 0 ? (netProfit / revenue) * 100 : 0;
     const totalIncome = revenue;
@@ -194,7 +219,7 @@ const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clie
       totalOpex, ebitda, ebitdaMargin, taxes, netProfit, netMargin,
       totalIncome, totalAdminFixed,
     };
-  }, [getVal, editValues]);
+  }, [getVal, editValues, taxRate]);
 
   const rows = useMemo(() => monthlyData.map(computeRow), [monthlyData, computeRow]);
 
@@ -413,6 +438,47 @@ const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clie
             </svg>
           </button>
 
+          <div className="relative">
+            <button
+              onClick={() => setShowTaxSettings(!showTaxSettings)}
+              className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-100 transition-all cursor-pointer text-xs"
+            >
+              <span className="font-black text-slate-400 uppercase tracking-wider">Налог:</span>
+              <span className="font-black text-slate-800">{(taxRate * 100).toFixed(0)}%</span>
+              <svg className="w-3 h-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            {showTaxSettings && (
+              <div className="absolute top-full right-0 mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 py-1 z-50 min-w-[180px]">
+                {TAX_RATE_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => { setTaxRate(opt.value); setShowTaxSettings(false); }}
+                    className={`w-full text-left px-4 py-2.5 text-xs font-bold transition-colors ${taxRate === opt.value ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+                <div className="border-t border-slate-100 px-4 py-2.5">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase">Своя ставка (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    defaultValue={(taxRate * 100).toFixed(0)}
+                    onBlur={(e) => {
+                      const v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                      setTaxRate(v / 100);
+                      setShowTaxSettings(false);
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                    className="w-full mt-1 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           {isEditMode ? (
             <div className="flex items-center gap-2">
               <button
@@ -593,7 +659,7 @@ const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clie
                 <TotalRow label="EBITDA" values={displayData.map(d => d.ebitda)} subLabel="EBITDA маржа" percentages={displayData.map(d => d.ebitdaMargin)} accent="blue" />
                 <tr className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-2.5 px-4 sticky left-0 bg-white z-20 border-r border-slate-100 w-[260px] min-w-[260px] shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
-                    <div className="text-xs font-bold text-slate-700">Налоги ({(TAX_RATE * 100).toFixed(0)}%)</div>
+                    <div className="text-xs font-bold text-slate-700">Налоги ({(taxRate * 100).toFixed(0)}%)</div>
                   </td>
                   {grouping === 'monthly'
                     ? monthlyData.map((md, i) => (

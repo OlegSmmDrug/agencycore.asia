@@ -384,7 +384,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
             <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:px-8 pb-20">
                 {activeTab === 'finmodel' ? (
                     <div className="h-full rounded-[2rem] overflow-hidden border border-slate-200 shadow-sm bg-white">
-                        <FinancialModel transactions={transactions} clients={clients} />
+                        <FinancialModel transactions={transactions} clients={clients} projects={projects} />
                     </div>
                 ) : activeTab === 'payments' ? (
                     <div className="h-full rounded-[2rem] overflow-hidden border border-slate-200 shadow-sm bg-white">
