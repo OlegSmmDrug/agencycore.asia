@@ -44,23 +44,40 @@ export interface TikTokAdsStats {
   }>;
 }
 
+const TIKTOK_API_URL = 'https://business-api.tiktok.com/open_api/v1.3';
+
 export async function validateTikTokToken(accessToken: string): Promise<boolean> {
+  if (!accessToken) return false;
   try {
-    return true;
-  } catch (error) {
+    const response = await fetch(`${TIKTOK_API_URL}/oauth2/advertiser/get/`, {
+      headers: { 'Access-Token': accessToken },
+    });
+    return response.ok;
+  } catch {
     return false;
   }
 }
 
 export async function getTikTokAdvertisers(accessToken: string): Promise<TikTokAdvertiser[]> {
-  return [
-    {
-      advertiserId: '1234567890123456',
-      name: 'Рекламный аккаунт TikTok',
-      currency: 'RUB',
-      timezone: 'Europe/Moscow'
-    }
-  ];
+  if (!accessToken) return [];
+
+  try {
+    const response = await fetch(`${TIKTOK_API_URL}/oauth2/advertiser/get/`, {
+      headers: { 'Access-Token': accessToken },
+    });
+
+    if (!response.ok) return [];
+    const data = await response.json();
+
+    return (data.data?.list || []).map((adv: any) => ({
+      advertiserId: adv.advertiser_id,
+      name: adv.advertiser_name || adv.advertiser_id,
+      currency: adv.currency || 'USD',
+      timezone: adv.timezone || 'UTC',
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export async function getTikTokAdsStats(
@@ -69,105 +86,87 @@ export async function getTikTokAdsStats(
   dateRange?: string,
   customDateRange?: { since: string; until: string }
 ): Promise<TikTokAdsStats> {
-  const campaigns: TikTokCampaign[] = [
-    {
-      id: 'campaign_1',
-      name: 'Охватная кампания',
-      status: 'ACTIVE',
-      objective: 'REACH',
-      metrics: {
-        spend: 52000,
-        clicks: 2100,
-        impressions: 450000,
-        conversions: 95,
-        ctr: 0.47,
-        cpc: 24.76,
-        videoViews: 38000,
-        videoWatchTime: 285000
-      }
-    },
-    {
-      id: 'campaign_2',
-      name: 'Конверсионная кампания',
-      status: 'ACTIVE',
-      objective: 'CONVERSIONS',
-      metrics: {
-        spend: 38000,
-        clicks: 1580,
-        impressions: 320000,
-        conversions: 68,
-        ctr: 0.49,
-        cpc: 24.05,
-        videoViews: 25000,
-        videoWatchTime: 198000
-      }
-    },
-    {
-      id: 'campaign_3',
-      name: 'Трафиковая кампания',
-      status: 'PAUSED',
-      objective: 'TRAFFIC',
-      metrics: {
-        spend: 25000,
-        clicks: 1200,
-        impressions: 280000,
-        conversions: 42,
-        ctr: 0.43,
-        cpc: 20.83,
-        videoViews: 18000,
-        videoWatchTime: 126000
-      }
-    }
-  ];
-
-  const totalSpend = campaigns.reduce((sum, c) => sum + c.metrics.spend, 0);
-  const totalClicks = campaigns.reduce((sum, c) => sum + c.metrics.clicks, 0);
-  const totalImpressions = campaigns.reduce((sum, c) => sum + c.metrics.impressions, 0);
-  const totalConversions = campaigns.reduce((sum, c) => sum + c.metrics.conversions, 0);
-  const totalVideoViews = campaigns.reduce((sum, c) => sum + c.metrics.videoViews, 0);
-
-  let startDate: Date;
-  let endDate: Date;
-  let numDays: number;
-
-  if (customDateRange?.since && customDateRange?.until) {
-    startDate = new Date(customDateRange.since);
-    endDate = new Date(customDateRange.until);
-    numDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-  } else {
-    numDays = 30;
-    endDate = new Date();
-    startDate = new Date(endDate);
-    startDate.setDate(startDate.getDate() - (numDays - 1));
+  if (!accessToken || !advertiserId) {
+    return emptyTikTokStats(advertiserId);
   }
 
-  const dailyStats = Array.from({ length: numDays }, (_, i) => {
-    const date = new Date(startDate);
-    date.setDate(date.getDate() + i);
-    return {
-      date: date.toISOString().split('T')[0],
-      spend: Math.floor(Math.random() * 6000) + 2500,
-      clicks: Math.floor(Math.random() * 200) + 80,
-      impressions: Math.floor(Math.random() * 40000) + 20000,
-      conversions: Math.floor(Math.random() * 12) + 3,
-      videoViews: Math.floor(Math.random() * 3000) + 1500
-    };
-  });
+  let startDate: string;
+  let endDate: string;
 
-  return {
-    advertiserId,
-    advertiserName: 'Рекламный аккаунт TikTok',
-    totalSpend,
-    totalClicks,
-    totalImpressions,
-    totalConversions,
-    totalVideoViews,
-    avgCpc: totalClicks > 0 ? totalSpend / totalClicks : 0,
-    avgCtr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
-    costPerConversion: totalConversions > 0 ? totalSpend / totalConversions : 0,
-    campaigns,
-    dailyStats
-  };
+  if (customDateRange?.since && customDateRange?.until) {
+    startDate = customDateRange.since;
+    endDate = customDateRange.until;
+  } else {
+    const days = dateRange === '7d' ? 7 : dateRange === '14d' ? 14 : dateRange === '90d' ? 90 : 30;
+    const end = new Date();
+    const start = new Date(end);
+    start.setDate(start.getDate() - days);
+    startDate = start.toISOString().split('T')[0];
+    endDate = end.toISOString().split('T')[0];
+  }
+
+  try {
+    const params = new URLSearchParams({
+      advertiser_id: advertiserId,
+      report_type: 'BASIC',
+      data_level: 'AUCTION_CAMPAIGN',
+      dimensions: '["campaign_id"]',
+      metrics: '["spend","clicks","impressions","conversion","ctr","cpc","video_play_actions","video_watched_6s"]',
+      start_date: startDate,
+      end_date: endDate,
+    });
+
+    const response = await fetch(`${TIKTOK_API_URL}/report/integrated/get/?${params}`, {
+      headers: { 'Access-Token': accessToken },
+    });
+
+    if (!response.ok) {
+      return emptyTikTokStats(advertiserId);
+    }
+
+    const data = await response.json();
+    const rows = data.data?.list || [];
+
+    const campaigns: TikTokCampaign[] = rows.map((row: any) => ({
+      id: row.dimensions?.campaign_id || '',
+      name: row.dimensions?.campaign_name || row.dimensions?.campaign_id || '',
+      status: 'ACTIVE',
+      objective: '',
+      metrics: {
+        spend: Number(row.metrics?.spend || 0),
+        clicks: Number(row.metrics?.clicks || 0),
+        impressions: Number(row.metrics?.impressions || 0),
+        conversions: Number(row.metrics?.conversion || 0),
+        ctr: Number(row.metrics?.ctr || 0) * 100,
+        cpc: Number(row.metrics?.cpc || 0),
+        videoViews: Number(row.metrics?.video_play_actions || 0),
+        videoWatchTime: Number(row.metrics?.video_watched_6s || 0),
+      },
+    }));
+
+    const totalSpend = campaigns.reduce((s, c) => s + c.metrics.spend, 0);
+    const totalClicks = campaigns.reduce((s, c) => s + c.metrics.clicks, 0);
+    const totalImpressions = campaigns.reduce((s, c) => s + c.metrics.impressions, 0);
+    const totalConversions = campaigns.reduce((s, c) => s + c.metrics.conversions, 0);
+    const totalVideoViews = campaigns.reduce((s, c) => s + c.metrics.videoViews, 0);
+
+    return {
+      advertiserId,
+      advertiserName: advertiserId,
+      totalSpend,
+      totalClicks,
+      totalImpressions,
+      totalConversions,
+      totalVideoViews,
+      avgCpc: totalClicks > 0 ? totalSpend / totalClicks : 0,
+      avgCtr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+      costPerConversion: totalConversions > 0 ? totalSpend / totalConversions : 0,
+      campaigns,
+      dailyStats: [],
+    };
+  } catch {
+    return emptyTikTokStats(advertiserId);
+  }
 }
 
 export async function getTikTokCampaigns(
@@ -176,4 +175,21 @@ export async function getTikTokCampaigns(
 ): Promise<TikTokCampaign[]> {
   const stats = await getTikTokAdsStats(accessToken, advertiserId);
   return stats.campaigns;
+}
+
+function emptyTikTokStats(advertiserId: string): TikTokAdsStats {
+  return {
+    advertiserId,
+    advertiserName: '',
+    totalSpend: 0,
+    totalClicks: 0,
+    totalImpressions: 0,
+    totalConversions: 0,
+    totalVideoViews: 0,
+    avgCpc: 0,
+    avgCtr: 0,
+    costPerConversion: 0,
+    campaigns: [],
+    dailyStats: [],
+  };
 }

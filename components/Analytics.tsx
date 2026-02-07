@@ -29,6 +29,8 @@ interface AnalyticsProps {
     onCreateClient?: (client: { name: string; company: string; bin: string }) => Promise<Client>;
     onReconcile?: (existingId: string, bankData: { amount: number; clientName: string; bin: string; docNumber: string }) => Promise<void>;
     onProjectClick?: (projectId: string) => void;
+    onClientClick?: (clientId: string) => void;
+    onNavigateToIntegrations?: () => void;
     currentUser: User;
 }
 
@@ -51,6 +53,8 @@ const Analytics: React.FC<AnalyticsProps> = ({
     onCreateClient,
     onReconcile,
     onProjectClick,
+    onClientClick,
+    onNavigateToIntegrations,
     currentUser
 }) => {
     const initialTab = useMemo(() => {
@@ -76,6 +80,13 @@ const Analytics: React.FC<AnalyticsProps> = ({
         else if (externalTab === 'financial_model') setActiveTab('finmodel');
         else if (externalTab === 'payments') setActiveTab('payments');
     }, [externalTab]);
+
+    const handleNavigateToTab = useCallback((tab: string) => {
+        const validTabs = ['overview', 'finance', 'sales', 'marketing', 'unit', 'team', 'finmodel', 'payments'];
+        if (validTabs.includes(tab)) {
+            setActiveTab(tab as any);
+        }
+    }, []);
 
     const [projectExpensesData, setProjectExpensesData] = useState<Record<string, any>>({});
     const [prevMonthExpensesData, setPrevMonthExpensesData] = useState<Record<string, any>>({});
@@ -335,6 +346,8 @@ const Analytics: React.FC<AnalyticsProps> = ({
                     <OverviewTab
                         clients={clients} users={users} tasks={tasks} projects={projects}
                         transactions={transactions} unitProjectList={unitData.projectList}
+                        onProjectClick={onProjectClick} onClientClick={onClientClick}
+                        onNavigateToTab={handleNavigateToTab}
                     />
                 ) : activeTab === 'finmodel' ? (
                     <div className="h-full rounded-[2rem] overflow-hidden border border-slate-200 shadow-sm bg-white">
@@ -352,11 +365,11 @@ const Analytics: React.FC<AnalyticsProps> = ({
                         <div className="p-8 text-center text-slate-500">Функция добавления платежей недоступна</div>
                     )
                 ) : activeTab === 'finance' ? (
-                    <FinanceTab transactions={transactions} projects={projects} />
+                    <FinanceTab transactions={transactions} projects={projects} onNavigateToTab={handleNavigateToTab} />
                 ) : activeTab === 'sales' ? (
-                    <SalesTab clients={clients} users={users} transactions={transactions} />
+                    <SalesTab clients={clients} users={users} transactions={transactions} onClientClick={onClientClick} onNavigateToTab={handleNavigateToTab} />
                 ) : activeTab === 'marketing' ? (
-                    <MarketingTab clients={clients} transactions={transactions} />
+                    <MarketingTab clients={clients} transactions={transactions} onNavigateToTab={handleNavigateToTab} onNavigateToIntegrations={onNavigateToIntegrations} />
                 ) : activeTab === 'unit' ? (
                     <UnitEconomicsSection
                         unitData={unitData} selectedMonth={selectedMonth} navigateMonth={navigateMonth}
@@ -364,7 +377,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
                         syncProgress={syncProgress} onProjectClick={onProjectClick}
                     />
                 ) : (
-                    <TeamTab users={users} tasks={tasks} projects={projects} transactions={transactions} />
+                    <TeamTab users={users} tasks={tasks} projects={projects} transactions={transactions} onNavigateToTab={handleNavigateToTab} />
                 )}
             </div>
         </div>

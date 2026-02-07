@@ -12,6 +12,7 @@ import { getCurrentOrganizationId } from '../../utils/organizationContext';
 interface FinanceTabProps {
   transactions: Transaction[];
   projects: Project[];
+  onNavigateToTab?: (tab: string) => void;
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#64748b', '#06b6d4'];
@@ -31,7 +32,7 @@ const TAX_RATE_OPTIONS = [
   { label: '20%', value: 0.20 },
 ];
 
-const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
+const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects, onNavigateToTab }) => {
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
   const [plan, setPlan] = useState<FinancialPlan | null>(null);
   const [payrollTotal, setPayrollTotal] = useState(0);
@@ -483,7 +484,8 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
               <PnlRow label="Себестоимость (COGS)" value={-pnl.cogs} revenue={pnl.revenue} sub
                 expandable={!!cogsBreakdown && cogsBreakdown.total > 0}
                 expanded={showCogsDetail}
-                onToggle={() => setShowCogsDetail(!showCogsDetail)} />
+                onToggle={() => setShowCogsDetail(!showCogsDetail)}
+                onClick={() => onNavigateToTab?.('unit')} />
               {showCogsDetail && cogsBreakdown && (
                 <>
                   {cogsBreakdown.smm > 0 && <PnlRow label="SMM-контент" value={-cogsBreakdown.smm} revenue={pnl.revenue} indent />}
@@ -499,7 +501,8 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
                 planValue={plan?.plannedPayroll}
                 expandable
                 expanded={showFotDetail}
-                onToggle={() => setShowFotDetail(!showFotDetail)} />
+                onToggle={() => setShowFotDetail(!showFotDetail)}
+                onClick={() => onNavigateToTab?.('team')} />
               {showFotDetail && (
                 <>
                   {pnl.salariesSource === 'transactions' && (
@@ -544,7 +547,7 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
                   )}
                 </>
               )}
-              <PnlRow label="Маркетинг" value={-pnl.marketing} revenue={pnl.revenue} sub planValue={plan?.plannedMarketing} />
+              <PnlRow label="Маркетинг" value={-pnl.marketing} revenue={pnl.revenue} sub planValue={plan?.plannedMarketing} onClick={() => onNavigateToTab?.('marketing')} />
               <PnlRow label="Офис и ПО" value={-pnl.office} revenue={pnl.revenue} sub planValue={plan?.plannedOffice} />
               <PnlRow label="Прочие расходы" value={-pnl.otherExpenses} revenue={pnl.revenue} sub />
               <PnlRow label="EBITDA" value={pnl.ebitda} revenue={pnl.revenue} bold accent="emerald" planValue={plan?.plannedEbitda} />
@@ -877,9 +880,9 @@ const ExpenseStructureChart = ({
   </div>
 );
 
-const PnlRow = ({ label, value, revenue, bold, sub, accent, indent, expandable, expanded, onToggle, planValue }: {
+const PnlRow = ({ label, value, revenue, bold, sub, accent, indent, expandable, expanded, onToggle, planValue, onClick }: {
   label: string; value: number; revenue: number; bold?: boolean; sub?: boolean; accent?: string; indent?: boolean;
-  expandable?: boolean; expanded?: boolean; onToggle?: () => void; planValue?: number;
+  expandable?: boolean; expanded?: boolean; onToggle?: () => void; planValue?: number; onClick?: () => void;
 }) => {
   const pct = revenue > 0 ? (Math.abs(value) / revenue) * 100 : 0;
   const colorClass = accent === 'emerald'
@@ -892,7 +895,7 @@ const PnlRow = ({ label, value, revenue, bold, sub, accent, indent, expandable, 
     : null;
 
   return (
-    <tr className={`group hover:bg-slate-50/50 transition-all ${bold ? 'bg-slate-50/30' : ''} ${indent ? 'bg-slate-50/20' : ''}`}>
+    <tr className={`group hover:bg-slate-50/50 transition-all ${bold ? 'bg-slate-50/30' : ''} ${indent ? 'bg-slate-50/20' : ''} ${onClick ? 'cursor-pointer' : ''}`} onClick={(e) => { if (onClick && !expandable) { e.stopPropagation(); onClick(); } }}>
       <td className={`py-3 pr-4 ${bold ? 'font-black text-slate-900 text-sm' : 'text-xs text-slate-600 font-bold'} ${sub ? 'pl-6' : ''} ${indent ? 'pl-10' : ''}`}>
         <div className="flex items-center gap-1.5">
           {sub && !indent && <span className="text-slate-300 mr-1">-</span>}

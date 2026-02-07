@@ -8,6 +8,7 @@ interface TeamTabProps {
   tasks: Task[];
   projects: Project[];
   transactions: Transaction[];
+  onNavigateToTab?: (tab: string) => void;
 }
 
 const UI = {
@@ -18,7 +19,7 @@ const UI = {
 
 const fmt = (v: number) => `${Math.round(v).toLocaleString()} ₸`;
 
-const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions }) => {
+const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions, onNavigateToTab }) => {
   const [payrollCosts, setPayrollCosts] = useState<Record<string, number>>({});
   const [payrollPerUser, setPayrollPerUser] = useState<PayrollUserBreakdown[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
@@ -271,7 +272,7 @@ const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions 
                 <span className="text-[10px] font-black text-slate-500 uppercase">Итого ФОТ</span>
                 <span className="text-sm font-black text-slate-900">{fmt(teamData.totalPayrollCost)}</span>
               </div>
-              <div className="flex items-center justify-between mt-1">
+              <div className={`flex items-center justify-between mt-1 ${onNavigateToTab ? 'cursor-pointer hover:bg-slate-50 rounded px-1 -mx-1 transition-colors' : ''}`} onClick={() => onNavigateToTab?.('finance')}>
                 <span className="text-[10px] font-black text-slate-500 uppercase">ФОТ / Выручка</span>
                 <span className={`text-sm font-black ${
                   teamData.costPerRevenue < 35 ? 'text-emerald-600' : teamData.costPerRevenue < 50 ? 'text-amber-600' : 'text-rose-600'

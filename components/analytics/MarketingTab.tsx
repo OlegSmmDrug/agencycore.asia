@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Client, Transaction, ClientStatus } from '../../types';
-import { marketingChannelService, MarketingChannel, MarketingSpend, ChannelPerformance } from '../../services/marketingChannelService';
-import { financialEngineService } from '../../services/financialEngineService';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, LineChart, Line, Legend, PieChart, Pie } from 'recharts';
+import { marketingChannelService, MarketingChannel, MarketingSpend } from '../../services/marketingChannelService';
+import { adPlatformAggregatorService, AggregatedAdData } from '../../services/adPlatformAggregatorService';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, LineChart, Line, PieChart, Pie } from 'recharts';
 import ChannelTable from './marketing/ChannelTable';
 import AddChannelModal from './marketing/AddChannelModal';
 import SpendEntryModal from './marketing/SpendEntryModal';
@@ -12,6 +12,8 @@ import { getEffectiveChannel, CHANNEL_COLORS, SOURCE_LABELS } from './marketing/
 interface MarketingTabProps {
   clients: Client[];
   transactions: Transaction[];
+  onNavigateToTab?: (tab: string) => void;
+  onNavigateToIntegrations?: () => void;
 }
 
 const UI = {
@@ -20,59 +22,84 @@ const UI = {
   VALUE: "text-2xl font-black text-slate-900 tracking-tighter",
 };
 
+const PLATFORM_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  facebook: { label: 'Facebook Ads', color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' },
+  google: { label: 'Google Ads', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+  tiktok: { label: 'TikTok Ads', color: 'text-rose-600', bg: 'bg-rose-50', border: 'border-rose-200' },
+};
+
 const fmt = (v: number) => `${Math.round(v).toLocaleString()} ₸`;
 
-const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions }) => {
+const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions, onNavigateToTab, onNavigateToIntegrations }) => {
   const [channels, setChannels] = useState<MarketingChannel[]>([]);
   const [spendData, setSpendData] = useState<MarketingSpend[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddChannel, setShowAddChannel] = useState(false);
   const [showSpendEntry, setShowSpendEntry] = useState<MarketingChannel | null>(null);
-  const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
+  const [adData, setAdData] = useState<AggregatedAdData | null>(null);
+  const [adLoading, setAdLoading] = useState(false);
+
+  const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    const date = new Date(selectedMonth + '-01');
+    date.setMonth(date.getMonth() + (direction === 'prev' ? -1 : 1));
+    setSelectedMonth(date.toISOString().slice(0, 7));
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
     const [ch, sp] = await Promise.all([
       marketingChannelService.getChannels(),
-      marketingChannelService.getSpendRange(getMonthsAgo(5), currentMonth),
+      marketingChannelService.getSpendRange(getMonthsAgo(5), selectedMonth),
     ]);
     setChannels(ch);
     setSpendData(sp);
     setLoading(false);
-  }, [currentMonth]);
+  }, [selectedMonth]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const currentMonthSpend = useMemo(() => spendData.filter(s => s.month === currentMonth), [spendData, currentMonth]);
+  useEffect(() => {
+    setAdLoading(true);
+    adPlatformAggregatorService.getAggregatedMetrics('30d').then(data => {
+      setAdData(data);
+      setAdLoading(false);
+    }).catch(() => setAdLoading(false));
+  }, []);
+
+  const currentMonthSpend = useMemo(() => spendData.filter(s => s.month === selectedMonth), [spendData, selectedMonth]);
 
   const totalSpend = useMemo(() => currentMonthSpend.reduce((s, sp) => s + sp.amount, 0), [currentMonthSpend]);
   const totalLeadsFromSpend = useMemo(() => currentMonthSpend.reduce((s, sp) => s + sp.leadsCount, 0), [currentMonthSpend]);
 
   const monthClients = useMemo(() => {
-    const start = new Date(currentMonth + '-01');
+    const start = new Date(selectedMonth + '-01');
     const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
     return clients.filter(c => {
       const d = new Date(c.createdAt);
       return d >= start && d <= end;
     });
-  }, [clients, currentMonth]);
+  }, [clients, selectedMonth]);
 
   const monthRevenue = useMemo(() => {
-    const start = currentMonth + '-01';
-    const endDate = new Date(currentMonth + '-01');
+    const start = selectedMonth + '-01';
+    const endDate = new Date(selectedMonth + '-01');
     endDate.setMonth(endDate.getMonth() + 1);
     const end = endDate.toISOString().slice(0, 10);
     return transactions.filter(t => t.amount > 0 && t.date >= start && t.date < end).reduce((s, t) => s + t.amount, 0);
-  }, [transactions, currentMonth]);
+  }, [transactions, selectedMonth]);
 
   const newClientsWon = useMemo(() =>
     monthClients.filter(c => [ClientStatus.IN_WORK, ClientStatus.WON, ClientStatus.CONTRACT].includes(c.status)).length,
   [monthClients]);
 
-  const totalLeads = totalLeadsFromSpend || monthClients.length;
-  const cpl = totalLeads > 0 && totalSpend > 0 ? totalSpend / totalLeads : 0;
-  const cac = newClientsWon > 0 && totalSpend > 0 ? totalSpend / newClientsWon : 0;
-  const roas = totalSpend > 0 ? monthRevenue / totalSpend : 0;
+  const combinedAdSpend = adData?.totalSpend || 0;
+  const combinedSpend = totalSpend + combinedAdSpend;
+  const totalLeads = totalLeadsFromSpend + (adData?.totalLeads || 0) || monthClients.length;
+  const cpl = totalLeads > 0 && combinedSpend > 0 ? combinedSpend / totalLeads : 0;
+  const cac = newClientsWon > 0 && combinedSpend > 0 ? combinedSpend / newClientsWon : 0;
+  const roas = combinedSpend > 0 ? monthRevenue / combinedSpend : 0;
 
   const leadsByChannel = useMemo(() => {
     const channels: Record<string, number> = {};
@@ -123,7 +150,7 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions }) =>
     spendData.forEach(s => {
       if (!months[s.month]) months[s.month] = {};
       const ch = channels.find(c => c.id === s.channelId);
-      const name = ch?.name || 'Другое';
+      const name = ch?.name || 'Other';
       months[s.month][name] = (months[s.month][name] || 0) + s.amount;
     });
     return Object.entries(months).sort(([a], [b]) => a.localeCompare(b)).map(([month, chData]) => ({
@@ -174,24 +201,130 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions }) =>
     );
   }
 
+  const connectedPlatforms = adData?.platforms.filter(p => p.isConnected) || [];
+  const hasAdPlatforms = connectedPlatforms.length > 0 && connectedPlatforms.some(p => p.spend > 0);
+
   return (
     <div className="space-y-6 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-2xl font-black text-slate-900">Маркетинг</h3>
+          <p className="text-xs text-slate-500 font-bold uppercase mt-1">
+            {new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigateMonth('prev')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200">
+            <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+          </button>
+          <div className="text-center min-w-[140px]">
+            <div className="text-sm font-black text-slate-900">{new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long' })}</div>
+            <div className="text-xs text-slate-500 font-bold">{new Date(selectedMonth + '-01').getFullYear()}</div>
+          </div>
+          <button onClick={() => navigateMonth('next')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200">
+            <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+          </button>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         {[
-          { label: 'Расходы на маркетинг', value: totalSpend > 0 ? fmt(totalSpend) : '0 ₸', color: 'text-slate-900', sub: currentMonth },
+          { label: 'Расходы на маркетинг', value: combinedSpend > 0 ? fmt(combinedSpend) : '0 ₸', color: 'text-slate-900' },
           { label: 'Лиды за месяц', value: totalLeads, color: 'text-blue-600' },
           { label: 'CPL (за лид)', value: cpl > 0 ? fmt(cpl) : '--', color: cpl > 0 ? 'text-slate-900' : 'text-slate-400' },
-          { label: 'CAC (за клиента)', value: cac > 0 ? fmt(cac) : '--', color: cac > 0 ? 'text-slate-900' : 'text-slate-400' },
+          { label: 'CAC (за клиента)', value: cac > 0 ? fmt(cac) : '--', color: cac > 0 ? 'text-slate-900' : 'text-slate-400', onClick: () => onNavigateToTab?.('sales') },
           { label: 'ROAS', value: roas > 0 ? `${roas.toFixed(1)}x` : '--', color: roas > 2 ? 'text-emerald-600' : roas > 1 ? 'text-blue-600' : roas > 0 ? 'text-amber-600' : 'text-slate-400' },
-          { label: 'Каналов активно', value: channels.filter(c => c.isActive).length, color: 'text-slate-900' },
+          { label: 'Каналов активно', value: channels.filter(c => c.isActive).length, color: 'text-slate-900', onClick: onNavigateToIntegrations },
         ].map((kpi, i) => (
-          <div key={i} className={UI.CARD}>
+          <div
+            key={i}
+            className={`${UI.CARD} ${kpi.onClick ? 'cursor-pointer hover:border-blue-300' : ''}`}
+            onClick={kpi.onClick}
+          >
             <p className={UI.LABEL}>{kpi.label}</p>
             <p className={`text-2xl font-black tracking-tighter ${kpi.color}`}>{kpi.value}</p>
-            {kpi.sub && <p className="text-[8px] text-slate-400 font-bold uppercase mt-1">{kpi.sub}</p>}
+            {kpi.onClick && (
+              <p className="text-[8px] text-blue-400 font-bold uppercase mt-1 opacity-0 group-hover:opacity-100">
+                Click to view
+              </p>
+            )}
           </div>
         ))}
       </div>
+
+      {(connectedPlatforms.length > 0 || !adLoading) && (
+        <div className={UI.CARD}>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="font-black text-xs uppercase tracking-widest text-slate-900 flex items-center gap-2">
+              <div className="w-1 h-4 bg-blue-500 rounded-full" /> Рекламные платформы
+            </h3>
+            {adLoading && (
+              <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {['facebook', 'google', 'tiktok'].map(platform => {
+              const p = adData?.platforms.find(pp => pp.platform === platform);
+              const cfg = PLATFORM_CONFIG[platform];
+              const connected = p?.isConnected;
+
+              return (
+                <div key={platform} className={`p-4 rounded-2xl border ${connected ? cfg.border + ' ' + cfg.bg : 'border-slate-200 bg-slate-50'}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className={`text-[10px] font-black uppercase tracking-wider ${connected ? cfg.color : 'text-slate-400'}`}>
+                      {cfg.label}
+                    </span>
+                    {connected ? (
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    ) : (
+                      <button
+                        onClick={onNavigateToIntegrations}
+                        className="text-[9px] font-bold text-blue-500 hover:text-blue-700 transition-colors"
+                      >
+                        Подключить
+                      </button>
+                    )}
+                  </div>
+
+                  {connected && p && p.spend > 0 ? (
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-[9px] text-slate-500 font-bold">Расходы</span>
+                        <span className="text-sm font-black text-slate-900">{fmt(p.spend)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[9px] text-slate-500 font-bold">Лиды</span>
+                        <span className="text-sm font-black text-blue-600">{p.leads}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[9px] text-slate-500 font-bold">CPL</span>
+                        <span className="text-sm font-black text-slate-700">{p.cpl > 0 ? fmt(p.cpl) : '--'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[9px] text-slate-500 font-bold">CTR</span>
+                        <span className="text-sm font-black text-slate-700">{p.ctr > 0 ? `${p.ctr.toFixed(2)}%` : '--'}</span>
+                      </div>
+                    </div>
+                  ) : connected && p?.error ? (
+                    <div className="py-3">
+                      <p className="text-[10px] text-amber-600 font-bold">{p.error === 'API integration pending' ? 'API интеграция в подготовке' : p.error}</p>
+                    </div>
+                  ) : connected ? (
+                    <div className="py-3">
+                      <p className="text-[10px] text-slate-400 font-bold">Нет данных за период</p>
+                    </div>
+                  ) : (
+                    <div className="py-3">
+                      <p className="text-[10px] text-slate-400 font-bold">Не подключено</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <ChannelTable
         channels={channels}
@@ -201,7 +334,7 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions }) =>
         onAddChannel={() => setShowAddChannel(true)}
         onEditSpend={setShowSpendEntry}
         onDeleteChannel={handleDeleteChannel}
-        month={currentMonth}
+        month={selectedMonth}
       />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -238,7 +371,7 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions }) =>
                     </Pie>
                     <Tooltip
                       contentStyle={{ borderRadius: 16, border: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700 }}
-                      formatter={(value: any, name: string) => [`${value} лидов`, name]}
+                      formatter={(value: any, name: string) => [`${value} leads`, name]}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -377,12 +510,22 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions }) =>
                 Настройте маркетинговые каналы (Google Ads, Facebook Ads, SEO и др.) и начните отслеживать расходы.
                 Это позволит считать CAC, CPL и ROAS для принятия решений по бюджету.
               </p>
-              <button
-                onClick={() => setShowAddChannel(true)}
-                className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-blue-700 transition-all"
-              >
-                Добавить канал
-              </button>
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => setShowAddChannel(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-blue-700 transition-all"
+                >
+                  Добавить канал
+                </button>
+                {onNavigateToIntegrations && (
+                  <button
+                    onClick={onNavigateToIntegrations}
+                    className="px-4 py-2 bg-white text-blue-600 border border-blue-200 rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-blue-50 transition-all"
+                  >
+                    Подключить рекламный кабинет
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -398,7 +541,7 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions }) =>
       {showSpendEntry && (
         <SpendEntryModal
           channel={showSpendEntry}
-          month={currentMonth}
+          month={selectedMonth}
           existingData={currentMonthSpend.find(s => s.channelId === showSpendEntry.id)}
           onSave={handleSaveSpend}
           onClose={() => setShowSpendEntry(null)}

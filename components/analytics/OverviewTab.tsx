@@ -10,6 +10,9 @@ interface OverviewTabProps {
   projects: Project[];
   transactions: Transaction[];
   unitProjectList: { id: string; name: string; revenue: number; expenses: number; profit: number; margin: number }[];
+  onProjectClick?: (projectId: string) => void;
+  onClientClick?: (clientId: string) => void;
+  onNavigateToTab?: (tab: string) => void;
 }
 
 const UI = {
@@ -21,7 +24,8 @@ const UI = {
 const fmt = (v: number) => `${Math.round(v).toLocaleString()} ₸`;
 
 const OverviewTab: React.FC<OverviewTabProps> = ({
-  clients, users, tasks, projects, transactions, unitProjectList
+  clients, users, tasks, projects, transactions, unitProjectList,
+  onProjectClick, onClientClick, onNavigateToTab
 }) => {
   const [health, setHealth] = useState<BusinessHealthResult | null>(null);
   const [ltv, setLtv] = useState<LtvMetrics | null>(null);
@@ -30,9 +34,16 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
   const [cogsFot, setCogsFot] = useState(0);
   const [cogsKpiInCogs, setCogsKpiInCogs] = useState(0);
   const [projectExpensesTotal, setProjectExpensesTotal] = useState(0);
+  const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    const date = new Date(selectedMonth + '-01');
+    date.setMonth(date.getMonth() + (direction === 'prev' ? -1 : 1));
+    setSelectedMonth(date.toISOString().slice(0, 7));
+  };
 
   const safeTrans = useMemo(() => Array.isArray(transactions) ? transactions : [], [transactions]);
-  const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
+  const currentMonth = selectedMonth;
 
   const overview = useMemo(() => {
     const totalIncome = safeTrans.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
@@ -40,17 +51,18 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
     const profit = totalIncome - totalExpenses;
     const margin = totalIncome > 0 ? (profit / totalIncome) * 100 : 0;
 
-    const now = new Date();
-    const thisMonthStart = now.toISOString().slice(0, 7) + '-01';
-    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const thisMonthEnd = nextMonth.toISOString().slice(0, 10);
+    const thisMonthStart = selectedMonth + '-01';
+    const endDate = new Date(selectedMonth + '-01');
+    endDate.setMonth(endDate.getMonth() + 1);
+    const thisMonthEnd = endDate.toISOString().slice(0, 10);
 
     const thisMonthIncome = safeTrans
       .filter(t => t.amount > 0 && t.date?.slice(0, 10) >= thisMonthStart && t.date?.slice(0, 10) < thisMonthEnd)
       .reduce((s, t) => s + t.amount, 0);
 
-    const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastMonthStart = lastMonthDate.toISOString().slice(0, 7) + '-01';
+    const prevDate = new Date(selectedMonth + '-01');
+    prevDate.setMonth(prevDate.getMonth() - 1);
+    const lastMonthStart = prevDate.toISOString().slice(0, 7) + '-01';
     const lastMonthEnd = thisMonthStart;
 
     const lastMonthIncome = safeTrans
@@ -84,7 +96,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
       revPerEmployee: totalIncome / (users.length || 1),
       lostRate,
     };
-  }, [safeTrans, projects, clients, users, payrollTotal, cogsFot, cogsKpiInCogs]);
+  }, [safeTrans, projects, clients, users, payrollTotal, cogsFot, cogsKpiInCogs, selectedMonth]);
 
   const burnRate = useMemo(() => financialEngineService.calcBurnRate(safeTrans), [safeTrans]);
 
@@ -152,8 +164,38 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
   const problematicProjects = useMemo(() => unitProjectList.filter(p => p.margin < 15), [unitProjectList]);
   const topProjects = useMemo(() => unitProjectList.slice(0, 5), [unitProjectList]);
 
+  const monthLabel = useMemo(() =>
+    new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }),
+    [selectedMonth]
+  );
+
   return (
     <div className="space-y-6 animate-fade-in">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h3 className="text-2xl font-black text-slate-900">Сводка</h3>
+          <p className="text-xs text-slate-500 font-bold uppercase mt-1">Обзор бизнеса за {monthLabel}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigateMonth('prev')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200">
+            <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <div className="text-center min-w-[140px]">
+            <div className="text-sm font-black text-slate-900">
+              {new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long' })}
+            </div>
+            <div className="text-xs text-slate-500 font-bold">{new Date(selectedMonth + '-01').getFullYear()}</div>
+          </div>
+          <button onClick={() => navigateMonth('next')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200">
+            <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
       {health && (
         <div className={`${UI.CARD} border-l-4 ${
           health.level === 'healthy' ? 'border-l-emerald-500' :
@@ -196,8 +238,8 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className={UI.CARD}>
-          <p className={UI.LABEL}>Выручка (этот месяц)</p>
+        <div className={`${UI.CARD} ${onNavigateToTab ? 'cursor-pointer hover:border-blue-300' : ''}`} onClick={() => onNavigateToTab?.('finance')}>
+          <p className={UI.LABEL}>Выручка (месяц)</p>
           <p className={UI.VALUE}>{fmt(overview.thisMonthIncome)}</p>
           {overview.incomeGrowth !== 0 && (
             <span className={`text-[10px] font-black px-2 py-0.5 rounded-full mt-2 inline-block ${
@@ -207,7 +249,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
             </span>
           )}
         </div>
-        <div className={UI.CARD}>
+        <div className={`${UI.CARD} ${onNavigateToTab ? 'cursor-pointer hover:border-blue-300' : ''}`} onClick={() => onNavigateToTab?.('finance')}>
           <p className={UI.LABEL}>Чистая прибыль (месяц)</p>
           <p className={`text-2xl font-black tracking-tighter ${overview.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
             {fmt(overview.thisMonthIncome - overview.monthlyExpenses)}
@@ -254,7 +296,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className={UI.CARD}>
+        <div className={`${UI.CARD} ${onNavigateToTab ? 'cursor-pointer hover:border-blue-300' : ''}`} onClick={() => onNavigateToTab?.('sales')}>
           <p className={UI.LABEL}>Воронка продаж</p>
           <div className="flex items-end gap-3 mt-2">
             <div className="text-center">
@@ -286,7 +328,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
         </div>
 
-        <div className={UI.CARD}>
+        <div className={`${UI.CARD} ${onNavigateToTab ? 'cursor-pointer hover:border-blue-300' : ''}`} onClick={() => onNavigateToTab?.('team')}>
           <p className={UI.LABEL}>ФОТ / Выручка</p>
           <p className={`text-2xl font-black tracking-tighter ${
             overview.fotPercent > 40 ? 'text-rose-600' : overview.fotPercent > 25 ? 'text-amber-600' : 'text-emerald-600'
@@ -441,7 +483,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
           </h3>
           <div className="space-y-3">
             {ar.debtors.slice(0, 5).map((d, i) => (
-              <div key={i} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
+              <div key={i} className={`flex items-center justify-between py-2 border-b border-slate-50 last:border-0 ${onClientClick ? 'cursor-pointer hover:bg-slate-50 rounded-lg px-2 -mx-2 transition-colors' : ''}`} onClick={() => onClientClick?.(d.clientId)}>
                 <div>
                   <p className="text-sm font-bold text-slate-800">{d.name}</p>
                   <p className="text-[9px] text-slate-400">
@@ -467,7 +509,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
           </h3>
           <div className="space-y-3">
             {problematicProjects.map((p) => (
-              <div key={p.id} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
+              <div key={p.id} className={`flex items-center justify-between py-2 border-b border-slate-50 last:border-0 ${onProjectClick ? 'cursor-pointer hover:bg-slate-50 rounded-lg px-2 -mx-2 transition-colors' : ''}`} onClick={() => onProjectClick?.(p.id)}>
                 <div>
                   <p className="text-sm font-bold text-slate-800">{p.name}</p>
                   <p className="text-[9px] text-slate-400">
@@ -492,7 +534,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
           </h3>
           <div className="space-y-3">
             {topProjects.map((p, i) => (
-              <div key={p.id} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
+              <div key={p.id} className={`flex items-center justify-between py-2 border-b border-slate-50 last:border-0 ${onProjectClick ? 'cursor-pointer hover:bg-slate-50 rounded-lg px-2 -mx-2 transition-colors' : ''}`} onClick={() => onProjectClick?.(p.id)}>
                 <div className="flex items-center gap-3">
                   <span className={`w-6 h-6 flex items-center justify-center rounded-lg text-[10px] font-black ${
                     i === 0 ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'

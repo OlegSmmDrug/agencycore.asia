@@ -329,7 +329,7 @@ export const financialEngineService = {
   calcAccountsReceivable(
     clients: any[],
     transactions: Transaction[]
-  ): { total: number; buckets: ArAgingBucket[]; debtors: { name: string; debt: number; daysSinceLastPayment: number }[] } {
+  ): { total: number; buckets: ArAgingBucket[]; debtors: { clientId: string; name: string; debt: number; daysSinceLastPayment: number }[] } {
     const now = new Date();
     const clientPaid: Record<string, { total: number; lastDate: string | null }> = {};
 
@@ -341,7 +341,7 @@ export const financialEngineService = {
       }
     });
 
-    const debtors: { name: string; debt: number; daysSinceLastPayment: number }[] = [];
+    const debtors: { clientId: string; name: string; debt: number; daysSinceLastPayment: number }[] = [];
     const activeClients = clients.filter(c =>
       c.status === 'In Work' || c.status === 'Won' || c.status === 'Contract Signing'
     );
@@ -366,7 +366,7 @@ export const financialEngineService = {
           : 999;
 
         total += debt;
-        debtors.push({ name: client.name || client.company || 'Без имени', debt, daysSinceLastPayment: daysSince });
+        debtors.push({ clientId: client.id, name: client.name || client.company || 'Без имени', debt, daysSinceLastPayment: daysSince });
 
         for (const bucket of bucketRanges) {
           if (daysSince >= bucket.min && daysSince <= bucket.max) {

@@ -39,23 +39,43 @@ export interface GoogleAdsAccountStats {
   }>;
 }
 
+const GOOGLE_ADS_API_URL = 'https://googleads.googleapis.com/v16';
+
 export async function validateGoogleAdsToken(accessToken: string): Promise<boolean> {
+  if (!accessToken) return false;
   try {
-    return true;
-  } catch (error) {
+    const response = await fetch('https://www.googleapis.com/oauth2/v1/tokeninfo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `access_token=${accessToken}`,
+    });
+    return response.ok;
+  } catch {
     return false;
   }
 }
 
 export async function getGoogleAdsAccounts(accessToken: string): Promise<GoogleAdsAccount[]> {
-  return [
-    {
-      customerId: '123-456-7890',
-      descriptiveName: 'Рекламный аккаунт Google Ads',
-      currencyCode: 'RUB',
-      timeZone: 'Europe/Moscow'
-    }
-  ];
+  if (!accessToken) return [];
+
+  try {
+    const response = await fetch(
+      `${GOOGLE_ADS_API_URL}/customers:listAccessibleCustomers`,
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+    );
+
+    if (!response.ok) return [];
+    const data = await response.json();
+
+    return (data.resourceNames || []).map((name: string) => ({
+      customerId: name.replace('customers/', ''),
+      descriptiveName: name.replace('customers/', ''),
+      currencyCode: 'KZT',
+      timeZone: 'Asia/Almaty',
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export async function getGoogleAdsAccountStats(
@@ -64,93 +84,98 @@ export async function getGoogleAdsAccountStats(
   dateRange?: string,
   customDateRange?: { since: string; until: string }
 ): Promise<GoogleAdsAccountStats> {
-  const campaigns: GoogleAdsCampaign[] = [
-    {
-      id: 'campaign_1',
-      name: 'Поисковая реклама',
-      status: 'ENABLED',
-      metrics: {
-        cost: 45000,
-        clicks: 1250,
-        impressions: 35000,
-        conversions: 85,
-        ctr: 3.57,
-        cpc: 36
-      }
-    },
-    {
-      id: 'campaign_2',
-      name: 'Медийная реклама',
-      status: 'ENABLED',
-      metrics: {
-        cost: 32000,
-        clicks: 890,
-        impressions: 120000,
-        conversions: 42,
-        ctr: 0.74,
-        cpc: 35.96
-      }
-    },
-    {
-      id: 'campaign_3',
-      name: 'Ремаркетинг',
-      status: 'PAUSED',
-      metrics: {
-        cost: 18000,
-        clicks: 620,
-        impressions: 85000,
-        conversions: 28,
-        ctr: 0.73,
-        cpc: 29.03
-      }
-    }
-  ];
-
-  const totalCost = campaigns.reduce((sum, c) => sum + c.metrics.cost, 0);
-  const totalClicks = campaigns.reduce((sum, c) => sum + c.metrics.clicks, 0);
-  const totalImpressions = campaigns.reduce((sum, c) => sum + c.metrics.impressions, 0);
-  const totalConversions = campaigns.reduce((sum, c) => sum + c.metrics.conversions, 0);
-
-  let startDate: Date;
-  let endDate: Date;
-  let numDays: number;
-
-  if (customDateRange?.since && customDateRange?.until) {
-    startDate = new Date(customDateRange.since);
-    endDate = new Date(customDateRange.until);
-    numDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-  } else {
-    numDays = 30;
-    endDate = new Date();
-    startDate = new Date(endDate);
-    startDate.setDate(startDate.getDate() - (numDays - 1));
+  if (!accessToken || !customerId) {
+    return emptyGoogleStats(customerId);
   }
 
-  const dailyStats = Array.from({ length: numDays }, (_, i) => {
-    const date = new Date(startDate);
-    date.setDate(date.getDate() + i);
-    return {
-      date: date.toISOString().split('T')[0],
-      cost: Math.floor(Math.random() * 5000) + 2000,
-      clicks: Math.floor(Math.random() * 150) + 50,
-      impressions: Math.floor(Math.random() * 5000) + 2000,
-      conversions: Math.floor(Math.random() * 10) + 2
-    };
-  });
+  const cleanCustomerId = customerId.replace(/-/g, '');
+  let startDate: string;
+  let endDate: string;
 
-  return {
-    customerId,
-    accountName: 'Рекламный аккаунт Google Ads',
-    totalCost,
-    totalClicks,
-    totalImpressions,
-    totalConversions,
-    avgCpc: totalClicks > 0 ? totalCost / totalClicks : 0,
-    avgCtr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
-    costPerConversion: totalConversions > 0 ? totalCost / totalConversions : 0,
-    campaigns,
-    dailyStats
-  };
+  if (customDateRange?.since && customDateRange?.until) {
+    startDate = customDateRange.since;
+    endDate = customDateRange.until;
+  } else {
+    const days = dateRange === '7d' ? 7 : dateRange === '14d' ? 14 : dateRange === '90d' ? 90 : 30;
+    const end = new Date();
+    const start = new Date(end);
+    start.setDate(start.getDate() - days);
+    startDate = start.toISOString().split('T')[0];
+    endDate = end.toISOString().split('T')[0];
+  }
+
+  try {
+    const query = `
+      SELECT
+        campaign.id,
+        campaign.name,
+        campaign.status,
+        metrics.cost_micros,
+        metrics.clicks,
+        metrics.impressions,
+        metrics.conversions,
+        metrics.ctr,
+        metrics.average_cpc
+      FROM campaign
+      WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
+      ORDER BY metrics.cost_micros DESC
+    `;
+
+    const response = await fetch(
+      `${GOOGLE_ADS_API_URL}/customers/${cleanCustomerId}/googleAds:searchStream`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'developer-token': '',
+        },
+        body: JSON.stringify({ query }),
+      }
+    );
+
+    if (!response.ok) {
+      return emptyGoogleStats(customerId);
+    }
+
+    const data = await response.json();
+    const results = data[0]?.results || [];
+
+    const campaigns: GoogleAdsCampaign[] = results.map((r: any) => ({
+      id: r.campaign?.id || '',
+      name: r.campaign?.name || '',
+      status: r.campaign?.status || 'UNKNOWN',
+      metrics: {
+        cost: (r.metrics?.costMicros || 0) / 1_000_000,
+        clicks: r.metrics?.clicks || 0,
+        impressions: r.metrics?.impressions || 0,
+        conversions: r.metrics?.conversions || 0,
+        ctr: (r.metrics?.ctr || 0) * 100,
+        cpc: (r.metrics?.averageCpc || 0) / 1_000_000,
+      },
+    }));
+
+    const totalCost = campaigns.reduce((s, c) => s + c.metrics.cost, 0);
+    const totalClicks = campaigns.reduce((s, c) => s + c.metrics.clicks, 0);
+    const totalImpressions = campaigns.reduce((s, c) => s + c.metrics.impressions, 0);
+    const totalConversions = campaigns.reduce((s, c) => s + c.metrics.conversions, 0);
+
+    return {
+      customerId,
+      accountName: customerId,
+      totalCost,
+      totalClicks,
+      totalImpressions,
+      totalConversions,
+      avgCpc: totalClicks > 0 ? totalCost / totalClicks : 0,
+      avgCtr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+      costPerConversion: totalConversions > 0 ? totalCost / totalConversions : 0,
+      campaigns,
+      dailyStats: [],
+    };
+  } catch {
+    return emptyGoogleStats(customerId);
+  }
 }
 
 export async function getGoogleAdsCampaigns(
@@ -159,4 +184,20 @@ export async function getGoogleAdsCampaigns(
 ): Promise<GoogleAdsCampaign[]> {
   const stats = await getGoogleAdsAccountStats(accessToken, customerId);
   return stats.campaigns;
+}
+
+function emptyGoogleStats(customerId: string): GoogleAdsAccountStats {
+  return {
+    customerId,
+    accountName: '',
+    totalCost: 0,
+    totalClicks: 0,
+    totalImpressions: 0,
+    totalConversions: 0,
+    avgCpc: 0,
+    avgCtr: 0,
+    costPerConversion: 0,
+    campaigns: [],
+    dailyStats: [],
+  };
 }

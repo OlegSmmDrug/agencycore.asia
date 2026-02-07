@@ -1390,6 +1390,11 @@ const App: React.FC = () => {
               setProjectDetailTab('overview');
               setActiveTab('projects');
             }}
+            onClientClick={(clientId) => {
+              const client = clients.find(c => c.id === clientId);
+              if (client) handleOpenClientModal(client);
+            }}
+            onNavigateToIntegrations={() => setActiveTab('integrations')}
           />
         );
       case 'calculator':

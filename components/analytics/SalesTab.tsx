@@ -11,6 +11,8 @@ interface SalesTabProps {
   clients: Client[];
   users: User[];
   transactions: Transaction[];
+  onClientClick?: (clientId: string) => void;
+  onNavigateToTab?: (tab: string) => void;
 }
 
 const UI = {
@@ -28,29 +30,38 @@ const PERIOD_OPTIONS = [
   { value: 'prev_month', label: 'Прошлый месяц' },
 ];
 
-function getPeriodRange(period: string): { start: Date; end: Date } | null {
-  const now = new Date();
+function getPeriodRange(period: string, baseMonth?: string): { start: Date; end: Date } | null {
+  const base = baseMonth ? new Date(baseMonth + '-01') : new Date();
   if (period === 'all') return null;
   if (period === 'month') {
-    return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59) };
+    return { start: new Date(base.getFullYear(), base.getMonth(), 1), end: new Date(base.getFullYear(), base.getMonth() + 1, 0, 23, 59, 59) };
   }
   if (period === 'prev_month') {
-    return { start: new Date(now.getFullYear(), now.getMonth() - 1, 1), end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59) };
+    return { start: new Date(base.getFullYear(), base.getMonth() - 1, 1), end: new Date(base.getFullYear(), base.getMonth(), 0, 23, 59, 59) };
   }
   if (period === 'quarter') {
-    const qStart = Math.floor(now.getMonth() / 3) * 3;
-    return { start: new Date(now.getFullYear(), qStart, 1), end: new Date(now.getFullYear(), qStart + 3, 0, 23, 59, 59) };
+    const qStart = Math.floor(base.getMonth() / 3) * 3;
+    return { start: new Date(base.getFullYear(), qStart, 1), end: new Date(base.getFullYear(), qStart + 3, 0, 23, 59, 59) };
   }
   return null;
 }
 
-const SalesTab: React.FC<SalesTabProps> = ({ clients, users, transactions }) => {
+const SalesTab: React.FC<SalesTabProps> = ({ clients, users, transactions, onClientClick, onNavigateToTab }) => {
   const [payrollCosts, setPayrollCosts] = useState<Record<string, number>>({});
   const [salesTargets, setSalesTargets] = useState<SalesTarget[]>([]);
   const [period, setPeriod] = useState('all');
   const [selectedManager, setSelectedManager] = useState<string | null>(null);
   const [cacData, setCacData] = useState<{ cac: number; totalSpend: number; source: string }>({ cac: 0, totalSpend: 0, source: 'transactions' });
-  const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
+  const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    const date = new Date(selectedMonth + '-01');
+    date.setMonth(date.getMonth() + (direction === 'prev' ? -1 : 1));
+    setSelectedMonth(date.toISOString().slice(0, 7));
+    setPeriod('month');
+  };
+
+  const currentMonth = selectedMonth;
 
   useEffect(() => {
     financialEngineService.loadPayrollCostPerUser(currentMonth).then(setPayrollCosts);
@@ -58,7 +69,7 @@ const SalesTab: React.FC<SalesTabProps> = ({ clients, users, transactions }) => 
     financialEngineService.calcMarketingCAC(clients, transactions).then(setCacData);
   }, [currentMonth, clients, transactions]);
 
-  const periodRange = useMemo(() => getPeriodRange(period), [period]);
+  const periodRange = useMemo(() => getPeriodRange(period, selectedMonth), [period, selectedMonth]);
 
   const filteredClients = useMemo(() => {
     let result = clients;
@@ -263,6 +274,32 @@ const SalesTab: React.FC<SalesTabProps> = ({ clients, users, transactions }) => 
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h3 className="text-2xl font-black text-slate-900">Продажи</h3>
+          <p className="text-xs text-slate-500 font-bold uppercase mt-1">
+            Аналитика продаж -- {new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigateMonth('prev')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200">
+            <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <div className="text-center min-w-[140px]">
+            <div className="text-sm font-black text-slate-900">
+              {new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long' })}
+            </div>
+            <div className="text-xs text-slate-500 font-bold">{new Date(selectedMonth + '-01').getFullYear()}</div>
+          </div>
+          <button onClick={() => navigateMonth('next')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200">
+            <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      </div>
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
           {PERIOD_OPTIONS.map(opt => (
@@ -296,9 +333,9 @@ const SalesTab: React.FC<SalesTabProps> = ({ clients, users, transactions }) => 
           { label: 'Конверсия', value: `${salesData.overallConversion.toFixed(1)}%`, color: salesData.overallConversion > 20 ? 'text-emerald-600' : salesData.overallConversion > 10 ? 'text-blue-600' : 'text-amber-600' },
           { label: 'Потеряно', value: salesData.lost, color: 'text-rose-600', sub: `${salesData.lostRate.toFixed(0)}% от всех` },
           { label: 'Цикл сделки', value: salesCycle.avgDays > 0 ? `${salesCycle.avgDays} дн.` : '--', color: 'text-blue-600' },
-          { label: 'CAC', value: salesData.cac > 0 ? fmt(salesData.cac) : 'Нет данных', color: salesData.cac > 0 ? 'text-slate-900' : 'text-slate-400', sub: salesData.cac === 0 ? 'Добавьте данные в Маркетинг' : undefined },
+          { label: 'CAC', value: salesData.cac > 0 ? fmt(salesData.cac) : 'Нет данных', color: salesData.cac > 0 ? 'text-slate-900' : 'text-slate-400', sub: salesData.cac === 0 ? 'Добавьте данные в Маркетинг' : undefined, navigateTo: 'marketing' },
         ].map((kpi, i) => (
-          <div key={i} className={UI.CARD}>
+          <div key={i} className={`${UI.CARD} ${kpi.navigateTo && onNavigateToTab ? 'cursor-pointer hover:border-blue-300' : ''}`} onClick={() => kpi.navigateTo && onNavigateToTab?.(kpi.navigateTo)}>
             <p className={UI.LABEL}>{kpi.label}</p>
             <p className={`text-2xl font-black tracking-tighter ${kpi.color}`}>{kpi.value}</p>
             {kpi.sub && <p className="text-[8px] text-slate-400 font-bold uppercase mt-1">{kpi.sub}</p>}
@@ -398,7 +435,7 @@ const SalesTab: React.FC<SalesTabProps> = ({ clients, users, transactions }) => 
           {stalledDeals.length > 0 ? (
             <div className="space-y-3">
               {stalledDeals.map((deal, i) => (
-                <div key={deal.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <div key={deal.id} className={`flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 ${onClientClick ? 'cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all' : ''}`} onClick={() => onClientClick?.(deal.id)}>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-slate-800 truncate">{deal.name}</p>
                     <p className="text-[10px] text-slate-400 font-bold">{deal.manager} / {deal.status}</p>

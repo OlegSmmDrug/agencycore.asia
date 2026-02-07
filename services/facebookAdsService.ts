@@ -1,4 +1,5 @@
 import { AdCampaign, AdAccountStats, AdAccount, AdSet, Ad } from '../types';
+import { integrationCredentialService } from './integrationCredentialService';
 
 const FB_API_VERSION = 'v19.0';
 const FB_GRAPH_URL = `https://graph.facebook.com/${FB_API_VERSION}`;
@@ -358,7 +359,7 @@ const calculateRoas = (insights: any): number => {
                         getActionValue(insights.actions, 'omni_purchase');
   const spend = parseFloat(insights.spend || '0');
   if (spend === 0) return 0;
-  return Number((purchaseValue / spend).toFixed(2)) || Number((Math.random() * 2 + 2).toFixed(2));
+  return purchaseValue > 0 ? Number((purchaseValue / spend).toFixed(2)) : 0;
 };
 
 const getDatePreset = (dateRange: string): string => {
@@ -377,41 +378,8 @@ const formatDate = (dateStr: string): string => {
   return date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
 };
 
-const generateMockDailyStats = (dateRange: string, customDateRange?: { since: string; until: string }) => {
-  let startDate: Date;
-  let endDate: Date;
-
-  if (customDateRange?.since && customDateRange?.until) {
-    startDate = new Date(customDateRange.since);
-    endDate = new Date(customDateRange.until);
-  } else {
-    const days = dateRange === '7d' ? 7 : dateRange === '14d' ? 14 : dateRange === '90d' ? 90 : dateRange === 'ytd' ? 150 : 30;
-    endDate = new Date();
-    startDate = new Date(endDate);
-    startDate.setDate(startDate.getDate() - days);
-  }
-
-  const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-  const data = [];
-  const step = daysDiff > 60 ? Math.ceil(daysDiff / 30) : 1;
-
-  for (let i = 0; i <= daysDiff; i += step) {
-    const date = new Date(startDate);
-    date.setDate(date.getDate() + i);
-    const spend = 400 + Math.random() * 200;
-    const leads = Math.floor(spend / (12 + Math.random() * 8));
-    const messagingConversations = Math.floor(Math.random() * 15);
-    const roas = 2.5 + Math.random() * 2;
-
-    data.push({
-      date: date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' }),
-      spend: Math.round(spend),
-      leads: leads,
-      roas: Number(roas.toFixed(2)),
-      messaging_conversations: messagingConversations
-    });
-  }
-  return data;
+const generateMockDailyStats = (_dateRange: string, _customDateRange?: { since: string; until: string }) => {
+  return [];
 };
 
 export const validateAccessToken = async (accessToken: string): Promise<boolean> => {
@@ -428,30 +396,43 @@ export const validateAccessToken = async (accessToken: string): Promise<boolean>
   }
 };
 
+const EMPTY_STATS: AdAccountStats = {
+  currency: 'USD',
+  totalSpend: 0,
+  totalLeads: 0,
+  averageCpl: 0,
+  averageRoas: 0,
+  ctr: 0,
+  cpm: 0,
+  totalMessagingConversations: 0,
+  costPerMessagingConversation: 0,
+  dailyStats: [],
+  totalImpressions: 0,
+  totalClicks: 0,
+  averageCtr: 0,
+};
+
 export const facebookAdsService = {
   async getAdMetrics(integrationId: string, dateRange?: string): Promise<AdAccountStats> {
-    const config: FacebookApiConfig = {
-      accessToken: '',
-      adAccountId: '',
-    };
+    let accessToken = '';
+    let adAccountId = '';
 
+    try {
+      accessToken = await integrationCredentialService.getCredential(integrationId, 'access_token') || '';
+      adAccountId = await integrationCredentialService.getCredential(integrationId, 'ad_account_id') || '';
+    } catch {
+      return { ...EMPTY_STATS };
+    }
+
+    if (!accessToken || !adAccountId) {
+      return { ...EMPTY_STATS };
+    }
+
+    const config: FacebookApiConfig = { accessToken, adAccountId };
     const stats = await getAdAccountStats(config, dateRange || '30d');
+
     if (!stats) {
-      return {
-        currency: 'USD',
-        totalSpend: 0,
-        totalLeads: 0,
-        averageCpl: 0,
-        averageRoas: 0,
-        ctr: 0,
-        cpm: 0,
-        totalMessagingConversations: 0,
-        costPerMessagingConversation: 0,
-        dailyStats: [],
-        totalImpressions: 0,
-        totalClicks: 0,
-        averageCtr: 0,
-      };
+      return { ...EMPTY_STATS };
     }
 
     return {
