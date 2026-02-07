@@ -8,24 +8,24 @@ interface LoginPageProps {
 }
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToRegister }) => {
-  const [email, setEmail] = useState('');
+  const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
+    if (!login || !password) return;
 
     setIsLoading(true);
     setError('');
 
-    const { user, error: authError } = await authService.signIn({ email, password });
+    const { user, error: authError } = await authService.signIn({ login, password });
 
     if (authError) {
       setError(authError.message === 'Invalid login credentials'
-        ? 'Неверный email или пароль'
-        : 'Ошибка входа. Попробуйте позже.');
+        ? 'Неверный логин или пароль'
+        : authError.message || 'Ошибка входа. Попробуйте позже.');
       setIsLoading(false);
     } else if (user) {
       onLogin(user);
@@ -85,13 +85,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToRegister }) =>
             <form onSubmit={handleSubmit} className="space-y-6">
 
                 <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Email</label>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Email или телефон</label>
                     <input
-                        type="email"
+                        type="text"
                         required
-                        value={email}
-                        onChange={(e) => { setEmail(e.target.value); setError(''); }}
-                        placeholder="your@email.com"
+                        value={login}
+                        onChange={(e) => { setLogin(e.target.value); setError(''); }}
+                        placeholder="email@example.com или +7XXXXXXXXXX"
                         className="w-full px-4 py-3.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-slate-50 transition-all font-medium text-slate-700"
                     />
                 </div>
@@ -111,9 +111,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToRegister }) =>
 
                 <button
                     type="submit"
-                    disabled={!email || !password || isLoading}
+                    disabled={!login || !password || isLoading}
                     className={`w-full flex justify-center py-4 px-4 border border-transparent rounded-xl shadow-lg text-sm font-bold text-white transition-all transform duration-200 ${
-                        !email || !password || isLoading
+                        !login || !password || isLoading
                         ? 'bg-slate-300 shadow-none cursor-not-allowed'
                         : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-xl hover:scale-[1.01] hover:to-indigo-500'
                     }`}

@@ -20,7 +20,7 @@ export interface SignUpData {
 }
 
 export interface SignInData {
-  email: string;
+  login: string;
   password: string;
 }
 
@@ -103,29 +103,67 @@ export const authService = {
     }
   },
 
+  normalizePhone(input: string): string {
+    const digits = input.replace(/\D/g, '');
+    if (digits.length === 11 && digits.startsWith('8')) {
+      return '+7' + digits.slice(1);
+    }
+    if (digits.length === 11 && digits.startsWith('7')) {
+      return '+7' + digits.slice(1);
+    }
+    if (digits.length === 10) {
+      return '+7' + digits;
+    }
+    if (input.startsWith('+')) {
+      return '+' + digits;
+    }
+    return input;
+  },
+
+  isPhoneInput(input: string): boolean {
+    const digits = input.replace(/\D/g, '');
+    return /^\+?\d{10,15}$/.test(input.replace(/[\s\-()]/g, '')) || digits.length >= 10;
+  },
+
   async signIn(data: SignInData): Promise<{ user: AuthUser | null; error: Error | null }> {
     try {
-      console.log('🔐 Attempting sign in for:', data.email);
+      const login = data.login.trim();
+      const isPhone = this.isPhoneInput(login);
 
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', data.email)
-        .maybeSingle();
+      let userData: any = null;
+      let userError: any = null;
+
+      if (isPhone) {
+        const normalizedPhone = this.normalizePhone(login);
+        const result = await supabase
+          .from('users')
+          .select('*')
+          .eq('phone', normalizedPhone)
+          .maybeSingle();
+        userData = result.data;
+        userError = result.error;
+      }
+
+      if (!userData) {
+        const result = await supabase
+          .from('users')
+          .select('*')
+          .ilike('email', login)
+          .maybeSingle();
+        userData = result.data;
+        userError = result.error;
+      }
 
       if (userError) {
-        console.error('❌ Database error:', userError);
         throw new Error('Database error');
       }
 
       if (!userData) {
-        console.log('❌ User not found');
-        throw new Error('Неверная почта или пароль');
+        throw new Error('Неверный логин или пароль');
       }
 
       if (userData.password !== data.password) {
-        console.log('❌ Password mismatch');
-        throw new Error('Неверная почта или пароль');
+        throw new Error('Неверный логин или пароль');
       }
 
       console.log('✅ Login successful:', userData.email);

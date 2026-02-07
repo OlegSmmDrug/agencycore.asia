@@ -116,9 +116,20 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsPageProps> = ({ user, 
         }
     };
 
+    const normalizePhone = (input: string): string => {
+        const digits = input.replace(/\D/g, '');
+        if (digits.length === 11 && digits.startsWith('8')) return '+7' + digits.slice(1);
+        if (digits.length === 11 && digits.startsWith('7')) return '+7' + digits.slice(1);
+        if (digits.length === 10) return '+7' + digits;
+        if (input.startsWith('+')) return '+' + digits;
+        return input;
+    };
+
     const handleSaveProfile = async () => {
         setIsLoading(true);
         try {
+            const normalizedPhone = formData.phone ? normalizePhone(formData.phone.trim()) : null;
+
             const { error } = await supabase
                 .from('users')
                 .update({
@@ -126,7 +137,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsPageProps> = ({ user, 
                     job_title: formData.jobTitle,
                     iin: formData.iin,
                     email: formData.email,
-                    phone: formData.phone || null,
+                    phone: normalizedPhone,
                     avatar: formData.avatar
                 })
                 .eq('id', user.id);
