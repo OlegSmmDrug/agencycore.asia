@@ -222,6 +222,12 @@ export interface ProjectScope {
   platforms?: string[];
 }
 
+export interface ScopeOfWorkItem {
+  id: string;
+  label: string;
+  quantity: string;
+}
+
 export interface ProjectKpi {
   id: string;
   name: string;
@@ -324,6 +330,8 @@ export interface Project {
   contentMetrics?: { [key: string]: { plan: number; fact: number } };
   contentMetricsVisible?: string[];
   lastContentSyncAt?: string;
+
+  scopeOfWork?: ScopeOfWorkItem[];
 
   publicShareToken?: string;
   publicShareEnabled?: boolean;

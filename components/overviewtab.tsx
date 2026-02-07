@@ -34,7 +34,7 @@ const OverviewTab: React.FC<Props> = ({ project }) => {
       <div className="bg-white rounded-xl border border-slate-200 shadow-card divide-y lg:divide-y-0 lg:divide-x divide-slate-100 grid grid-cols-1 lg:grid-cols-4">
         {[
           { label: 'Общий бюджет', value: `${project.budget.toLocaleString()} ₸`, icon: CreditCard, color: 'text-blue-600' },
-          { label: 'Медиа бюджет', value: `${project.mediaBudget.toLocaleString()} ₸`, icon: Target, color: 'text-indigo-600' },
+          { label: 'Медиа бюджет', value: `${(project.mediaBudget || 0).toLocaleString()} ₸`, icon: Target, color: 'text-blue-600' },
           { label: 'Дата старта', value: new Date(project.startDate).toLocaleDateString('ru-RU'), icon: Calendar, color: 'text-slate-600' },
           { label: 'Дедлайн', value: new Date(project.endDate).toLocaleDateString('ru-RU'), icon: CheckCircle2, color: 'text-emerald-600' },
         ].map((stat, i) => (
@@ -57,7 +57,7 @@ const OverviewTab: React.FC<Props> = ({ project }) => {
               Объем работ по проекту
             </h3>
             <div className="grid grid-cols-1 gap-1">
-              {project.scopeOfWork.map((item, idx) => (
+              {(project.scopeOfWork || []).map((item, idx) => (
                 <div 
                   key={item.id} 
                   className={`flex items-center justify-between py-3 px-4 rounded-lg transition-colors ${idx % 2 === 0 ? 'bg-slate-50/50' : 'bg-white'}`}
@@ -78,7 +78,7 @@ const OverviewTab: React.FC<Props> = ({ project }) => {
               Показатели эффективности (KPI)
             </h3>
             <div className="grid grid-cols-1 gap-6">
-              {project.kpis.map((kpi) => {
+              {(project.kpis || []).map((kpi) => {
                 const progress = (kpi.fact / kpi.plan) * 100;
                 return (
                   <div key={kpi.id}>
@@ -124,7 +124,7 @@ const OverviewTab: React.FC<Props> = ({ project }) => {
               Полезные ссылки
             </h3>
             <div className="grid grid-cols-1 gap-2">
-              {project.quickLinks.map((link) => (
+              {(project.quickLinks || []).map((link) => (
                 <a 
                   key={link.id} 
                   href={link.url} 

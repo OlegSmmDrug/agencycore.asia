@@ -157,7 +157,8 @@ export const guestAccessService = {
       reelsPlan: data.reels_plan || 0,
       reelsFact: data.reels_fact || 0,
       storiesPlan: data.stories_plan || 0,
-      storiesFact: data.stories_fact || 0
+      storiesFact: data.stories_fact || 0,
+      scopeOfWork: data.scope_of_work || []
     };
   },
 
