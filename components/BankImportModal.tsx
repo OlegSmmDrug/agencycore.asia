@@ -4,8 +4,9 @@ import {
   ChevronDown, ChevronUp, Building2, Link2, UserPlus, Search
 } from 'lucide-react';
 import { Client, PaymentType, Transaction, BankCounterpartyAlias, ReconciliationStatus } from '../types';
-import { ParsedTransaction, ImportResult, parseStatementFile } from '../services/bankStatementParser';
+import { ParsedTransaction, ImportResult, parseStatementFile, CompanyInfo } from '../services/bankStatementParser';
 import { reconciliationService } from '../services/reconciliationService';
+import { executorCompanyService } from '../services/executorCompanyService';
 import Modal from './Modal';
 
 interface BankImportModalProps {
@@ -176,19 +177,25 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
   const [importSummary, setImportSummary] = useState({ imported: 0, reconciled: 0, skipped: 0, created: 0 });
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [aliases, setAliases] = useState<BankCounterpartyAlias[]>([]);
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo | undefined>();
   const [newClientModal, setNewClientModal] = useState<{ rowIndex: number; bankName: string; bankBin: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
       reconciliationService.getAliases().then(setAliases);
+      executorCompanyService.getDefault().then(company => {
+        if (company?.bin || company?.iban) {
+          setCompanyInfo({ bin: company.bin || '', iban: company.iban || '' });
+        }
+      });
     }
   }, [isOpen]);
 
   const handleFile = useCallback(async (file: File) => {
     setIsProcessing(true);
     try {
-      const result = await parseStatementFile(file, clients, transactions, aliases);
+      const result = await parseStatementFile(file, clients, transactions, aliases, companyInfo);
       if (result.transactions.length === 0) {
         alert('Не удалось распознать платежи в файле. Убедитесь, что формат файла поддерживается.');
         setIsProcessing(false);
@@ -209,7 +216,7 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
     } finally {
       setIsProcessing(false);
     }
-  }, [clients, transactions, aliases]);
+  }, [clients, transactions, aliases, companyInfo]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();

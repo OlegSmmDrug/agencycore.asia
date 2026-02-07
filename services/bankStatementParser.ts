@@ -1,6 +1,11 @@
 import { Client, PaymentType, Transaction, BankCounterpartyAlias, ReconciliationStatus } from '../types';
 import { sanitizeCounterpartyName, extractBin, reconciliationService, ReconciliationMatch } from './reconciliationService';
 
+export interface CompanyInfo {
+  bin: string;
+  iban: string;
+}
+
 export interface ParsedTransaction {
   date: string;
   amount: number;
@@ -197,12 +202,12 @@ function extractOurBin(content: string): string {
   return mostFrequent;
 }
 
-function parse1CFormat(content: string): Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] {
+function parse1CFormat(content: string, companyInfo?: CompanyInfo): Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] {
   const results: Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] = [];
   const sections = content.split(/СекцияДокумент/g).slice(1);
 
-  const ourAccount = extractOurAccount(content);
-  const ourBin = extractOurBin(content);
+  const ourAccount = companyInfo?.iban || extractOurAccount(content);
+  const ourBin = companyInfo?.bin || extractOurBin(content);
 
   for (const section of sections) {
     if (!section.includes('КонецДокумента')) continue;
@@ -448,7 +453,8 @@ export async function parseStatementFile(
   file: File,
   clients: Client[],
   existingTransactions: Transaction[],
-  aliases: BankCounterpartyAlias[]
+  aliases: BankCounterpartyAlias[],
+  companyInfo?: CompanyInfo
 ): Promise<ImportResult> {
   let content = await readFileAsText(file, 'windows-1251');
 
@@ -461,7 +467,7 @@ export async function parseStatementFile(
   let rawTransactions: Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] = [];
 
   if (format === '1c') {
-    rawTransactions = parse1CFormat(content);
+    rawTransactions = parse1CFormat(content, companyInfo);
   } else if (format === 'csv') {
     rawTransactions = parseCSVFormat(content);
   }
