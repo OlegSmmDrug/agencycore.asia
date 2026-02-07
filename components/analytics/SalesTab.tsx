@@ -1,6 +1,11 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { Client, User, Transaction, ClientStatus } from '../../types';
 import { financialEngineService, PipelineForecast } from '../../services/financialEngineService';
+import { marketingChannelService, SalesTarget } from '../../services/marketingChannelService';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, Cell, AreaChart, Area } from 'recharts';
+import SalesFunnel from './sales/SalesFunnel';
+import ManagerTable from './sales/ManagerTable';
+import PipelineCard from './sales/PipelineCard';
 
 interface SalesTabProps {
   clients: Client[];
@@ -16,309 +21,402 @@ const UI = {
 
 const fmt = (v: number) => `${Math.round(v).toLocaleString()} ₸`;
 
+const PERIOD_OPTIONS = [
+  { value: 'all', label: 'Все время' },
+  { value: 'month', label: 'Текущий месяц' },
+  { value: 'quarter', label: 'Текущий квартал' },
+  { value: 'prev_month', label: 'Прошлый месяц' },
+];
+
+function getPeriodRange(period: string): { start: Date; end: Date } | null {
+  const now = new Date();
+  if (period === 'all') return null;
+  if (period === 'month') {
+    return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59) };
+  }
+  if (period === 'prev_month') {
+    return { start: new Date(now.getFullYear(), now.getMonth() - 1, 1), end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59) };
+  }
+  if (period === 'quarter') {
+    const qStart = Math.floor(now.getMonth() / 3) * 3;
+    return { start: new Date(now.getFullYear(), qStart, 1), end: new Date(now.getFullYear(), qStart + 3, 0, 23, 59, 59) };
+  }
+  return null;
+}
+
 const SalesTab: React.FC<SalesTabProps> = ({ clients, users, transactions }) => {
   const [payrollCosts, setPayrollCosts] = useState<Record<string, number>>({});
+  const [salesTargets, setSalesTargets] = useState<SalesTarget[]>([]);
+  const [period, setPeriod] = useState('all');
+  const [selectedManager, setSelectedManager] = useState<string | null>(null);
+  const [cacData, setCacData] = useState<{ cac: number; totalSpend: number; source: string }>({ cac: 0, totalSpend: 0, source: 'transactions' });
   const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
 
   useEffect(() => {
     financialEngineService.loadPayrollCostPerUser(currentMonth).then(setPayrollCosts);
-  }, [currentMonth]);
+    marketingChannelService.getSalesTargets(currentMonth).then(setSalesTargets);
+    financialEngineService.calcMarketingCAC(clients, transactions).then(setCacData);
+  }, [currentMonth, clients, transactions]);
+
+  const periodRange = useMemo(() => getPeriodRange(period), [period]);
+
+  const filteredClients = useMemo(() => {
+    let result = clients;
+    if (periodRange) {
+      result = result.filter(c => {
+        const d = new Date(c.createdAt);
+        return d >= periodRange.start && d <= periodRange.end;
+      });
+    }
+    if (selectedManager) {
+      result = result.filter(c => c.managerId === selectedManager);
+    }
+    return result;
+  }, [clients, periodRange, selectedManager]);
+
+  const filteredTransactions = useMemo(() => {
+    let result = transactions;
+    if (periodRange) {
+      result = result.filter(t => {
+        const d = new Date(t.date);
+        return d >= periodRange.start && d <= periodRange.end;
+      });
+    }
+    if (selectedManager) {
+      const managerClientIds = new Set(clients.filter(c => c.managerId === selectedManager).map(c => c.id));
+      result = result.filter(t => t.clientId && managerClientIds.has(t.clientId));
+    }
+    return result;
+  }, [transactions, periodRange, selectedManager, clients]);
+
+  const allClientsForPipeline = useMemo(() => {
+    if (selectedManager) return clients.filter(c => c.managerId === selectedManager);
+    return clients;
+  }, [clients, selectedManager]);
 
   const salesData = useMemo(() => {
-    const newLeads = clients.filter(c => c.status === ClientStatus.NEW_LEAD).length;
-    const contacted = clients.filter(c => c.status === ClientStatus.CONTACTED).length;
-    const presentation = clients.filter(c => c.status === ClientStatus.PRESENTATION).length;
-    const contractSigning = clients.filter(c => c.status === ClientStatus.CONTRACT).length;
-    const inWork = clients.filter(c => c.status === ClientStatus.IN_WORK).length;
-    const won = clients.filter(c => c.status === ClientStatus.WON).length;
-    const lost = clients.filter(c => c.status === ClientStatus.LOST).length;
+    const fc = filteredClients;
+    const newLeads = fc.filter(c => c.status === ClientStatus.NEW_LEAD).length;
+    const contacted = fc.filter(c => c.status === ClientStatus.CONTACTED).length;
+    const presentation = fc.filter(c => c.status === ClientStatus.PRESENTATION).length;
+    const contractSigning = fc.filter(c => c.status === ClientStatus.CONTRACT).length;
+    const inWork = fc.filter(c => c.status === ClientStatus.IN_WORK).length;
+    const won = fc.filter(c => c.status === ClientStatus.WON).length;
+    const lost = fc.filter(c => c.status === ClientStatus.LOST).length;
 
-    const totalLeads = clients.filter(c => c.status !== ('Archived' as any)).length;
+    const totalLeads = fc.filter(c => c.status !== ('Archived' as any)).length;
     const activeClients = inWork + won;
     const contractsTotal = contractSigning + inWork + won;
 
     const funnel = [
-      { name: 'Новые лиды', value: newLeads, fill: '#94a3b8' },
-      { name: 'Контакт установлен', value: contacted, fill: '#60a5fa' },
-      { name: 'Презентация', value: presentation, fill: '#3b82f6' },
-      { name: 'Подписание договора', value: contractSigning, fill: '#f59e0b' },
-      { name: 'В работе', value: inWork, fill: '#10b981' },
-      { name: 'Закрыт (Won)', value: won, fill: '#059669' },
+      { name: 'Новые лиды', key: 'new_lead', value: newLeads, fill: '#94a3b8' },
+      { name: 'Контакт установлен', key: 'contacted', value: contacted, fill: '#60a5fa' },
+      { name: 'Презентация', key: 'presentation', value: presentation, fill: '#3b82f6' },
+      { name: 'Подписание договора', key: 'contract', value: contractSigning, fill: '#f59e0b' },
+      { name: 'В работе', key: 'in_work', value: inWork, fill: '#10b981' },
+      { name: 'Закрыт (Won)', key: 'won', value: won, fill: '#059669' },
     ];
 
     const overallConversion = totalLeads > 0 ? (activeClients / totalLeads) * 100 : 0;
     const lostRate = totalLeads > 0 ? (lost / totalLeads) * 100 : 0;
 
-    const marketingCost = Math.abs(transactions.filter(t => t.category === 'Marketing').reduce((s, t) => s + (t.amount || 0), 0));
-    const cac = marketingCost > 0 && contractsTotal > 0 ? marketingCost / contractsTotal : 0;
-
     const clientRevenue: Record<string, number> = {};
-    transactions.filter(t => t.amount > 0).forEach(t => {
+    filteredTransactions.filter(t => t.amount > 0).forEach(t => {
       if (t.clientId) clientRevenue[t.clientId] = (clientRevenue[t.clientId] || 0) + t.amount;
     });
 
     const managerPerformance = users
       .filter(u => financialEngineService.isSalesRole(u.jobTitle))
       .map(u => {
-        const mc = clients.filter(c => c.managerId === u.id);
+        const mc = fc.filter(c => c.managerId === u.id);
+        const allManagerClients = clients.filter(c => c.managerId === u.id);
         const mWon = mc.filter(c => [ClientStatus.WON, ClientStatus.IN_WORK, ClientStatus.CONTRACT].includes(c.status));
-        const rev = mc.reduce((s, c) => s + (clientRevenue[c.id] || 0), 0);
+        const rev = allManagerClients.reduce((s, c) => s + (clientRevenue[c.id] || 0), 0);
         const cost = payrollCosts[u.id] || 0;
-        return { name: u.name, revenue: rev, leads: mc.length, won: mWon.length, lost: mc.filter(c => c.status === ClientStatus.LOST).length, cost };
+        const target = salesTargets.find(t => t.userId === u.id);
+
+        let avgDaysToClose = 0;
+        const wonWithDates = mWon.filter(c => c.createdAt && c.statusChangedAt);
+        if (wonWithDates.length > 0) {
+          const totalDays = wonWithDates.reduce((s, c) => {
+            const days = Math.floor((new Date(c.statusChangedAt!).getTime() - new Date(c.createdAt).getTime()) / 86400000);
+            return s + (days > 0 && days < 365 ? days : 0);
+          }, 0);
+          avgDaysToClose = Math.round(totalDays / wonWithDates.length);
+        }
+
+        return {
+          id: u.id,
+          name: u.name,
+          revenue: rev,
+          leads: mc.length,
+          won: mWon.length,
+          lost: mc.filter(c => c.status === ClientStatus.LOST).length,
+          cost,
+          avgDaysToClose,
+          revenueTarget: target?.revenueTarget || 0,
+        };
       })
       .map(m => ({
         ...m,
         conversion: m.leads > 0 ? (m.won / m.leads) * 100 : 0,
         avgCheck: m.won > 0 ? m.revenue / m.won : 0,
         roi: m.cost > 0 ? ((m.revenue / m.cost) - 1) * 100 : 0,
+        planPercent: m.revenueTarget > 0 ? (m.revenue / m.revenueTarget) * 100 : 0,
       }))
       .sort((a, b) => b.revenue - a.revenue);
 
+    const totals = managerPerformance.reduce((acc, m) => ({
+      revenue: acc.revenue + m.revenue,
+      leads: acc.leads + m.leads,
+      won: acc.won + m.won,
+      lost: acc.lost + m.lost,
+      cost: acc.cost + m.cost,
+    }), { revenue: 0, leads: 0, won: 0, lost: 0, cost: 0 });
+
     const avgDealSize = activeClients > 0
-      ? transactions.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0) / activeClients : 0;
+      ? filteredTransactions.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0) / activeClients : 0;
 
-    return { funnel, managerPerformance, cac, overallConversion, lostRate, totalLeads, activeClients, lost, avgDealSize };
-  }, [clients, users, transactions, payrollCosts]);
+    return {
+      funnel, managerPerformance, totals,
+      cac: cacData.cac, cacSource: cacData.source,
+      overallConversion, lostRate, totalLeads, activeClients, lost, avgDealSize, contractsTotal
+    };
+  }, [filteredClients, filteredTransactions, users, payrollCosts, salesTargets, clients, cacData]);
 
-  const pipeline = useMemo(() => financialEngineService.calcPipelineForecast(clients), [clients]);
+  const pipeline = useMemo(() => financialEngineService.calcPipelineForecast(allClientsForPipeline, salesData.avgDealSize), [allClientsForPipeline, salesData.avgDealSize]);
   const pipelineTotal = useMemo(() => pipeline.reduce((s, p) => s + p.weightedValue, 0), [pipeline]);
-  const salesCycle = useMemo(() => financialEngineService.calcSalesCycle(clients), [clients]);
-
-  const revenueByMonth = useMemo(() => {
-    const months: Record<string, number> = {};
-    transactions.filter(t => t.amount > 0).forEach(t => {
-      const m = t.date?.slice(0, 7);
-      if (m) months[m] = (months[m] || 0) + t.amount;
-    });
-    return Object.entries(months).sort(([a], [b]) => a.localeCompare(b)).slice(-6);
-  }, [transactions]);
+  const salesCycle = useMemo(() => financialEngineService.calcSalesCycle(allClientsForPipeline), [allClientsForPipeline]);
 
   const leadsByMonth = useMemo(() => {
+    const baseClients = selectedManager ? clients.filter(c => c.managerId === selectedManager) : clients;
     const months: Record<string, number> = {};
-    clients.forEach(c => {
+    baseClients.forEach(c => {
       const m = c.createdAt?.slice(0, 7);
       if (m) months[m] = (months[m] || 0) + 1;
     });
-    return Object.entries(months).sort(([a], [b]) => a.localeCompare(b)).slice(-6);
-  }, [clients]);
+    return Object.entries(months).sort(([a], [b]) => a.localeCompare(b)).slice(-6).map(([month, count]) => ({
+      month,
+      label: new Date(month + '-01').toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' }),
+      leads: count,
+    }));
+  }, [clients, selectedManager]);
+
+  const revenueByMonth = useMemo(() => {
+    const baseTx = selectedManager
+      ? transactions.filter(t => {
+          const managerClients = new Set(clients.filter(c => c.managerId === selectedManager).map(c => c.id));
+          return t.clientId && managerClients.has(t.clientId);
+        })
+      : transactions;
+    const months: Record<string, number> = {};
+    baseTx.filter(t => t.amount > 0).forEach(t => {
+      const m = t.date?.slice(0, 7);
+      if (m) months[m] = (months[m] || 0) + t.amount;
+    });
+    return Object.entries(months).sort(([a], [b]) => a.localeCompare(b)).slice(-6).map(([month, revenue]) => ({
+      month,
+      label: new Date(month + '-01').toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' }),
+      revenue: Math.round(revenue),
+    }));
+  }, [transactions, clients, selectedManager]);
+
+  const leadsBySource = useMemo(() => {
+    const baseClients = selectedManager ? clients.filter(c => c.managerId === selectedManager) : clients;
+    const sources: Record<string, number> = {};
+    baseClients.forEach(c => {
+      const src = c.source || 'Other';
+      sources[src] = (sources[src] || 0) + 1;
+    });
+    const colors: Record<string, string> = {
+      Website: '#3b82f6', Referral: '#10b981', 'Cold Call': '#f59e0b',
+      Socials: '#ec4899', Creatium: '#06b6d4', Other: '#94a3b8', Manual: '#64748b',
+    };
+    return Object.entries(sources).sort((a, b) => b[1] - a[1]).map(([source, count]) => ({
+      source, count, fill: colors[source] || '#94a3b8',
+    }));
+  }, [clients, selectedManager]);
+
+  const stalledDeals = useMemo(() => {
+    const now = new Date();
+    const stalled = allClientsForPipeline
+      .filter(c => c.status !== ClientStatus.IN_WORK && c.status !== ClientStatus.WON && c.status !== ClientStatus.LOST && c.status !== ('Archived' as any))
+      .filter(c => {
+        const lastUpdate = new Date(c.statusChangedAt || c.createdAt);
+        return (now.getTime() - lastUpdate.getTime()) / 86400000 > 7;
+      })
+      .map(c => {
+        const days = Math.floor((now.getTime() - new Date(c.statusChangedAt || c.createdAt).getTime()) / 86400000);
+        const manager = users.find(u => u.id === c.managerId);
+        return { id: c.id, name: c.name || c.company || 'Без имени', status: c.status, days, manager: manager?.name || '--' };
+      })
+      .sort((a, b) => b.days - a.days)
+      .slice(0, 5);
+    return stalled;
+  }, [allClientsForPipeline, users]);
+
+  const handleManagerClick = useCallback((managerId: string) => {
+    setSelectedManager(prev => prev === managerId ? null : managerId);
+  }, []);
+
+  const selectedManagerName = selectedManager ? users.find(u => u.id === selectedManager)?.name : null;
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className={UI.CARD}>
-          <p className={UI.LABEL}>Всего лидов</p>
-          <p className={UI.VALUE}>{salesData.totalLeads}</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+          {PERIOD_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setPeriod(opt.value)}
+              className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                period === opt.value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
-        <div className={UI.CARD}>
-          <p className={UI.LABEL}>Активных клиентов</p>
-          <p className="text-2xl font-black text-emerald-600 tracking-tighter">{salesData.activeClients}</p>
-        </div>
-        <div className={UI.CARD}>
-          <p className={UI.LABEL}>Конверсия в клиента</p>
-          <p className={`text-2xl font-black tracking-tighter ${
-            salesData.overallConversion > 20 ? 'text-emerald-600' : salesData.overallConversion > 10 ? 'text-blue-600' : 'text-amber-600'
-          }`}>
-            {salesData.overallConversion.toFixed(1)}%
-          </p>
-        </div>
-        <div className={UI.CARD}>
-          <p className={UI.LABEL}>Потеряно (Lost)</p>
-          <p className="text-2xl font-black text-rose-600 tracking-tighter">{salesData.lost}</p>
-          <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">{salesData.lostRate.toFixed(0)}% от всех</p>
-        </div>
-        <div className={UI.CARD}>
-          <div className="group relative">
-            <p className={UI.LABEL}>
-              Цикл сделки
-              <span className="inline-block w-3 h-3 text-center leading-3 rounded-full bg-slate-200 text-[7px] font-black text-slate-500 cursor-help ml-1">?</span>
-            </p>
-            <div className="hidden group-hover:block absolute left-0 top-full mt-1 bg-slate-800 text-white text-[10px] p-3 rounded-lg z-10 w-56 shadow-xl">
-              Среднее количество дней от создания лида до перехода в статус "В работе".
-            </div>
+        {selectedManager && (
+          <button
+            onClick={() => setSelectedManager(null)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-xl text-[10px] font-black uppercase tracking-wider border border-blue-200 hover:bg-blue-100 transition-all"
+          >
+            <span className="w-2 h-2 rounded-full bg-blue-500" />
+            {selectedManagerName}
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+        {[
+          { label: 'Всего лидов', value: salesData.totalLeads, color: 'text-slate-900' },
+          { label: 'Активных клиентов', value: salesData.activeClients, color: 'text-emerald-600' },
+          { label: 'Конверсия', value: `${salesData.overallConversion.toFixed(1)}%`, color: salesData.overallConversion > 20 ? 'text-emerald-600' : salesData.overallConversion > 10 ? 'text-blue-600' : 'text-amber-600' },
+          { label: 'Потеряно', value: salesData.lost, color: 'text-rose-600', sub: `${salesData.lostRate.toFixed(0)}% от всех` },
+          { label: 'Цикл сделки', value: salesCycle.avgDays > 0 ? `${salesCycle.avgDays} дн.` : '--', color: 'text-blue-600' },
+          { label: 'CAC', value: salesData.cac > 0 ? fmt(salesData.cac) : 'Нет данных', color: salesData.cac > 0 ? 'text-slate-900' : 'text-slate-400', sub: salesData.cac === 0 ? 'Добавьте данные в Маркетинг' : undefined },
+        ].map((kpi, i) => (
+          <div key={i} className={UI.CARD}>
+            <p className={UI.LABEL}>{kpi.label}</p>
+            <p className={`text-2xl font-black tracking-tighter ${kpi.color}`}>{kpi.value}</p>
+            {kpi.sub && <p className="text-[8px] text-slate-400 font-bold uppercase mt-1">{kpi.sub}</p>}
           </div>
-          <p className="text-2xl font-black text-blue-600 tracking-tighter">
-            {salesCycle.avgDays > 0 ? `${salesCycle.avgDays} дн.` : '--'}
-          </p>
-        </div>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        <div className={`${UI.CARD} xl:col-span-5`}>
-          <h3 className="font-black text-xs uppercase tracking-widest mb-8 text-slate-900">Воронка продаж (CRM)</h3>
-          <div className="space-y-6">
-            {salesData.funnel.map((step, i) => {
-              const maxVal = Math.max(...salesData.funnel.map(f => f.value), 1);
-              return (
-                <div key={i} className="relative">
-                  <div className="flex justify-between text-[11px] font-black text-slate-500 uppercase mb-2">
-                    <span>{step.name}</span>
-                    <span className="text-slate-900">{step.value}</span>
-                  </div>
-                  <div className="h-5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
-                    <div
-                      className="h-full rounded-full transition-all duration-1000"
-                      style={{ width: `${(step.value / maxVal) * 100}%`, backgroundColor: step.fill }}
-                    />
-                  </div>
-                  {i < salesData.funnel.length - 1 && step.value > 0 && salesData.funnel[i + 1].value > 0 && (
-                    <div className="absolute left-1/2 -bottom-4 -translate-x-1/2 text-[9px] font-black text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
-                      &darr; {Math.round((salesData.funnel[i + 1].value / step.value) * 100)}%
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-8 pt-4 border-t border-slate-100 grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-[9px] font-bold text-slate-400 uppercase">CAC (стоимость клиента)</p>
-              <p className="text-lg font-black text-slate-900">
-                {salesData.cac > 0 ? fmt(salesData.cac) : 'Нет данных'}
-              </p>
-              {salesData.cac === 0 && <p className="text-[8px] text-slate-400">Разметьте расходы категорией "Маркетинг"</p>}
-            </div>
-            <div>
-              <p className="text-[9px] font-bold text-slate-400 uppercase">Средний чек</p>
-              <p className="text-lg font-black text-slate-900">
-                {salesData.avgDealSize > 0 ? fmt(salesData.avgDealSize) : '--'}
-              </p>
-            </div>
-          </div>
+        <div className="xl:col-span-5">
+          <SalesFunnel funnel={salesData.funnel} cac={salesData.cac} avgDealSize={salesData.avgDealSize} />
         </div>
+        <div className="xl:col-span-7">
+          <ManagerTable
+            managers={salesData.managerPerformance}
+            totals={salesData.totals}
+            selectedManager={selectedManager}
+            onManagerClick={handleManagerClick}
+          />
+        </div>
+      </div>
 
-        <div className={`${UI.CARD} xl:col-span-7`}>
-          <h3 className="font-black text-xs uppercase tracking-widest mb-8 text-slate-900">Эффективность менеджеров продаж</h3>
-          {salesData.managerPerformance.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                  <tr>
-                    <th className="pb-5 px-4 text-center">#</th>
-                    <th className="pb-5">Менеджер</th>
-                    <th className="pb-5 text-right">Выручка (факт)</th>
-                    <th className="pb-5 text-right">Лиды</th>
-                    <th className="pb-5 text-right">Клиенты</th>
-                    <th className="pb-5 text-right">Конверсия</th>
-                    <th className="pb-5 text-right">Ср. чек</th>
-                    <th className="pb-5 text-right">ФОТ</th>
-                    <th className="pb-5 text-right">ROI</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {salesData.managerPerformance.map((m, i) => (
-                    <tr key={i} className="group hover:bg-slate-50/50 transition-all">
-                      <td className="py-5 px-4 text-center">
-                        <span className={`w-6 h-6 flex items-center justify-center rounded-lg text-[10px] font-black ${
-                          i === 0 ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'
-                        }`}>{i + 1}</span>
-                      </td>
-                      <td className="py-5 font-black text-slate-800 text-sm">{m.name}</td>
-                      <td className="py-5 text-right font-black text-slate-900">{m.revenue.toLocaleString()} &#8376;</td>
-                      <td className="py-5 text-right text-slate-600 text-sm">{m.leads}</td>
-                      <td className="py-5 text-right text-emerald-600 font-black text-sm">{m.won}</td>
-                      <td className="py-5 text-right">
-                        <span className={`px-3 py-1 rounded-xl text-[10px] font-black ${
-                          m.conversion > 30 ? 'bg-emerald-50 text-emerald-600' : m.conversion > 15 ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'
-                        }`}>
-                          {m.conversion.toFixed(1)}%
-                        </span>
-                      </td>
-                      <td className="py-5 text-right text-slate-500 font-mono text-sm">{Math.round(m.avgCheck).toLocaleString()} &#8376;</td>
-                      <td className="py-5 text-right text-xs font-bold text-slate-500">
-                        {m.cost > 0 ? fmt(m.cost) : '--'}
-                      </td>
-                      <td className="py-5 text-right">
-                        {m.cost > 0 ? (
-                          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black ${
-                            m.roi > 200 ? 'bg-emerald-50 text-emerald-600' :
-                            m.roi > 0 ? 'bg-blue-50 text-blue-600' : 'bg-rose-50 text-rose-600'
-                          }`}>
-                            {m.roi > 0 ? '+' : ''}{m.roi.toFixed(0)}%
-                          </span>
-                        ) : <span className="text-xs text-slate-300">--</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <PipelineCard pipeline={pipeline} pipelineTotal={pipelineTotal} />
+
+        <div className={UI.CARD}>
+          <h3 className="font-black text-xs uppercase tracking-widest mb-6 text-slate-900 flex items-center gap-2">
+            <div className="w-1 h-4 bg-emerald-500 rounded-full" /> Динамика лидов и выручки
+          </h3>
+          {leadsByMonth.length > 0 ? (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={leadsByMonth.map((l, i) => ({
+                  ...l,
+                  revenue: revenueByMonth[i]?.revenue || 0,
+                }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={v => `${(v / 1000).toFixed(0)}K`} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.08)', fontSize: 11, fontWeight: 700 }}
+                    formatter={(value: any, name: string) => [
+                      name === 'leads' ? value : `${Math.round(value).toLocaleString()} ₸`,
+                      name === 'leads' ? 'Лиды' : 'Выручка'
+                    ]}
+                  />
+                  <Area yAxisId="left" type="monotone" dataKey="leads" stroke="#10b981" fill="#10b98120" strokeWidth={2.5} dot={{ r: 4, fill: '#10b981' }} />
+                  <Area yAxisId="right" type="monotone" dataKey="revenue" stroke="#3b82f6" fill="#3b82f620" strokeWidth={2.5} dot={{ r: 4, fill: '#3b82f6' }} />
+                  <Legend
+                    formatter={(value: string) => <span className="text-[10px] font-bold uppercase tracking-wider">{value === 'leads' ? 'Лиды' : 'Выручка'}</span>}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           ) : (
-            <div className="text-center py-12">
-              <p className="text-slate-400 text-sm">Нет данных по менеджерам продаж</p>
-              <p className="text-slate-300 text-xs mt-2">Добавьте сотрудников с должностью "Sales manager", "Аккаунт-менеджер", "Менеджер по продажам" или "CEO/Директор"</p>
-            </div>
+            <div className="text-center py-12"><p className="text-slate-400 text-sm">Нет данных</p></div>
           )}
         </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className={UI.CARD}>
-          <div className="group relative inline-block">
-            <h3 className="font-black text-xs uppercase tracking-widest mb-6 text-slate-900 flex items-center gap-2">
-              <div className="w-1 h-4 bg-blue-500 rounded-full" />
-              Pipeline прогноз
-              <span className="inline-block w-3 h-3 text-center leading-3 rounded-full bg-slate-200 text-[7px] font-black text-slate-500 cursor-help">?</span>
-            </h3>
-            <div className="hidden group-hover:block absolute left-0 top-full mt-1 bg-slate-800 text-white text-[10px] p-3 rounded-lg z-10 w-64 shadow-xl">
-              Прогноз поступлений на основе текущей воронки. Бюджет клиента умножается на вероятность закрытия сделки на каждом этапе.
-            </div>
-          </div>
-          <div className="space-y-4">
-            {pipeline.map((p, i) => (
-              <div key={i}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-bold text-slate-600">{p.stage}</span>
-                    <span className="text-[9px] text-slate-400 font-bold">{p.count} кл.</span>
-                    <span className="text-[9px] text-blue-500 font-bold">{p.probability}%</span>
-                  </div>
-                  <span className="text-sm font-black text-slate-900">{fmt(p.weightedValue)}</span>
-                </div>
-                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-blue-500 rounded-full transition-all"
-                    style={{ width: `${pipelineTotal > 0 ? (p.weightedValue / pipelineTotal) * 100 : 0}%` }}
+          <h3 className="font-black text-xs uppercase tracking-widest mb-6 text-slate-900 flex items-center gap-2">
+            <div className="w-1 h-4 bg-cyan-500 rounded-full" /> Источники лидов
+          </h3>
+          {leadsBySource.length > 0 ? (
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={leadsBySource} layout="vertical" margin={{ left: 10, right: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="source" tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} axisLine={false} tickLine={false} width={80} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.08)', fontSize: 11, fontWeight: 700 }}
+                    formatter={(value: any) => [`${value} лидов`, 'Количество']}
                   />
-                </div>
-              </div>
-            ))}
-            <div className="pt-3 border-t border-slate-200">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-black text-slate-900 uppercase">Итого прогноз</span>
-                <span className="text-xl font-black text-blue-600">{fmt(pipelineTotal)}</span>
-              </div>
+                  <Bar dataKey="count" radius={[0, 8, 8, 0]} maxBarSize={24}>
+                    {leadsBySource.map((entry, i) => (
+                      <Cell key={i} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-          </div>
+          ) : (
+            <div className="text-center py-12"><p className="text-slate-400 text-sm">Нет данных</p></div>
+          )}
         </div>
 
         <div className={UI.CARD}>
           <h3 className="font-black text-xs uppercase tracking-widest mb-6 text-slate-900 flex items-center gap-2">
-            <div className="w-1 h-4 bg-emerald-500 rounded-full" /> Динамика лидов по месяцам
+            <div className="w-1 h-4 bg-amber-500 rounded-full" /> Застрявшие сделки
+            {stalledDeals.length > 0 && (
+              <span className="ml-auto text-[10px] font-black text-amber-600 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-100">{stalledDeals.length}</span>
+            )}
           </h3>
-          {leadsByMonth.length > 0 ? (
+          {stalledDeals.length > 0 ? (
             <div className="space-y-3">
-              {leadsByMonth.map(([month, count], i) => {
-                const maxCount = Math.max(...leadsByMonth.map(([, c]) => c));
-                const label = new Date(month + '-01').toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' });
-                return (
-                  <div key={i}>
-                    <div className="flex justify-between text-[11px] font-bold text-slate-500 mb-1">
-                      <span>{label}</span>
-                      <span className="text-slate-900 font-black">{count}</span>
-                    </div>
-                    <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-emerald-500 rounded-full transition-all duration-700"
-                        style={{ width: `${maxCount > 0 ? (count / maxCount) * 100 : 0}%` }}
-                      />
-                    </div>
+              {stalledDeals.map((deal, i) => (
+                <div key={deal.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-800 truncate">{deal.name}</p>
+                    <p className="text-[10px] text-slate-400 font-bold">{deal.manager} / {deal.status}</p>
                   </div>
-                );
-              })}
+                  <div className={`text-right shrink-0 ml-3 px-2.5 py-1 rounded-lg text-[10px] font-black ${
+                    deal.days > 14 ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-amber-50 text-amber-600 border border-amber-100'
+                  }`}>
+                    {deal.days} дн.
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="text-center py-12">
-              <p className="text-slate-400 text-sm">Нет данных</p>
+              <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <svg className="w-6 h-6 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              </div>
+              <p className="text-slate-500 text-sm font-bold">Все сделки в движении</p>
             </div>
           )}
         </div>
@@ -335,8 +433,8 @@ const SalesTab: React.FC<SalesTabProps> = ({ clients, users, transactions }) => 
             <div>
               <p className="font-black text-slate-900 text-sm">Высокий уровень потерь клиентов: {salesData.lostRate.toFixed(0)}%</p>
               <p className="text-xs text-slate-600 mt-1">
-                Рекомендации: 1) Проанализируйте причины отказа на этапе "Презентация" -- {clients.filter(c => c.status === ClientStatus.PRESENTATION).length} клиентов застряли.
-                2) Проверьте скорость реакции менеджеров -- долгий ответ = потеря лида.
+                Рекомендации: 1) Проанализируйте причины отказа на этапе "Презентация" -- {filteredClients.filter(c => c.status === ClientStatus.PRESENTATION).length} клиентов застряли.
+                2) Проверьте скорость реакции менеджеров.
                 3) Пересмотрите ценообразование если клиенты уходят после озвучивания стоимости.
               </p>
             </div>

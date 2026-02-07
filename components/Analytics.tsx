@@ -9,6 +9,7 @@ import TransactionJournal from './TransactionJournal';
 import FinanceTab from './analytics/FinanceTab';
 import OverviewTab from './analytics/OverviewTab';
 import SalesTab from './analytics/SalesTab';
+import MarketingTab from './analytics/MarketingTab';
 import TeamTab from './analytics/TeamTab';
 import { supabase } from '../lib/supabase';
 
@@ -52,6 +53,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
     const initialTab = useMemo(() => {
         if (externalTab === 'pnl') return 'finance';
         if (externalTab === 'sales_analytics') return 'sales';
+        if (externalTab === 'marketing_analytics') return 'marketing';
         if (externalTab === 'unit_economics') return 'unit';
         if (externalTab === 'team_performance') return 'team';
         if (externalTab === 'financial_model') return 'finmodel';
@@ -59,12 +61,13 @@ const Analytics: React.FC<AnalyticsProps> = ({
         return 'overview';
     }, [externalTab]);
 
-    const [activeTab, setActiveTab] = useState<'overview' | 'finance' | 'sales' | 'unit' | 'team' | 'finmodel' | 'payments'>(initialTab);
+    const [activeTab, setActiveTab] = useState<'overview' | 'finance' | 'sales' | 'marketing' | 'unit' | 'team' | 'finmodel' | 'payments'>(initialTab);
 
     useEffect(() => {
         if (!externalTab) return;
         if (externalTab === 'pnl') setActiveTab('finance');
         else if (externalTab === 'sales_analytics') setActiveTab('sales');
+        else if (externalTab === 'marketing_analytics') setActiveTab('marketing');
         else if (externalTab === 'unit_economics') setActiveTab('unit');
         else if (externalTab === 'team_performance') setActiveTab('team');
         else if (externalTab === 'financial_model') setActiveTab('finmodel');
@@ -235,6 +238,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
                             { id: 'finmodel', label: 'Фин. модель' },
                             { id: 'payments', label: 'Журнал платежей' },
                             { id: 'sales', label: 'Продажи' },
+                            { id: 'marketing', label: 'Маркетинг' },
                             { id: 'unit', label: 'Юнит-экономика' },
                             { id: 'team', label: 'Команда и HR' }
                         ].map(tab => (
@@ -275,6 +279,8 @@ const Analytics: React.FC<AnalyticsProps> = ({
                     <FinanceTab transactions={transactions} projects={projects} />
                 ) : activeTab === 'sales' ? (
                     <SalesTab clients={clients} users={users} transactions={transactions} />
+                ) : activeTab === 'marketing' ? (
+                    <MarketingTab clients={clients} transactions={transactions} />
                 ) : activeTab === 'unit' ? (
                     <UnitEconomicsSection
                         unitData={unitData} selectedMonth={selectedMonth} navigateMonth={navigateMonth}

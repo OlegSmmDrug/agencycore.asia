@@ -91,6 +91,8 @@ export interface PipelineForecast {
   stage: string;
   count: number;
   weightedValue: number;
+  confirmedValue: number;
+  estimatedValue: number;
   probability: number;
 }
 
@@ -392,7 +394,7 @@ export const financialEngineService = {
     return { monthlyBurn, runway: Math.max(0, runway), currentCash };
   },
 
-  calcPipelineForecast(clients: any[]): PipelineForecast[] {
+  calcPipelineForecast(clients: any[], avgDealSizeFallback?: number): PipelineForecast[] {
     const stageWeights: Record<string, number> = {
       'New Lead': 0.05,
       'Contact Established': 0.15,
@@ -400,15 +402,33 @@ export const financialEngineService = {
       'Contract Signing': 0.60,
     };
 
+    const activeClients = clients.filter(c => c.status === 'In Work' || c.status === 'Won');
+    const budgets = activeClients.map(c => Number(c.budget) || 0).filter(b => b > 0);
+    const avgDealSize = avgDealSizeFallback || (budgets.length > 0 ? budgets.reduce((a, b) => a + b, 0) / budgets.length : 0);
+
     const stages = Object.entries(stageWeights).map(([stage, probability]) => {
       const stageClients = clients.filter(c => c.status === stage);
-      const totalBudget = stageClients.reduce((s, c) => s + (Number(c.budget) || 0), 0);
+      let confirmedValue = 0;
+      let estimatedValue = 0;
+
+      stageClients.forEach(c => {
+        const budget = Number(c.budget) || 0;
+        if (budget > 0) {
+          confirmedValue += budget;
+        } else {
+          estimatedValue += avgDealSize;
+        }
+      });
+
+      const totalBudget = confirmedValue + estimatedValue;
 
       return {
         stage,
         count: stageClients.length,
         weightedValue: totalBudget * probability,
-        probability: probability * 100
+        confirmedValue: confirmedValue * probability,
+        estimatedValue: estimatedValue * probability,
+        probability: probability * 100,
       };
     });
 
@@ -595,5 +615,26 @@ export const financialEngineService = {
       lower.includes('коммерческ') ||
       lower === 'ceo' ||
       lower === 'директор';
+  },
+
+  async calcMarketingCAC(clients: any[], transactions: Transaction[]): Promise<{ cac: number; totalSpend: number; source: 'marketing_spend' | 'transactions' }> {
+    const orgId = getCurrentOrganizationId();
+    const activeClients = clients.filter(c => c.status === 'In Work' || c.status === 'Won' || c.status === 'Contract Signing');
+    if (activeClients.length === 0) return { cac: 0, totalSpend: 0, source: 'transactions' };
+
+    if (orgId) {
+      const { data } = await supabase
+        .from('marketing_spend')
+        .select('amount')
+        .eq('organization_id', orgId);
+
+      const mktSpend = (data || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+      if (mktSpend > 0) {
+        return { cac: mktSpend / activeClients.length, totalSpend: mktSpend, source: 'marketing_spend' };
+      }
+    }
+
+    const txSpend = Math.abs(transactions.filter(t => t.category === 'Marketing').reduce((s, t) => s + (t.amount || 0), 0));
+    return { cac: txSpend > 0 ? txSpend / activeClients.length : 0, totalSpend: txSpend, source: 'transactions' };
   }
 };
