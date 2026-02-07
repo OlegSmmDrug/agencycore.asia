@@ -257,17 +257,15 @@ const Analytics: React.FC<AnalyticsProps> = ({
                         <FinancialModel transactions={transactions} clients={clients} projects={projects} />
                     </div>
                 ) : activeTab === 'payments' ? (
-                    <div className="h-full rounded-[2rem] overflow-hidden border border-slate-200 shadow-sm bg-white">
-                        {onAddTransaction ? (
-                            <TransactionJournal
-                                transactions={transactions} clients={clients} projects={projects}
-                                users={users} onAddTransaction={onAddTransaction}
-                                onCreateClient={onCreateClient} onReconcile={onReconcile}
-                            />
-                        ) : (
-                            <div className="p-8 text-center text-slate-500">Функция добавления платежей недоступна</div>
-                        )}
-                    </div>
+                    onAddTransaction ? (
+                        <TransactionJournal
+                            transactions={transactions} clients={clients} projects={projects}
+                            users={users} onAddTransaction={onAddTransaction}
+                            onCreateClient={onCreateClient} onReconcile={onReconcile}
+                        />
+                    ) : (
+                        <div className="p-8 text-center text-slate-500">Функция добавления платежей недоступна</div>
+                    )
                 ) : activeTab === 'finance' ? (
                     <FinanceTab transactions={transactions} projects={projects} />
                 ) : activeTab === 'sales' ? (
