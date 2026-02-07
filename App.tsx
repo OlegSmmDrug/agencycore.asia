@@ -521,6 +521,28 @@ const App: React.FC = () => {
     }
   };
 
+  const handleDeleteClient = async (clientId: string) => {
+    try {
+      const client = clients.find(c => c.id === clientId);
+      if (!client) return;
+
+      await clientService.delete(clientId);
+      setClients(prev => prev.filter(c => c.id !== clientId));
+      addNotification(`Контакт "${client.company}" удален`, 'success');
+
+      activityLogService.create({
+        userId: getDbUserId(),
+        entityType: 'client',
+        entityId: clientId,
+        actionType: 'deleted',
+        description: `Контакт "${client.company}" удален из системы`
+      }).catch(err => console.error('Activity log error:', err));
+    } catch (error) {
+      console.error('Error deleting client:', error);
+      addNotification('Ошибка удаления контакта', 'warning');
+    }
+  };
+
   const handleProjectStatusChange = async (projectId: string, newStatus: ProjectStatus) => {
     try {
       await projectService.update(projectId, { status: newStatus });
@@ -1399,6 +1421,7 @@ const App: React.FC = () => {
             onUpdateTransaction={handleUpdateTransaction}
             onDeleteTransaction={handleDeleteTransaction}
             onArchiveClient={handleArchiveClient}
+            onDeleteClient={handleDeleteClient}
             onCreateClient={handleCreateClientFromBank}
             onReconcile={handleReconcileTransaction}
             onRepeatSale={handleRepeatSale}

@@ -20,6 +20,7 @@ interface ClientBoardProps {
   onUpdateTransaction?: (transaction: Transaction) => void;
   onDeleteTransaction?: (id: string) => void;
   onArchiveClient: (clientId: string, archive: boolean) => void;
+  onDeleteClient?: (clientId: string) => void;
   onCreateClient?: (client: { name: string; company: string; bin: string }) => Promise<Client>;
   onReconcile?: (existingId: string, bankData: { amount: number; clientName: string; bin: string; docNumber: string }) => Promise<void>;
   onRepeatSale?: (parentClient: Client) => void;
@@ -51,7 +52,7 @@ const SOURCE_STYLES: Record<string, string> = {
   'Other': 'bg-gray-50 text-gray-500 border-gray-100'
 };
 
-const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, transactions = [], projects = [], onClientStatusChange, onClientClick, onAddClient, onAddTransaction, onUpdateTransaction, onDeleteTransaction, onArchiveClient, onCreateClient, onReconcile, onRepeatSale }) => {
+const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, transactions = [], projects = [], onClientStatusChange, onClientClick, onAddClient, onAddTransaction, onUpdateTransaction, onDeleteTransaction, onArchiveClient, onDeleteClient, onCreateClient, onReconcile, onRepeatSale }) => {
   const { organization: currentOrganization } = useOrganization();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSource, setSelectedSource] = useState<string>('all');
@@ -515,17 +516,32 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
                                 <td className="p-4 font-mono text-sm cursor-pointer" onClick={() => onClientClick(client)}>{client.budget.toLocaleString()} ₸</td>
                                 <td className="p-4 text-xs text-slate-500 cursor-pointer" onClick={() => onClientClick(client)}>{new Date(client.createdAt).toLocaleDateString()}</td>
                                 <td className="p-4">
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (confirm('Восстановить сделку из архива?')) {
-                                                onArchiveClient(client.id, false);
-                                            }
-                                        }}
-                                        className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors border border-blue-200"
-                                    >
-                                        Восстановить
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                          onClick={(e) => {
+                                              e.stopPropagation();
+                                              if (confirm('Восстановить сделку из архива?')) {
+                                                  onArchiveClient(client.id, false);
+                                              }
+                                          }}
+                                          className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors border border-blue-200"
+                                      >
+                                          Восстановить
+                                      </button>
+                                      {onDeleteClient && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (confirm(`Удалить "${client.company}" навсегда? Это действие нельзя отменить.`)) {
+                                                    onDeleteClient(client.id);
+                                                }
+                                            }}
+                                            className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors border border-red-200"
+                                        >
+                                            Удалить
+                                        </button>
+                                      )}
+                                    </div>
                                 </td>
                             </tr>
                         ))}
@@ -556,17 +572,32 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
                   <div className="text-xs text-slate-400">{new Date(client.createdAt).toLocaleDateString()}</div>
                   <div className="font-bold text-sm text-slate-800">{client.budget.toLocaleString()} ₸</div>
                 </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (confirm('Восстановить сделку из архива?')) {
-                      onArchiveClient(client.id, false);
-                    }
-                  }}
-                  className="mt-3 w-full py-2 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors border border-blue-200"
-                >
-                  Восстановить
-                </button>
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm('Восстановить сделку из архива?')) {
+                        onArchiveClient(client.id, false);
+                      }
+                    }}
+                    className="flex-1 py-2 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors border border-blue-200"
+                  >
+                    Восстановить
+                  </button>
+                  {onDeleteClient && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(`Удалить "${client.company}" навсегда? Это действие нельзя отменить.`)) {
+                          onDeleteClient(client.id);
+                        }
+                      }}
+                      className="py-2 px-4 bg-red-50 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors border border-red-200"
+                    >
+                      Удалить
+                    </button>
+                  )}
+                </div>
               </div>
             ))
           )}
