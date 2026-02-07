@@ -1363,6 +1363,11 @@ const App: React.FC = () => {
             onDeleteTransaction={handleDeleteTransaction}
             onCreateClient={handleCreateClientFromBank}
             onReconcile={handleReconcileTransaction}
+            onProjectClick={(projectId) => {
+              setSelectedProjectId(projectId);
+              setProjectDetailTab('overview');
+              setActiveTab('projects');
+            }}
           />
         );
       case 'calculator':
