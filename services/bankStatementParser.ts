@@ -241,6 +241,11 @@ function parse1CFormat(content: string, companyInfo?: CompanyInfo): Omit<ParsedT
     if (curKey) fieldMap.set(curKey, curVal);
 
     const getField = (name: string): string => fieldMap.get(name)?.trim() || '';
+    const getNameField = (name: string): string => {
+      const val = fieldMap.get(name);
+      if (!val) return '';
+      return val.replace(/\n/g, '').trim();
+    };
 
     const dateStr = getField('ДатаДокумента') || getField('ДатаОперации');
     const amountStr = getField('Сумма');
@@ -252,9 +257,9 @@ function parse1CFormat(content: string, companyInfo?: CompanyInfo): Omit<ParsedT
     let payerAccount = getField('ПлательщикСчет') || getField('ПлательщикРасчСчет') || getField('Плательщик1') || '';
     let recipientAccount = getField('ПолучательСчет') || getField('ПолучательРасчСчет') || getField('Получатель1') || '';
 
-    const payerNameRaw = getField('ПлательщикНаименование') || getField('Плательщик') || getField('ПлательщикНаименование1') || '';
+    const payerNameRaw = getNameField('ПлательщикНаименование') || getNameField('Плательщик') || getNameField('ПлательщикНаименование1') || '';
     let payerBinRaw = getField('Плательщик_ИНН') || getField('Плательщик_БИН') || getField('ПлательщикИНН') || getField('ПлательщикБИН') || getField('Плательщик_ИИН') || getField('ПлательщикИИН') || '';
-    const recipientNameRaw = getField('ПолучательНаименование') || getField('Получатель') || getField('ПолучательНаименование1') || '';
+    const recipientNameRaw = getNameField('ПолучательНаименование') || getNameField('Получатель') || getNameField('ПолучательНаименование1') || '';
     let recipientBinRaw = getField('Получатель_ИНН') || getField('Получатель_БИН') || getField('ПолучательИНН') || getField('ПолучательБИН') || getField('Получатель_ИИН') || getField('ПолучательИИН') || '';
 
     if (!payerAccount || !recipientAccount || !payerBinRaw || !recipientBinRaw) {

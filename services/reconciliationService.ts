@@ -27,6 +27,33 @@ export function extractBin(text: string): string {
   return match ? match[1] : '';
 }
 
+const LEGAL_PREFIXES = ['ТОО', 'ИП', 'АО', 'ЖШС', 'ОАО', 'ЗАО', 'ПАО', 'НАО', 'КТ', 'КХ', 'ПК', 'РГП', 'ГКП', 'КГП', 'ГУ', 'РГУ'];
+
+export function bankNameToTitleCase(raw: string): string {
+  if (!raw || !raw.trim()) return raw;
+  const sanitized = sanitizeCounterpartyName(raw);
+  const isLegalEntity = LEGAL_PREFIXES.some(p =>
+    sanitized.toUpperCase().startsWith(p + ' ') || sanitized.toUpperCase().startsWith(p + ' «') || sanitized.toUpperCase().startsWith('"' + p + ' ')
+  );
+  if (isLegalEntity) {
+    const spaceIdx = sanitized.indexOf(' ');
+    if (spaceIdx === -1) return sanitized;
+    const prefix = sanitized.substring(0, spaceIdx).toUpperCase();
+    const rest = sanitized.substring(spaceIdx + 1);
+    const restFormatted = rest.split(/\s+/).map(word => {
+      if (/^["«]/.test(word)) return word;
+      if (/^[A-Z]+$/i.test(word) && word.length <= 5) return word.toUpperCase();
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    }).join(' ');
+    return prefix + ' ' + restFormatted;
+  }
+  return sanitized.split(/\s+/).map(word => {
+    if (/^[A-Z]+$/i.test(word) && word.length <= 5) return word.toUpperCase();
+    if (/^\d/.test(word)) return word;
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  }).join(' ');
+}
+
 function normalizeForComparison(s: string): string {
   return s
     .toLowerCase()
@@ -128,12 +155,22 @@ export const reconciliationService = {
     });
     if (exact) return exact;
 
+    const normalizedWords = normalized.split(/\s+/);
     const partial = clients.find(c => {
       const targets = [c.company, c.name, c.legalName].filter(Boolean).map(t => normalizeForComparison(t!));
-      return targets.some(t =>
-        (t.length >= 3 && normalized.includes(t)) ||
-        (normalized.length >= 3 && t.includes(normalized))
-      );
+      return targets.some(t => {
+        const shorter = t.length <= normalized.length ? t : normalized;
+        const longer = t.length <= normalized.length ? normalized : t;
+        if (shorter.length < 5) return false;
+        const ratio = shorter.length / longer.length;
+        if (ratio < 0.4) return false;
+        const tWords = t.split(/\s+/);
+        const hasFullWordMatch = tWords.some(tw => tw.length >= 3 && normalizedWords.includes(tw)) ||
+          normalizedWords.some(nw => nw.length >= 3 && tWords.includes(nw));
+        if (hasFullWordMatch) return true;
+        if (ratio >= 0.6 && longer.includes(shorter)) return true;
+        return false;
+      });
     });
     return partial || null;
   },
@@ -151,13 +188,23 @@ export const reconciliationService = {
   findUserByName(bankName: string, users: User[]): User | null {
     if (!bankName) return null;
     const normalized = normalizeForComparison(bankName);
+    const normalizedWords = normalized.split(/\s+/);
     return users.find(u => {
       const targets = [u.name].filter(Boolean).map(t => normalizeForComparison(t));
-      return targets.some(t =>
-        t === normalized ||
-        (t.length >= 3 && normalized.includes(t)) ||
-        (normalized.length >= 3 && t.includes(normalized))
-      );
+      return targets.some(t => {
+        if (t === normalized) return true;
+        const tWords = t.split(/\s+/);
+        const shorter = t.length <= normalized.length ? t : normalized;
+        const longer = t.length <= normalized.length ? normalized : t;
+        if (shorter.length < 5) return false;
+        const ratio = shorter.length / longer.length;
+        if (ratio < 0.4) return false;
+        const hasFullWordMatch = tWords.some(tw => tw.length >= 3 && normalizedWords.includes(tw)) ||
+          normalizedWords.some(nw => nw.length >= 3 && tWords.includes(nw));
+        if (hasFullWordMatch) return true;
+        if (ratio >= 0.6 && longer.includes(shorter)) return true;
+        return false;
+      });
     }) || null;
   },
 

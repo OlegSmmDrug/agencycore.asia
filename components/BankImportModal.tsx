@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { Client, PaymentType, Transaction, BankCounterpartyAlias, ReconciliationStatus, User } from '../types';
 import { ParsedTransaction, ImportResult, parseStatementFile, CompanyInfo } from '../services/bankStatementParser';
-import { reconciliationService } from '../services/reconciliationService';
+import { reconciliationService, bankNameToTitleCase } from '../services/reconciliationService';
 import { executorCompanyService } from '../services/executorCompanyService';
 import Modal from './Modal';
 
@@ -179,7 +179,7 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
   const [clientOverrides, setClientOverrides] = useState<Record<number, string>>({});
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [importSummary, setImportSummary] = useState({ imported: 0, reconciled: 0, skipped: 0, created: 0 });
+  const [importSummary, setImportSummary] = useState({ imported: 0, reconciled: 0, skipped: 0, created: 0, clientsCreated: 0, duplicatesSkipped: 0, notSelected: 0 });
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [aliases, setAliases] = useState<BankCounterpartyAlias[]>([]);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | undefined>();
@@ -327,16 +327,51 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
     let skipped = 0;
     let reconciled = 0;
     let created = 0;
+    let clientsCreated = 0;
+    let duplicatesSkipped = 0;
+    let notSelected = 0;
+
+    const autoCreatedClients = new Map<string, string>();
 
     for (let i = 0; i < importResult.transactions.length; i++) {
       const t = importResult.transactions[i];
       if (!selectedRows.has(i)) {
-        skipped++;
+        notSelected++;
         continue;
       }
 
-      const clientId = clientOverrides[i] || t.matchedClientId;
+      if (t.matchStatus === 'duplicate') {
+        duplicatesSkipped++;
+        continue;
+      }
+
+      let clientId = clientOverrides[i] || t.matchedClientId;
       const isEmployeeMatch = t.isEmployee && t.matchedUserId;
+
+      if (!clientId && !isEmployeeMatch && onCreateClient) {
+        const cacheKey = t.clientBin || t.clientName;
+        if (cacheKey && autoCreatedClients.has(cacheKey)) {
+          clientId = autoCreatedClients.get(cacheKey)!;
+        } else {
+          try {
+            const titleName = bankNameToTitleCase(t.clientName);
+            const isLegal = /^(ТОО|ИП|АО|ЖШС|ОАО|ЗАО|ПАО)\s/i.test(t.clientName.trim());
+            const newClient = await onCreateClient({
+              name: isLegal ? '' : titleName,
+              company: isLegal ? titleName : '',
+              bin: t.clientBin,
+            });
+            clientId = newClient.id;
+            if (cacheKey) autoCreatedClients.set(cacheKey, clientId);
+            await reconciliationService.saveAlias(t.clientName, t.clientBin, clientId);
+            clientsCreated++;
+          } catch (err) {
+            console.error('Error auto-creating client:', err);
+            skipped++;
+            continue;
+          }
+        }
+      }
 
       if (!clientId && !isEmployeeMatch) {
         skipped++;
@@ -403,7 +438,7 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
     }
 
     onImport(itemsToImport);
-    setImportSummary({ imported: itemsToImport.length, reconciled, skipped, created });
+    setImportSummary({ imported: itemsToImport.length, reconciled, skipped, created, clientsCreated, duplicatesSkipped, notSelected });
     setIsProcessing(false);
     setStep('result');
   };
@@ -419,6 +454,45 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
   };
 
   const getResolvedClientId = (t: ParsedTransaction, index: number) => clientOverrides[index] || t.matchedClientId;
+
+  const getBinSuggestion = (t: ParsedTransaction): { type: 'client' | 'employee'; name: string; id: string } | null => {
+    if (!t.clientBin || t.matchStatus !== 'unmatched') return null;
+    const bankWords = t.clientName.toUpperCase().split(/\s+/).filter(w => w.length >= 3);
+    if (bankWords.length === 0) return null;
+    for (const u of users) {
+      if (u.iin) continue;
+      const uWords = (u.name || '').toUpperCase().split(/\s+/).filter(w => w.length >= 3);
+      const matchCount = uWords.filter(uw => bankWords.some(bw => bw === uw || (bw.length >= 5 && uw.startsWith(bw.substring(0, 5))))).length;
+      if (matchCount >= 1 && uWords.length > 0) {
+        return { type: 'employee', name: u.name, id: u.id };
+      }
+    }
+    for (const c of clients) {
+      if (c.bin || c.inn) continue;
+      const cNames = [c.name, c.company, c.legalName].filter(Boolean);
+      for (const cName of cNames) {
+        const cWords = cName!.toUpperCase().split(/\s+/).filter(w => w.length >= 3);
+        const matchCount = cWords.filter(cw => bankWords.some(bw => bw === cw || (bw.length >= 5 && cw.startsWith(bw.substring(0, 5))))).length;
+        if (matchCount >= 1 && cWords.length > 0) {
+          return { type: 'client', name: c.company || c.name, id: c.id };
+        }
+      }
+    }
+    return null;
+  };
+
+  const [binSuggestionApplied, setBinSuggestionApplied] = useState<Record<number, boolean>>({});
+
+  const handleApplyBinSuggestion = async (rowIndex: number, suggestion: { type: 'client' | 'employee'; id: string }) => {
+    if (!importResult) return;
+    const t = importResult.transactions[rowIndex];
+    if (suggestion.type === 'client') {
+      setClientOverrides(prev => ({ ...prev, [rowIndex]: suggestion.id }));
+      await reconciliationService.updateClientBin(suggestion.id, t.clientBin);
+      await reconciliationService.saveAlias(t.clientName, t.clientBin, suggestion.id);
+    }
+    setBinSuggestionApplied(prev => ({ ...prev, [rowIndex]: true }));
+  };
 
   const stats = importResult ? {
     total: importResult.transactions.length,
@@ -618,13 +692,31 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
                                 </span>
                               </div>
                             ) : t.matchStatus === 'unmatched' && !overridden ? (
-                              <button
-                                onClick={() => setNewClientModal({ rowIndex: i, bankName: t.clientName, bankBin: t.clientBin })}
-                                className="flex items-center gap-1.5 px-2 py-1 bg-yellow-100 border border-yellow-300 rounded text-xs text-yellow-800 hover:bg-yellow-200 transition-colors"
-                              >
-                                <UserPlus className="h-3 w-3" />
-                                {t.clientName || 'Выбрать клиента'}
-                              </button>
+                              <div className="space-y-1">
+                                <button
+                                  onClick={() => setNewClientModal({ rowIndex: i, bankName: t.clientName, bankBin: t.clientBin })}
+                                  className="flex items-center gap-1.5 px-2 py-1 bg-yellow-100 border border-yellow-300 rounded text-xs text-yellow-800 hover:bg-yellow-200 transition-colors"
+                                >
+                                  <UserPlus className="h-3 w-3" />
+                                  {t.clientName || 'Выбрать клиента'}
+                                </button>
+                                {t.clientBin && !binSuggestionApplied[i] && (() => {
+                                  const suggestion = getBinSuggestion(t);
+                                  if (!suggestion) return null;
+                                  return (
+                                    <button
+                                      onClick={() => handleApplyBinSuggestion(i, suggestion)}
+                                      className="flex items-center gap-1 px-2 py-0.5 bg-teal-50 border border-teal-200 rounded text-xs text-teal-700 hover:bg-teal-100 transition-colors"
+                                    >
+                                      <Link2 className="h-3 w-3" />
+                                      Похоже на: {suggestion.name} -- привязать БИН?
+                                    </button>
+                                  );
+                                })()}
+                                {binSuggestionApplied[i] && (
+                                  <span className="text-xs text-teal-600">БИН привязан</span>
+                                )}
+                              </div>
                             ) : (
                               <div className="flex items-center gap-1">
                                 <span className="font-medium text-gray-800 truncate max-w-[180px]">
@@ -755,13 +847,31 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
                 {importSummary.created > 0 && (
                   <p className="flex items-center justify-center gap-2 text-blue-700">
                     <Building2 className="h-4 w-4" />
-                    {importSummary.created} платежей создано из банковской выписки
+                    {importSummary.created} платежей создано
+                  </p>
+                )}
+                {importSummary.clientsCreated > 0 && (
+                  <p className="flex items-center justify-center gap-2 text-teal-700">
+                    <UserPlus className="h-4 w-4" />
+                    {importSummary.clientsCreated} новых контрагентов создано
                   </p>
                 )}
                 {importSummary.reconciled > 0 && (
                   <p className="flex items-center justify-center gap-2 text-emerald-700">
                     <CheckCircle className="h-4 w-4" />
                     {importSummary.reconciled} платежей подтверждено банком
+                  </p>
+                )}
+                {importSummary.duplicatesSkipped > 0 && (
+                  <p className="flex items-center justify-center gap-2 text-amber-600">
+                    <XCircle className="h-4 w-4" />
+                    {importSummary.duplicatesSkipped} дубликатов пропущено
+                  </p>
+                )}
+                {importSummary.notSelected > 0 && (
+                  <p className="flex items-center justify-center gap-2 text-gray-400">
+                    <X className="h-4 w-4" />
+                    {importSummary.notSelected} не выбрано
                   </p>
                 )}
                 {importSummary.skipped > 0 && (
