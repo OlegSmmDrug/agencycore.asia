@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx/xlsx.mjs';
 import { Client, PaymentType } from '../types';
 
 export interface ParsedTransaction {
