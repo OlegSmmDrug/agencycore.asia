@@ -153,11 +153,16 @@ export const telegramNotificationService = {
   ): Promise<{ sent: boolean; reason?: string }> {
     try {
       const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL;
+      const anonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY;
       const resp = await fetch(
         `${supabaseUrl}/functions/v1/telegram-bot/send-notification`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${anonKey}`,
+            'apikey': anonKey,
+          },
           body: JSON.stringify({ user_id: userId, title, message, type }),
         }
       );

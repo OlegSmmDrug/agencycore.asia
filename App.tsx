@@ -51,6 +51,7 @@ import { moduleAccessService, ModuleAccess } from './services/moduleAccessServic
 import { planLimitsService } from './services/planLimitsService';
 import ModuleGate from './components/ModuleGate';
 import { sessionMonitorService } from './services/sessionMonitorService';
+import { notificationService } from './services/notificationService';
 import { supabase } from './lib/supabase';
 
 // Helper for safe local storage loading with migrations
@@ -566,6 +567,17 @@ const App: React.FC = () => {
       if (newStatus === TaskStatus.DONE) {
         addNotification('Задача выполнена!', 'success');
       }
+
+      const task = tasks.find(t => t.id === taskId);
+      if (task?.assigneeId) {
+        const currentDbUser = users.find(u => u.email === currentUser?.email);
+        if (task.assigneeId !== currentDbUser?.id) {
+          const changerName = currentDbUser?.name || currentUser?.email || 'Пользователь';
+          notificationService.createTaskStatusChangedNotification(
+            task.assigneeId, taskId, task.title, newStatus, changerName
+          ).catch(err => console.error('Status notification error:', err));
+        }
+      }
     } catch (error) {
       console.error('Error updating task status:', error);
       addNotification('Ошибка обновления статуса задачи', 'warning');
@@ -588,9 +600,34 @@ const App: React.FC = () => {
       if (updates.status && updates.status !== TaskStatus.DONE) {
         updates.completedAt = undefined;
       }
+      const existingTask = tasks.find(t => t.id === taskId);
       await taskService.update(taskId, updates);
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
       addNotification('Задача обновлена', 'success');
+
+      if (existingTask) {
+        const currentDbUser = users.find(u => u.email === currentUser?.email);
+        const changerName = currentDbUser?.name || currentUser?.email || 'Пользователь';
+
+        if (updates.status && updates.status !== existingTask.status && existingTask.assigneeId && existingTask.assigneeId !== currentDbUser?.id) {
+          notificationService.createTaskStatusChangedNotification(
+            existingTask.assigneeId, taskId, existingTask.title, updates.status, changerName
+          ).catch(err => console.error('Status notification error:', err));
+        }
+
+        if (updates.assigneeId && updates.assigneeId !== existingTask.assigneeId) {
+          if (existingTask.assigneeId) {
+            notificationService.createTaskReassignedNotification(
+              updates.assigneeId, existingTask.assigneeId,
+              taskId, existingTask.title, changerName
+            ).catch(err => console.error('Reassign notification error:', err));
+          } else if (updates.assigneeId !== currentDbUser?.id) {
+            notificationService.createTaskAssignedNotification(
+              updates.assigneeId, taskId, existingTask.title, changerName
+            ).catch(err => console.error('Assign notification error:', err));
+          }
+        }
+      }
     } catch (error) {
       console.error('Error updating task:', error);
       addNotification('Ошибка обновления задачи', 'warning');
@@ -629,6 +666,16 @@ const App: React.FC = () => {
       }
       setTasks(prev => [...createdTasks, ...prev]);
       addNotification(`Создано ${createdTasks.length} задач из шаблона`, 'success');
+
+      const dbUser = users.find(u => u.email === currentUser?.email);
+      const assignerName = dbUser?.name || currentUser?.email || 'Пользователь';
+      for (const created of createdTasks) {
+        if (created.assigneeId && created.assigneeId !== dbUser?.id) {
+          notificationService.createTaskAssignedNotification(
+            created.assigneeId, created.id, created.title, assignerName
+          ).catch(err => console.error('Batch task assign notification error:', err));
+        }
+      }
     } catch (error) {
       console.error('Error batch creating tasks:', error);
       addNotification('Ошибка создания задач', 'warning');
@@ -773,6 +820,19 @@ const App: React.FC = () => {
           actionType: 'create',
           description: `Создан новый клиент: ${newClient.name} (${newClient.company})`
         }).catch(err => console.error('Activity log error:', err));
+
+        const currentDbUser = users.find(u => u.email === currentUser?.email);
+        const creatorName = currentDbUser?.name || currentUser?.email || 'Пользователь';
+        const notifyTargets = users.filter(u =>
+          u.id !== currentDbUser?.id &&
+          (u.jobTitle === 'CEO' || u.jobTitle === 'Director' || u.jobTitle === 'Sales Manager' || u.id === newClient.managerId)
+        );
+        const uniqueTargets = [...new Map(notifyTargets.map(u => [u.id, u])).values()];
+        for (const target of uniqueTargets) {
+          notificationService.createNewClientNotification(
+            target.id, newClient.id, newClient.name, newClient.company || '', creatorName
+          ).catch(err => console.error('New client notification error:', err));
+        }
 
         setSelectedClientForModal(newClient);
       } else {
@@ -1232,10 +1292,33 @@ const App: React.FC = () => {
         const newTask = await taskService.create(taskToCreate as Omit<Task, 'id'>);
         setTasks(prev => [newTask, ...prev]);
         addNotification('Задача создана', 'success');
+
+        if (newTask.assigneeId && newTask.assigneeId !== dbUser?.id) {
+          const assignerName = dbUser?.name || currentUser?.email || 'Пользователь';
+          notificationService.createTaskAssignedNotification(
+            newTask.assigneeId, newTask.id, newTask.title, assignerName
+          ).catch(err => console.error('Task assign notification error:', err));
+        }
       } else {
+        const existingTask = tasks.find(t => t.id === taskData.id);
         const updatedTask = await taskService.update(taskData.id!, finalTaskData);
         setTasks(prev => prev.map(t => t.id === taskData.id ? updatedTask : t));
         addNotification('Задача обновлена', 'success');
+
+        const dbUser = users.find(u => u.email === currentUser?.email);
+        const changerName = dbUser?.name || currentUser?.email || 'Пользователь';
+        if (finalTaskData.assigneeId && finalTaskData.assigneeId !== existingTask?.assigneeId) {
+          if (existingTask?.assigneeId) {
+            notificationService.createTaskReassignedNotification(
+              finalTaskData.assigneeId, existingTask.assigneeId,
+              taskData.id!, updatedTask.title, changerName
+            ).catch(err => console.error('Task reassign notification error:', err));
+          } else {
+            notificationService.createTaskAssignedNotification(
+              finalTaskData.assigneeId, taskData.id!, updatedTask.title, changerName
+            ).catch(err => console.error('Task assign notification error:', err));
+          }
+        }
       }
     } catch (error) {
       console.error('Error saving task:', error);

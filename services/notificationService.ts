@@ -241,5 +241,39 @@ export const notificationService = {
       entityType: 'task',
       entityId: taskId
     });
+  },
+
+  async createTaskStatusChangedNotification(
+    assigneeId: string,
+    taskId: string,
+    taskTitle: string,
+    newStatus: string,
+    changerName: string
+  ): Promise<void> {
+    await this.create({
+      userId: assigneeId,
+      type: 'task_status_changed',
+      title: 'Статус задачи изменен',
+      message: `${changerName} изменил(а) статус задачи "${taskTitle}" на "${newStatus}"`,
+      entityType: 'task',
+      entityId: taskId
+    });
+  },
+
+  async createNewClientNotification(
+    userId: string,
+    clientId: string,
+    clientName: string,
+    clientCompany: string,
+    creatorName: string
+  ): Promise<void> {
+    await this.create({
+      userId,
+      type: 'new_client',
+      title: 'Новый клиент',
+      message: `${creatorName} добавил(а) нового клиента: ${clientCompany || clientName}`,
+      entityType: 'client',
+      entityId: clientId
+    });
   }
 };

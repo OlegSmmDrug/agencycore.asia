@@ -522,7 +522,7 @@ export interface Notification {
 export interface SystemNotification {
   id: string;
   userId: string;
-  type: 'task_assigned' | 'task_reassigned' | 'deadline_approaching' | 'task_overdue' | 'task_rejected' | 'task_completed';
+  type: 'task_assigned' | 'task_reassigned' | 'deadline_approaching' | 'task_overdue' | 'task_rejected' | 'task_completed' | 'task_status_changed' | 'new_client';
   title: string;
   message: string;
   entityType?: 'task' | 'project' | 'client';

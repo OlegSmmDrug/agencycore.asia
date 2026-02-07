@@ -345,6 +345,23 @@ Deno.serve(async (req: Request) => {
     const path = url.pathname.split("/").pop();
 
     if (path === "send-notification" && req.method === "POST") {
+      const authHeader = req.headers.get("authorization") || "";
+      const apiKeyHeader = req.headers.get("apikey") || "";
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+      const token = authHeader.replace("Bearer ", "");
+      const isAuthorized =
+        (token && (token === anonKey || token === serviceKey)) ||
+        (apiKeyHeader && (apiKeyHeader === anonKey || apiKeyHeader === serviceKey));
+
+      if (!isAuthorized) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       const body = await req.json();
       const result = await handleSendNotification(supabase, botToken, body);
       return new Response(JSON.stringify(result), {

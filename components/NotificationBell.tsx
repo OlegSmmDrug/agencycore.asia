@@ -155,6 +155,22 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNoti
             </svg>
           </div>
         );
+      case 'task_status_changed':
+        return (
+          <div className="w-8 h-8 rounded-lg bg-cyan-100 flex items-center justify-center">
+            <svg className="w-4 h-4 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </div>
+        );
+      case 'new_client':
+        return (
+          <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
+            <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+            </svg>
+          </div>
+        );
       default:
         return (
           <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
