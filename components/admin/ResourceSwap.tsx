@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Users, Briefcase, HardDrive, ArrowLeftRight, RotateCcw, Check, AlertTriangle, Loader } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Users, Briefcase, HardDrive, ArrowLeftRight, RotateCcw, Check, AlertTriangle, Loader, Lock } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface ResourceSwapProps {
@@ -35,6 +35,10 @@ const ResourceSwap: React.FC<ResourceSwapProps> = ({
   const actualProjects = usageStats.projects.current;
   const actualStorageGb = Math.ceil(usageStats.storage.currentMb / 1024);
 
+  const minUsers = Math.max(1, actualUsers);
+  const minProjects = Math.ceil(actualProjects / STEPS.projects) * STEPS.projects;
+  const minStorageGb = Math.max(1, actualStorageGb);
+
   useEffect(() => {
     loadExistingOverride();
   }, [organizationId]);
@@ -55,6 +59,25 @@ const ResourceSwap: React.FC<ResourceSwapProps> = ({
     }
   };
 
+  const sellableUsers = Math.max(0, baseUsers - minUsers);
+  const sellableProjects = Math.max(0, baseProjects - minProjects);
+  const sellableStorageGb = Math.max(0, baseStorageGb - minStorageGb);
+
+  const maxBudgetForUsers = sellableProjects * SELL_RATES.projects + sellableStorageGb * SELL_RATES.storage;
+  const maxBudgetForProjects = sellableUsers * SELL_RATES.users + sellableStorageGb * SELL_RATES.storage;
+  const maxBudgetForStorage = sellableUsers * SELL_RATES.users + sellableProjects * SELL_RATES.projects;
+
+  const maxUsers = Math.max(minUsers, baseUsers + Math.floor(maxBudgetForUsers / BUY_RATES.users));
+  const maxProjects = Math.max(
+    minProjects,
+    baseProjects + Math.floor(maxBudgetForProjects / BUY_RATES.projects / STEPS.projects) * STEPS.projects
+  );
+  const maxStorageGb = Math.max(minStorageGb, baseStorageGb + Math.floor(maxBudgetForStorage / BUY_RATES.storage));
+
+  const adjustedUsers = baseUsers + usersDelta;
+  const adjustedProjects = baseProjects + projectsDelta;
+  const adjustedStorageGb = baseStorageGb + storageDeltaGb;
+
   const pointsEarned = useMemo(() => {
     let earned = 0;
     if (usersDelta < 0) earned += Math.abs(usersDelta) * SELL_RATES.users;
@@ -72,28 +95,13 @@ const ResourceSwap: React.FC<ResourceSwapProps> = ({
   }, [usersDelta, projectsDelta, storageDeltaGb]);
 
   const pointsBalance = pointsEarned - pointsSpent;
-  const isValid = pointsBalance >= 0;
+  const isValid = pointsBalance >= -0.001;
   const hasChanges = usersDelta !== 0 || projectsDelta !== 0 || storageDeltaGb !== 0;
 
-  const adjustedUsers = baseUsers + usersDelta;
-  const adjustedProjects = baseProjects + projectsDelta;
-  const adjustedStorageGb = baseStorageGb + storageDeltaGb;
-
-  const minUsers = Math.max(1, actualUsers);
-  const minProjects = Math.max(0, actualProjects);
-  const minStorageGb = Math.max(0, actualStorageGb);
-
-  const maxSellBudget = useMemo(() => {
-    let budget = 0;
-    budget += Math.max(0, baseUsers - minUsers) * SELL_RATES.users;
-    budget += Math.max(0, baseProjects - minProjects) * SELL_RATES.projects;
-    budget += Math.max(0, baseStorageGb - minStorageGb) * SELL_RATES.storage;
-    return budget;
-  }, [baseUsers, baseProjects, baseStorageGb, minUsers, minProjects, minStorageGb]);
-
-  const maxUsers = baseUsers + Math.floor(maxSellBudget / BUY_RATES.users);
-  const maxProjects = baseProjects + Math.floor(maxSellBudget / BUY_RATES.projects) * STEPS.projects;
-  const maxStorageGb = baseStorageGb + Math.floor(maxSellBudget / BUY_RATES.storage);
+  const canSwapUsers = maxUsers > minUsers;
+  const canSwapProjects = maxProjects > minProjects;
+  const canSwapStorage = maxStorageGb > minStorageGb;
+  const canSwapAnything = canSwapUsers || canSwapProjects || canSwapStorage;
 
   const handleReset = () => {
     setUsersDelta(0);
@@ -162,126 +170,6 @@ const ResourceSwap: React.FC<ResourceSwapProps> = ({
     }
   };
 
-  const SliderCard = useCallback(({
-    icon: Icon, label, color, bgColor,
-    baseValue, adjustedValue, minValue, maxValue, step, delta, unit,
-    onChange,
-  }: {
-    icon: any; label: string; color: string; bgColor: string;
-    baseValue: number; adjustedValue: number; minValue: number; maxValue: number; step: number; delta: number; unit: string;
-    onChange: (val: number) => void;
-  }) => {
-    const percentage = baseValue > 0 ? Math.round((adjustedValue / baseValue - 1) * 100) : 0;
-    const isBelow = delta < 0;
-    const isAbove = delta > 0;
-
-    return (
-      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5">
-        <div className="flex items-center gap-3 mb-4">
-          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${bgColor}`}>
-            <Icon className={`w-5 h-5 ${color}`} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h4 className="font-semibold text-slate-800 text-sm">{label}</h4>
-            <p className="text-xs text-slate-400">Базовый: {baseValue} {unit}</p>
-          </div>
-        </div>
-
-        <div className="text-center mb-3">
-          <div className="flex items-center justify-center gap-2">
-            <span className={`text-3xl font-bold transition-all duration-300 ${
-              isBelow ? 'text-amber-600' : isAbove ? 'text-emerald-600' : 'text-slate-800'
-            }`}>
-              {adjustedValue}
-            </span>
-            <span className="text-sm text-slate-400">{unit}</span>
-          </div>
-          {delta !== 0 && (
-            <span className={`inline-block mt-1 text-xs font-bold px-2 py-0.5 rounded-full ${
-              isBelow
-                ? 'bg-amber-50 text-amber-600'
-                : 'bg-emerald-50 text-emerald-600'
-            }`}>
-              {delta > 0 ? '+' : ''}{delta} ({percentage > 0 ? '+' : ''}{percentage}%)
-            </span>
-          )}
-        </div>
-
-        <div className="relative px-1">
-          <div className="relative h-8 flex items-center">
-            <div className="absolute inset-x-0 h-2 bg-slate-100 rounded-full" />
-
-            {baseValue > minValue && maxValue > minValue && (
-              <div
-                className="absolute h-2 bg-slate-300 rounded-full opacity-50"
-                style={{
-                  left: '0%',
-                  width: `${Math.min(((baseValue - minValue) / (maxValue - minValue)) * 100, 100)}%`,
-                }}
-              />
-            )}
-
-            {adjustedValue > minValue && maxValue > minValue && (
-              <div
-                className={`absolute h-2 rounded-full transition-all duration-200 ${
-                  isBelow ? 'bg-amber-400' : isAbove ? 'bg-emerald-400' : 'bg-blue-400'
-                }`}
-                style={{
-                  left: '0%',
-                  width: `${Math.min(((adjustedValue - minValue) / (maxValue - minValue)) * 100, 100)}%`,
-                }}
-              />
-            )}
-
-            <input
-              type="range"
-              min={minValue}
-              max={maxValue}
-              step={step}
-              value={adjustedValue}
-              onChange={(e) => onChange(Number(e.target.value) - baseValue)}
-              className="absolute inset-x-0 h-8 w-full opacity-0 cursor-pointer z-10"
-            />
-
-            {maxValue > minValue && (
-              <div
-                className={`absolute w-6 h-6 rounded-full border-2 shadow-md bg-white transition-all duration-200 pointer-events-none z-20 ${
-                  isBelow ? 'border-amber-400' : isAbove ? 'border-emerald-400' : 'border-blue-400'
-                }`}
-                style={{
-                  left: `calc(${((adjustedValue - minValue) / (maxValue - minValue)) * 100}% - 12px)`,
-                }}
-              >
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <ArrowLeftRight className="w-3 h-3 text-slate-400" />
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-between mt-1 text-[10px] text-slate-400 font-medium">
-            <span>{minValue}</span>
-            <span>{maxValue} {unit}</span>
-          </div>
-        </div>
-
-        <div className="mt-3 flex items-center justify-between text-[10px]">
-          {isBelow && (
-            <span className="text-amber-600 font-bold">
-              Отдаете: +{(Math.abs(delta) * (label === 'Пользователи' ? SELL_RATES.users : label === 'Проекты' ? SELL_RATES.projects : SELL_RATES.storage)).toFixed(1)} баллов
-            </span>
-          )}
-          {isAbove && (
-            <span className="text-emerald-600 font-bold">
-              Получаете: -{(delta * (label === 'Пользователи' ? BUY_RATES.users : label === 'Проекты' ? BUY_RATES.projects : BUY_RATES.storage)).toFixed(1)} баллов
-            </span>
-          )}
-          {delta === 0 && <span className="text-slate-400">Без изменений</span>}
-        </div>
-      </div>
-    );
-  }, []);
-
   const isEligible = ['STARTER', 'PROFESSIONAL'].includes(planName.toUpperCase());
 
   if (!isEligible) {
@@ -301,6 +189,11 @@ const ResourceSwap: React.FC<ResourceSwapProps> = ({
       </div>
     );
   }
+
+  const overLimitResources: string[] = [];
+  if (actualUsers > baseUsers) overLimitResources.push(`пользователей (${actualUsers}/${baseUsers})`);
+  if (actualProjects > baseProjects) overLimitResources.push(`проектов (${actualProjects}/${baseProjects})`);
+  if (actualStorageGb > baseStorageGb) overLimitResources.push(`хранилища (${actualStorageGb}/${baseStorageGb} ГБ)`);
 
   return (
     <div className="bg-white rounded-xl border-2 border-slate-200 p-4 sm:p-6">
@@ -326,6 +219,22 @@ const ResourceSwap: React.FC<ResourceSwapProps> = ({
         )}
       </div>
 
+      {overLimitResources.length > 0 && !canSwapAnything && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-slate-800">
+                Превышен лимит: {overLimitResources.join(', ')}
+              </p>
+              <p className="text-xs text-slate-600 mt-1">
+                Недостаточно свободных ресурсов для обмена. Рекомендуем перейти на тариф Professional для увеличения лимитов.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-5">
         <SliderCard
           icon={Users}
@@ -339,6 +248,8 @@ const ResourceSwap: React.FC<ResourceSwapProps> = ({
           step={STEPS.users}
           delta={usersDelta}
           unit=""
+          disabled={!canSwapUsers}
+          overLimit={actualUsers > baseUsers}
           onChange={setUsersDelta}
         />
         <SliderCard
@@ -353,6 +264,8 @@ const ResourceSwap: React.FC<ResourceSwapProps> = ({
           step={STEPS.projects}
           delta={projectsDelta}
           unit=""
+          disabled={!canSwapProjects}
+          overLimit={actualProjects > baseProjects}
           onChange={setProjectsDelta}
         />
         <SliderCard
@@ -367,6 +280,8 @@ const ResourceSwap: React.FC<ResourceSwapProps> = ({
           step={STEPS.storage}
           delta={storageDeltaGb}
           unit="ГБ"
+          disabled={!canSwapStorage}
+          overLimit={actualStorageGb > baseStorageGb}
           onChange={setStorageDeltaGb}
         />
       </div>
@@ -437,6 +352,159 @@ const ResourceSwap: React.FC<ResourceSwapProps> = ({
           В новом периоде лимиты сбросятся к базовым значениям тарифа.
         </p>
       )}
+    </div>
+  );
+};
+
+const SliderCard: React.FC<{
+  icon: any; label: string; color: string; bgColor: string;
+  baseValue: number; adjustedValue: number; minValue: number; maxValue: number;
+  step: number; delta: number; unit: string; disabled: boolean; overLimit: boolean;
+  onChange: (val: number) => void;
+}> = ({
+  icon: Icon, label, color, bgColor,
+  baseValue, adjustedValue, minValue, maxValue, step, delta, unit,
+  disabled, overLimit, onChange,
+}) => {
+  const clampedValue = Math.max(minValue, Math.min(maxValue, adjustedValue));
+  const isBelow = delta < 0;
+  const isAbove = delta > 0;
+  const percentage = baseValue > 0 ? Math.round((clampedValue / baseValue - 1) * 100) : 0;
+  const range = maxValue - minValue;
+
+  const sellRate = label === 'Пользователи' ? SELL_RATES.users
+    : label === 'Проекты' ? SELL_RATES.projects : SELL_RATES.storage;
+  const buyRate = label === 'Пользователи' ? BUY_RATES.users
+    : label === 'Проекты' ? BUY_RATES.projects : BUY_RATES.storage;
+
+  const displayDelta = clampedValue - baseValue;
+  const displayPercentage = baseValue > 0 ? Math.round((clampedValue / baseValue - 1) * 100) : 0;
+
+  return (
+    <div className={`rounded-xl border p-4 sm:p-5 transition-all ${
+      disabled ? 'border-slate-100 bg-slate-50' : 'border-slate-200 bg-white'
+    }`}>
+      <div className="flex items-center gap-3 mb-4">
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${disabled ? 'bg-slate-100' : bgColor}`}>
+          <Icon className={`w-5 h-5 ${disabled ? 'text-slate-400' : color}`} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h4 className={`font-semibold text-sm ${disabled ? 'text-slate-500' : 'text-slate-800'}`}>{label}</h4>
+          <p className="text-xs text-slate-400">
+            Базовый: {baseValue} {unit}
+            {overLimit && <span className="text-red-400 ml-1">(превышен)</span>}
+          </p>
+        </div>
+        {disabled && <Lock className="w-4 h-4 text-slate-300 shrink-0" />}
+      </div>
+
+      <div className="text-center mb-3">
+        <div className="flex items-center justify-center gap-2">
+          <span className={`text-3xl font-bold transition-all duration-300 ${
+            disabled
+              ? 'text-slate-400'
+              : displayDelta < 0 ? 'text-amber-600'
+              : displayDelta > 0 ? 'text-emerald-600'
+              : 'text-slate-800'
+          }`}>
+            {clampedValue}
+          </span>
+          {unit && <span className="text-sm text-slate-400">{unit}</span>}
+        </div>
+        {displayDelta !== 0 && !disabled && (
+          <span className={`inline-block mt-1 text-xs font-bold px-2 py-0.5 rounded-full ${
+            displayDelta < 0
+              ? 'bg-amber-50 text-amber-600'
+              : 'bg-emerald-50 text-emerald-600'
+          }`}>
+            {displayDelta > 0 ? '+' : ''}{displayDelta} ({displayPercentage > 0 ? '+' : ''}{displayPercentage}%)
+          </span>
+        )}
+      </div>
+
+      {!disabled && range > 0 ? (
+        <div className="relative px-1">
+          <div className="relative h-8 flex items-center">
+            <div className="absolute inset-x-0 h-2 bg-slate-100 rounded-full" />
+
+            {baseValue >= minValue && (
+              <div
+                className="absolute h-2 bg-slate-300 rounded-full opacity-40"
+                style={{
+                  left: '0%',
+                  width: `${Math.min(((baseValue - minValue) / range) * 100, 100)}%`,
+                }}
+              />
+            )}
+
+            <div
+              className={`absolute h-2 rounded-full transition-all duration-200 ${
+                displayDelta < 0 ? 'bg-amber-400'
+                : displayDelta > 0 ? 'bg-emerald-400'
+                : 'bg-blue-400'
+              }`}
+              style={{
+                left: '0%',
+                width: `${Math.min(((clampedValue - minValue) / range) * 100, 100)}%`,
+              }}
+            />
+
+            <input
+              type="range"
+              min={minValue}
+              max={maxValue}
+              step={step}
+              value={clampedValue}
+              onChange={(e) => onChange(Number(e.target.value) - baseValue)}
+              className="absolute inset-x-0 h-8 w-full opacity-0 cursor-pointer z-10"
+            />
+
+            <div
+              className={`absolute w-6 h-6 rounded-full border-2 shadow-md bg-white transition-all duration-200 pointer-events-none z-20 ${
+                displayDelta < 0 ? 'border-amber-400'
+                : displayDelta > 0 ? 'border-emerald-400'
+                : 'border-blue-400'
+              }`}
+              style={{
+                left: `calc(${((clampedValue - minValue) / range) * 100}% - 12px)`,
+              }}
+            >
+              <div className="absolute inset-0 flex items-center justify-center">
+                <ArrowLeftRight className="w-3 h-3 text-slate-400" />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-between mt-1 text-[10px] text-slate-400 font-medium">
+            <span>{minValue} {unit}</span>
+            <span>{maxValue} {unit}</span>
+          </div>
+        </div>
+      ) : (
+        <div className="h-8 flex items-center justify-center">
+          <div className="w-full h-2 bg-slate-100 rounded-full relative">
+            <div className="absolute inset-0 h-2 bg-slate-200 rounded-full" />
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3 text-[10px] min-h-[16px]">
+        {disabled ? (
+          <span className="text-slate-400">
+            {overLimit ? 'Превышен лимит тарифа' : 'Нет доступных ресурсов для обмена'}
+          </span>
+        ) : displayDelta < 0 ? (
+          <span className="text-amber-600 font-bold">
+            Отдаете: +{(Math.abs(displayDelta) * sellRate).toFixed(1)} баллов
+          </span>
+        ) : displayDelta > 0 ? (
+          <span className="text-emerald-600 font-bold">
+            Получаете: -{(displayDelta * buyRate).toFixed(1)} баллов
+          </span>
+        ) : (
+          <span className="text-slate-400">Без изменений</span>
+        )}
+      </div>
     </div>
   );
 };
