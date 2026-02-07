@@ -51,8 +51,23 @@ const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions 
 
   const teamData = useMemo(() => {
     const revPerEmployee = monthlyRevenue / (users.length || 1);
-    const completedTasks = tasks.filter(t => t.status === TaskStatus.DONE);
-    const totalTasks = tasks.length;
+
+    const monthStart = new Date(selectedMonth + '-01');
+    const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const isInMonth = (dateStr: string | undefined | null) => {
+      if (!dateStr) return false;
+      const d = new Date(dateStr);
+      return d >= monthStart && d <= monthEnd;
+    };
+
+    const monthTasks = tasks.filter(t => {
+      const dateToUse = t.completedAt || t.deadline;
+      return isInMonth(dateToUse);
+    });
+
+    const completedTasks = monthTasks.filter(t => t.status === TaskStatus.DONE);
+    const totalTasks = monthTasks.length;
 
     const activeProjects = projects.filter(p =>
       p.status !== ProjectStatus.COMPLETED && p.status !== ProjectStatus.ARCHIVED
@@ -71,7 +86,7 @@ const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions 
 
     const workload = users.map(u => {
       const userProjects = activeProjects.filter(p => p.teamIds && p.teamIds.includes(u.id));
-      const userTasks = tasks.filter(t => t.assigneeId === u.id);
+      const userTasks = monthTasks.filter(t => t.assigneeId === u.id);
       const userCompletedTasks = userTasks.filter(t => t.status === TaskStatus.DONE);
       const projectRevenue = userProjects.reduce((sum, p) => sum + (p.budget || 0), 0);
       const cost = payrollCosts[u.id] || 0;
@@ -139,7 +154,7 @@ const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions 
       totalWorkloadRevenue,
       teamRoi: totalPayrollCost > 0 ? ((totalWorkloadRevenue / totalPayrollCost) - 1) * 100 : 0,
     };
-  }, [users, projects, tasks, monthlyRevenue, payrollCosts, payrollPerUser]);
+  }, [users, projects, tasks, monthlyRevenue, payrollCosts, payrollPerUser, selectedMonth]);
 
   const monthLabel = useMemo(() =>
     new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }),
