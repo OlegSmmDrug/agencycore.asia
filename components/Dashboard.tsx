@@ -19,9 +19,11 @@ interface DashboardProps {
   users?: User[];
   currentUser: User;
   onTaskClick?: (task: Task) => void;
-  onAddTransaction?: (transaction: Transaction) => void | Promise<void>;
+  onAddTransaction?: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'isVerified'>) => void;
   onUpdateTransaction?: (transaction: Transaction) => void | Promise<void>;
   onDeleteTransaction?: (id: string) => void | Promise<void>;
+  onCreateClient?: (client: { name: string; company: string; bin: string }) => Promise<Client>;
+  onReconcile?: (existingId: string, bankData: { amount: number; clientName: string; bin: string; docNumber: string }) => Promise<void>;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -34,7 +36,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   onTaskClick,
   onAddTransaction,
   onUpdateTransaction,
-  onDeleteTransaction
+  onDeleteTransaction,
+  onCreateClient,
+  onReconcile
 }) => {
   const dashboardType = getDashboardType(currentUser);
   const nonContentTasks = tasks.filter(t => !['Post', 'Reels', 'Stories'].includes(t.type));
@@ -131,8 +135,8 @@ const Dashboard: React.FC<DashboardProps> = ({
           users={users}
           currentUser={currentUser}
           onAddTransaction={onAddTransaction || (() => {})}
-          onUpdateTransaction={onUpdateTransaction || (() => {})}
-          onDeleteTransaction={onDeleteTransaction || (() => {})}
+          onCreateClient={onCreateClient}
+          onReconcile={onReconcile}
         />
       );
 

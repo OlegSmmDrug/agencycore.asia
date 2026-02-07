@@ -1300,9 +1300,11 @@ const App: React.FC = () => {
                     setFormData(t);
                     setIsModalOpen(true);
                 }}
-                onAddTransaction={handleAddTransactionDirect}
+                onAddTransaction={handleAddManualTransaction}
                 onUpdateTransaction={handleUpdateTransaction}
                 onDeleteTransaction={handleDeleteTransaction}
+                onCreateClient={handleCreateClientFromBank}
+                onReconcile={handleReconcileTransaction}
             />
         );
       case 'analytics':
@@ -1340,40 +1342,14 @@ const App: React.FC = () => {
             users={users}
             currentUser={users.find(u => u.email === currentUser.email)}
             transactions={transactions}
+            projects={projects}
             onClientStatusChange={handleClientStatusChange}
             onClientClick={(client) => handleOpenClientModal(client)}
             onAddClient={() => handleOpenClientModal(null)}
-            onAddTransaction={() => {
-                setNewTransaction({
-                    type: PaymentType.PREPAYMENT,
-                    date: new Date().toISOString().split('T')[0],
-                    amount: 0,
-                    clientId: '',
-                    description: ''
-                });
-                setIsAddPaymentModalOpen(true);
-            }}
+            onAddTransaction={handleAddManualTransaction}
             onArchiveClient={handleArchiveClient}
-            onUpdateTransaction={async (transactionId, amount) => {
-                try {
-                    await transactionService.update(transactionId, { amount });
-                    setTransactions(prev => prev.map(t => t.id === transactionId ? { ...t, amount } : t));
-                    addNotification('Сумма платежа обновлена', 'success');
-                } catch (error) {
-                    console.error('Error updating transaction:', error);
-                    addNotification('Ошибка обновления платежа', 'warning');
-                }
-            }}
-            onDeleteTransaction={async (transactionId) => {
-                try {
-                    await transactionService.delete(transactionId);
-                    setTransactions(prev => prev.filter(t => t.id !== transactionId));
-                    addNotification('Платеж удален', 'success');
-                } catch (error) {
-                    console.error('Error deleting transaction:', error);
-                    addNotification('Ошибка удаления платежа', 'warning');
-                }
-            }}
+            onCreateClient={handleCreateClientFromBank}
+            onReconcile={handleReconcileTransaction}
           />
         );
       case 'projects':
@@ -1731,9 +1707,11 @@ const App: React.FC = () => {
             transactions={transactions}
             users={users}
             currentUser={currentUser}
-            onAddTransaction={handleAddTransactionDirect}
+            onAddTransaction={handleAddManualTransaction}
             onUpdateTransaction={handleUpdateTransaction}
             onDeleteTransaction={handleDeleteTransaction}
+            onCreateClient={handleCreateClientFromBank}
+            onReconcile={handleReconcileTransaction}
           />
         );
     }

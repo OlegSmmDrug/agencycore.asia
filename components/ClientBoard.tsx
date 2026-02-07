@@ -1,32 +1,33 @@
 
 import React, { useState, useEffect } from 'react';
-import { Client, ClientStatus, User, Transaction, PaymentType, SystemRole } from '../types';
+import { Client, ClientStatus, User, Transaction, PaymentType, SystemRole, Project } from '../types';
 import { CLIENT_STATUS_LABELS } from '../constants';
 import { getAvailableManagers } from '../services/leadDistributionService';
 import { crmPipelineStagesService, CrmPipelineStage } from '../services/crmPipelineStagesService';
 import { useOrganization } from './OrganizationProvider';
+import TransactionJournal from './TransactionJournal';
 
 interface ClientBoardProps {
   clients: Client[];
   users: User[];
   currentUser?: User;
   transactions?: Transaction[];
+  projects?: Project[];
   onClientStatusChange: (clientId: string, newStatus: ClientStatus) => void;
   onClientClick: (client: Client) => void;
   onAddClient: () => void;
-  onAddTransaction?: () => void;
+  onAddTransaction?: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'isVerified'>) => void;
   onArchiveClient: (clientId: string, archive: boolean) => void;
-  onUpdateTransaction?: (transactionId: string, amount: number) => void;
-  onDeleteTransaction?: (transactionId: string) => void;
+  onCreateClient?: (client: { name: string; company: string; bin: string }) => Promise<Client>;
+  onReconcile?: (existingId: string, bankData: { amount: number; clientName: string; bin: string; docNumber: string }) => Promise<void>;
 }
 
-const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, transactions = [], onClientStatusChange, onClientClick, onAddClient, onAddTransaction, onArchiveClient, onUpdateTransaction, onDeleteTransaction }) => {
+const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, transactions = [], projects = [], onClientStatusChange, onClientClick, onAddClient, onAddTransaction, onArchiveClient, onCreateClient, onReconcile }) => {
   const { organization: currentOrganization } = useOrganization();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSource, setSelectedSource] = useState<string>('all');
   const [selectedManagerId, setSelectedManagerId] = useState<string>('all');
   const [viewScope, setViewScope] = useState<'active' | 'archive' | 'transactions'>('active');
-  const [editingTransaction, setEditingTransaction] = useState<{id: string, amount: number} | null>(null);
   const [pipelineStages, setPipelineStages] = useState<CrmPipelineStage[]>([]);
   const [showStageManager, setShowStageManager] = useState(false);
 
@@ -274,80 +275,21 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
   );
 
   const renderTransactionList = () => (
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full animate-fade-in">
-          <div className="overflow-auto custom-scrollbar flex-1">
-              <table className="w-full text-left border-collapse">
-                  <thead className="bg-slate-50 sticky top-0 z-20 shadow-sm">
-                      <tr>
-                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Дата</th>
-                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Клиент</th>
-                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Сумма</th>
-                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Тип</th>
-                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Описание</th>
-                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Действия</th>
-                      </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                      {transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(t => {
-                          const client = clients.find(c => c.id === t.clientId);
-                          return (
-                              <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                                  <td className="p-4 text-sm text-slate-600">{new Date(t.date).toLocaleDateString()} <span className="text-slate-400 text-xs">{new Date(t.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></td>
-                                  <td className="p-4">
-                                      <div className="font-bold text-slate-700 text-sm">{client?.company || 'Удален'}</div>
-                                      <div className="text-xs text-slate-400">{client?.name}</div>
-                                  </td>
-                                  <td className="p-4">
-                                      <span className="font-mono font-bold text-green-600">+{t.amount.toLocaleString()} ₸</span>
-                                  </td>
-                                  <td className="p-4">
-                                      <span className="bg-slate-100 px-2 py-1 rounded text-xs font-medium text-slate-600 border border-slate-200">
-                                          {t.type}
-                                      </span>
-                                  </td>
-                                  <td className="p-4 text-sm text-slate-500 max-w-xs truncate" title={t.description}>
-                                      {t.description || '-'}
-                                  </td>
-                                  <td className="p-4">
-                                      <div className="flex items-center gap-2">
-                                          {onUpdateTransaction && (
-                                              <button
-                                                  onClick={() => setEditingTransaction({id: t.id, amount: t.amount})}
-                                                  className="text-blue-600 hover:text-blue-700 p-1.5 rounded hover:bg-blue-50 transition-colors"
-                                                  title="Изменить сумму"
-                                              >
-                                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                                  </svg>
-                                              </button>
-                                          )}
-                                          {onDeleteTransaction && (
-                                              <button
-                                                  onClick={() => {
-                                                      if (confirm('Удалить платеж?')) {
-                                                          onDeleteTransaction(t.id);
-                                                      }
-                                                  }}
-                                                  className="text-red-600 hover:text-red-700 p-1.5 rounded hover:bg-red-50 transition-colors"
-                                                  title="Удалить"
-                                              >
-                                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                  </svg>
-                                              </button>
-                                          )}
-                                      </div>
-                                  </td>
-                              </tr>
-                          );
-                      })}
-                      {transactions.length === 0 && (
-                          <tr><td colSpan={6} className="p-12 text-center text-slate-400">Нет транзакций</td></tr>
-                      )}
-                  </tbody>
-              </table>
+      onAddTransaction ? (
+          <TransactionJournal
+              transactions={transactions}
+              clients={clients}
+              projects={projects}
+              users={users}
+              onAddTransaction={onAddTransaction}
+              onCreateClient={onCreateClient}
+              onReconcile={onReconcile}
+          />
+      ) : (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center text-slate-400">
+              Функция добавления платежей недоступна
           </div>
-      </div>
+      )
   );
 
   return (
@@ -424,14 +366,7 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
                     </>
                  )}
              </div>
-             {viewScope === 'transactions' ? (
-                onAddTransaction && (
-                    <button onClick={onAddTransaction} className="flex items-center justify-center space-x-1 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm whitespace-nowrap w-full md:w-auto">
-                        <span className="text-lg">+</span>
-                        <span>Добавить платеж</span>
-                    </button>
-                )
-             ) : (
+             {viewScope !== 'transactions' && (
                 <button onClick={onAddClient} className="flex items-center justify-center space-x-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm whitespace-nowrap w-full md:w-auto">
                     <span className="text-lg">+</span>
                     <span>Новый лид</span>
@@ -443,42 +378,6 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
             {viewScope === 'active' ? renderBoard() : viewScope === 'transactions' ? renderTransactionList() : renderArchiveList()}
         </div>
 
-        {editingTransaction && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
-                    <h3 className="text-lg font-bold text-slate-800 mb-4">Изменить сумму платежа</h3>
-                    <div className="mb-6">
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Новая сумма</label>
-                        <input
-                            type="number"
-                            value={editingTransaction.amount}
-                            onChange={(e) => setEditingTransaction({...editingTransaction, amount: Number(e.target.value)})}
-                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            autoFocus
-                        />
-                    </div>
-                    <div className="flex justify-end gap-3">
-                        <button
-                            onClick={() => setEditingTransaction(null)}
-                            className="px-4 py-2 text-slate-600 hover:text-slate-800 font-medium transition-colors"
-                        >
-                            Отмена
-                        </button>
-                        <button
-                            onClick={() => {
-                                if (onUpdateTransaction && editingTransaction.amount > 0) {
-                                    onUpdateTransaction(editingTransaction.id, editingTransaction.amount);
-                                    setEditingTransaction(null);
-                                }
-                            }}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-                        >
-                            Сохранить
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )}
 
         {showStageManager && (
             <StageManagerModal

@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import { DollarSign, TrendingUp, TrendingDown, AlertCircle, Users, Wallet, Plus, Edit2, Trash2, CheckSquare, Clock } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { DollarSign, TrendingUp, TrendingDown, AlertCircle, Users, Wallet, CheckSquare, Clock } from 'lucide-react';
 import { Client, Project, Task, Transaction, User } from '../../types';
 import { MetricCard } from './DashboardWidgets';
+import TransactionJournal from '../TransactionJournal';
 
 interface AccountantDashboardProps {
   clients: Client[];
@@ -10,9 +11,9 @@ interface AccountantDashboardProps {
   transactions: Transaction[];
   users: User[];
   currentUser: User;
-  onAddTransaction: (transaction: Transaction) => void | Promise<void>;
-  onUpdateTransaction: (transaction: Transaction) => void | Promise<void>;
-  onDeleteTransaction: (id: string) => void | Promise<void>;
+  onAddTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'isVerified'>) => void;
+  onCreateClient?: (client: { name: string; company: string; bin: string }) => Promise<Client>;
+  onReconcile?: (existingId: string, bankData: { amount: number; clientName: string; bin: string; docNumber: string }) => Promise<void>;
 }
 
 const AccountantDashboard: React.FC<AccountantDashboardProps> = ({
@@ -23,19 +24,9 @@ const AccountantDashboard: React.FC<AccountantDashboardProps> = ({
   users,
   currentUser,
   onAddTransaction,
-  onUpdateTransaction,
-  onDeleteTransaction
+  onCreateClient,
+  onReconcile
 }) => {
-  const [showTransactionForm, setShowTransactionForm] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-  const [formData, setFormData] = useState({
-    description: '',
-    amount: '',
-    date: new Date().toISOString().split('T')[0],
-    clientId: '',
-    projectId: '',
-    category: 'income'
-  });
   const today = new Date();
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
@@ -132,12 +123,6 @@ const AccountantDashboard: React.FC<AccountantDashboardProps> = ({
   const totalReceivables = receivables.reduce((sum, r) => sum + r.debt, 0);
   const overdueReceivables = receivables.filter(r => r.isOverdue).reduce((sum, r) => sum + r.debt, 0);
 
-  const recentTransactions = useMemo(() => {
-    return [...transactions]
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 15);
-  }, [transactions]);
-
   const myTasks = useMemo(() => {
     return tasks
       .filter(t => t.assigneeId === currentUser.id && t.status !== 'Done')
@@ -148,61 +133,6 @@ const AccountantDashboard: React.FC<AccountantDashboardProps> = ({
       })
       .slice(0, 5);
   }, [tasks, currentUser.id]);
-
-  const handleSubmitTransaction = async () => {
-    if (!formData.description || !formData.amount || !formData.date) {
-      alert('Заполните все обязательные поля');
-      return;
-    }
-
-    const transactionData: any = {
-      id: editingTransaction?.id || crypto.randomUUID(),
-      description: formData.description,
-      amount: formData.category === 'expense' ? -Math.abs(parseFloat(formData.amount)) : Math.abs(parseFloat(formData.amount)),
-      date: formData.date,
-      clientId: formData.clientId || undefined,
-      projectId: formData.projectId || undefined,
-      createdAt: editingTransaction?.createdAt || new Date().toISOString(),
-      createdBy: currentUser.id
-    };
-
-    if (editingTransaction) {
-      await onUpdateTransaction(transactionData);
-    } else {
-      await onAddTransaction(transactionData);
-    }
-
-    setShowTransactionForm(false);
-    setEditingTransaction(null);
-    setFormData({
-      description: '',
-      amount: '',
-      date: new Date().toISOString().split('T')[0],
-      clientId: '',
-      projectId: '',
-      category: 'income'
-    });
-  };
-
-  const handleEditTransaction = (transaction: Transaction) => {
-    setEditingTransaction(transaction);
-    setFormData({
-      description: transaction.description || '',
-      amount: Math.abs(transaction.amount).toString(),
-      date: transaction.date,
-      clientId: transaction.clientId || '',
-      projectId: transaction.projectId || '',
-      category: transaction.amount > 0 ? 'income' : 'expense'
-    });
-    setShowTransactionForm(true);
-  };
-
-  const handleDeleteTransaction = async (id: string) => {
-    if (confirm('Удалить транзакцию?')) {
-      await onDeleteTransaction(id);
-    }
-  };
-
 
   return (
     <div className="space-y-6">
@@ -351,210 +281,15 @@ const AccountantDashboard: React.FC<AccountantDashboardProps> = ({
         </div>
       </div>
 
-      <div className="bg-slate-900 rounded-xl border border-slate-800 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-            <DollarSign className="w-5 h-5 text-emerald-400" />
-            Журнал платежей
-          </h3>
-          <button
-            onClick={() => {
-              setShowTransactionForm(!showTransactionForm);
-              setEditingTransaction(null);
-              setFormData({
-                description: '',
-                amount: '',
-                date: new Date().toISOString().split('T')[0],
-                clientId: '',
-                projectId: '',
-                category: 'income'
-              });
-            }}
-            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Добавить платеж
-          </button>
-        </div>
-
-        {showTransactionForm && (
-          <div className="mb-6 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
-            <h4 className="text-sm font-semibold text-white mb-3">
-              {editingTransaction ? 'Редактировать платеж' : 'Новый платеж'}
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-slate-400 mb-1">Описание *</label>
-                <input
-                  type="text"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  placeholder="Оплата от клиента"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Тип *</label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="income">Приход</option>
-                  <option value="expense">Расход</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Сумма (₸) *</label>
-                <input
-                  type="number"
-                  value={formData.amount}
-                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  placeholder="0"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Дата *</label>
-                <input
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Клиент</label>
-                <select
-                  value={formData.clientId}
-                  onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="">Не выбрано</option>
-                  {clients.map(client => (
-                    <option key={client.id} value={client.id}>
-                      {client.legalName || client.company || client.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Проект</label>
-                <select
-                  value={formData.projectId}
-                  onChange={(e) => setFormData({ ...formData, projectId: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="">Не выбрано</option>
-                  {projects
-                    .filter(p => !formData.clientId || p.clientId === formData.clientId)
-                    .map(project => (
-                      <option key={project.id} value={project.id}>{project.name}</option>
-                    ))}
-                </select>
-              </div>
-
-              <div className="md:col-span-2 flex gap-2 justify-end">
-                <button
-                  onClick={() => {
-                    setShowTransactionForm(false);
-                    setEditingTransaction(null);
-                  }}
-                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors"
-                >
-                  Отмена
-                </button>
-                <button
-                  onClick={handleSubmitTransaction}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors"
-                >
-                  {editingTransaction ? 'Сохранить' : 'Добавить'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="overflow-x-auto">
-          <div className="max-h-96 overflow-y-auto">
-            <table className="w-full">
-              <thead className="sticky top-0 bg-slate-900 z-10">
-                <tr className="border-b border-slate-800">
-                  <th className="text-left py-3 px-4 text-xs font-medium text-slate-400 uppercase">Дата</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-slate-400 uppercase">Описание</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-slate-400 uppercase">Клиент</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-slate-400 uppercase">Проект</th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-slate-400 uppercase">Сумма</th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-slate-400 uppercase w-24">Действия</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentTransactions.map((transaction) => {
-                  const client = clients.find(c => c.id === transaction.clientId);
-                  const project = projects.find(p => p.id === transaction.projectId);
-                  const clientLegalName = client ? (client.legalName || client.company || client.name) : '-';
-
-                  return (
-                    <tr key={transaction.id} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
-                      <td className="py-3 px-4">
-                        <div className="text-sm text-slate-300">
-                          {new Date(transaction.date).toLocaleDateString('ru-RU')}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="text-sm font-medium text-white">{transaction.description}</div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="text-sm text-slate-300">{clientLegalName}</div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="text-sm text-slate-300">{project?.name || '-'}</div>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className={`text-sm font-bold ${
-                          transaction.amount > 0 ? 'text-emerald-400' : 'text-rose-400'
-                        }`}>
-                          {transaction.amount > 0 ? '+' : ''}{transaction.amount.toLocaleString('ru-RU')} ₸
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => handleEditTransaction(transaction)}
-                            className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
-                            title="Редактировать"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteTransaction(transaction.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded transition-colors"
-                            title="Удалить"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {recentTransactions.length === 0 && (
-            <div className="text-center py-8 text-slate-400">
-              <DollarSign className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p>Нет транзакций</p>
-            </div>
-          )}
-        </div>
-      </div>
+      <TransactionJournal
+        transactions={transactions}
+        clients={clients}
+        projects={projects}
+        users={users}
+        onAddTransaction={onAddTransaction}
+        onCreateClient={onCreateClient}
+        onReconcile={onReconcile}
+      />
     </div>
   );
 };
