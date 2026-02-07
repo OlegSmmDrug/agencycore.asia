@@ -1502,6 +1502,16 @@ const App: React.FC = () => {
                     addNotification('Ошибка восстановления проекта', 'warning');
                 }
             }}
+            onDeleteProject={async (projectId) => {
+                try {
+                    await projectService.permanentlyDelete(projectId);
+                    setProjects(prev => prev.filter(p => p.id !== projectId));
+                    addNotification('Проект удален безвозвратно', 'success');
+                } catch (error) {
+                    console.error('Error permanently deleting project:', error);
+                    addNotification('Ошибка удаления проекта', 'warning');
+                }
+            }}
             isGeneratingTasksFor={isGeneratingTasksFor}
           />
         );

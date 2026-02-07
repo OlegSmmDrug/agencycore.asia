@@ -313,6 +313,50 @@ export const projectService = {
     }
   },
 
+  async permanentlyDelete(id: string): Promise<void> {
+    const organizationId = getCurrentOrganizationId();
+    if (!organizationId) throw new Error('No organization ID found');
+
+    const relatedTables = [
+      'livedune_content_cache',
+      'content_publications',
+      'tasks',
+      'guest_project_access',
+      'guest_access',
+      'project_roadmap_stages',
+      'project_roadmap_templates',
+      'project_level1_stage_status',
+      'project_expenses',
+      'project_legal_documents',
+      'generated_documents',
+      'project_members',
+      'notes',
+      'transactions',
+    ];
+
+    for (const table of relatedTables) {
+      const { error } = await supabase
+        .from(table)
+        .delete()
+        .eq('project_id', id);
+
+      if (error) {
+        console.error(`Error deleting from ${table}:`, error);
+      }
+    }
+
+    const { error } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', id)
+      .eq('organization_id', organizationId);
+
+    if (error) {
+      console.error('Error permanently deleting project:', error);
+      throw error;
+    }
+  },
+
   async renewProject(id: string, project: Project, renewedBy?: string): Promise<Project> {
     const organizationId = getCurrentOrganizationId();
     if (!organizationId) {

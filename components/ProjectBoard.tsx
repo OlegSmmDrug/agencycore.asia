@@ -6,6 +6,7 @@ import { DEFAULT_SERVICES } from '../constants';
 import { level1StageService } from '../services/level1StageService';
 import { roadmapService, RoadmapStageLevel1 } from '../services/roadmapService';
 import UserAvatar from './UserAvatar';
+import ConfirmDialog from './ConfirmDialog';
 
 interface ProjectBoardProps {
   projects: Project[];
@@ -21,6 +22,7 @@ interface ProjectBoardProps {
   onAddProject: () => void;
   onArchiveProject?: (projectId: string, e: React.MouseEvent) => void;
   onRestoreProject?: (projectId: string, e: React.MouseEvent) => void;
+  onDeleteProject?: (projectId: string) => Promise<void>;
   isGeneratingTasksFor: string | null;
   initialViewType?: 'board' | 'list' | 'services';
   onViewTypeChange?: (viewType: 'board' | 'list' | 'services') => void;
@@ -42,6 +44,7 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
   onAddProject,
   onArchiveProject,
   onRestoreProject,
+  onDeleteProject,
   isGeneratingTasksFor,
   initialViewType,
   onViewTypeChange,
@@ -67,6 +70,19 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
   const [projectStageStatuses, setProjectStageStatuses] = useState<Record<string, Level1StageStatus[]>>({});
   const [level1Stages, setLevel1Stages] = useState<RoadmapStageLevel1[]>([]);
   const [stagesLoaded, setStagesLoaded] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ projectId: string; projectName: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handlePermanentDelete = async () => {
+    if (!deleteConfirm || !onDeleteProject) return;
+    setIsDeleting(true);
+    try {
+      await onDeleteProject(deleteConfirm.projectId);
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirm(null);
+    }
+  };
 
   useEffect(() => {
     const loadStagesAndStatuses = async () => {
@@ -655,6 +671,20 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
                           <span>Восстановить</span>
                         </button>
                       )}
+                      {onDeleteProject && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteConfirm({ projectId: project.id, projectName: project.name });
+                          }}
+                          className="px-3 py-1.5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors flex items-center space-x-1"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          <span>Удалить</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -929,6 +959,18 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
       <div className="flex-1 min-h-0 overflow-hidden">
         {renderContent()}
       </div>
+
+      <ConfirmDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handlePermanentDelete}
+        title="Безвозвратное удаление"
+        message={`Проект "${deleteConfirm?.projectName}" будет удален навсегда вместе со всеми задачами, документами и данными.\n\nЭто действие нельзя отменить.`}
+        confirmText="Удалить навсегда"
+        cancelText="Отмена"
+        variant="danger"
+        loading={isDeleting}
+      />
     </div>
   );
 };
