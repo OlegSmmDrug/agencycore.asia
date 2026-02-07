@@ -1,6 +1,8 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { UsageStats, AIAgent } from '../../types';
+import { aiCreditService, AiTransaction } from '../../services/aiCreditService';
+import { ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
 
 interface AnalyticsPanelProps {
   stats: UsageStats;
@@ -8,6 +10,20 @@ interface AnalyticsPanelProps {
 }
 
 const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({ stats, agents }) => {
+  const [transactions, setTransactions] = useState<AiTransaction[]>([]);
+  const [txLoading, setTxLoading] = useState(true);
+
+  useEffect(() => {
+    loadTransactions();
+  }, []);
+
+  const loadTransactions = async () => {
+    setTxLoading(true);
+    const data = await aiCreditService.getTransactionHistory(30);
+    setTransactions(data);
+    setTxLoading(false);
+  };
+
   return (
     <div className="p-8 space-y-8 animate-in fade-in duration-500">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -120,6 +136,72 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({ stats, agents }) => {
                </tbody>
             </table>
          </div>
+      </section>
+
+      <section className="bg-white p-8 rounded-3xl border">
+        <h3 className="text-lg font-bold mb-6">История AI-операций</h3>
+        {txLoading ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+          </div>
+        ) : transactions.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-8">AI-операций пока нет</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-gray-50 text-gray-400 font-bold uppercase text-[10px] tracking-widest">
+                <tr>
+                  <th className="px-4 py-3">Дата</th>
+                  <th className="px-4 py-3">Модель</th>
+                  <th className="px-4 py-3">Запрос</th>
+                  <th className="px-4 py-3">Токены (вх/вых)</th>
+                  <th className="px-4 py-3">Кредиты</th>
+                  <th className="px-4 py-3">Баланс</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {transactions.map(tx => {
+                  const isTopup = tx.model_slug === 'topup' || tx.model_slug === 'purchase' || tx.model_slug === 'admin_deduct';
+                  return (
+                    <tr key={tx.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                        {new Date(tx.created_at).toLocaleDateString('ru-RU')}{' '}
+                        {new Date(tx.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="px-4 py-3">
+                        {isTopup ? (
+                          <span className="text-xs font-bold text-emerald-600">{tx.model_slug === 'purchase' ? 'Покупка' : tx.model_slug === 'topup' ? 'Зачисление' : 'Списание'}</span>
+                        ) : (
+                          <span className="text-xs font-mono text-gray-600">{tx.model_slug}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate">
+                        {tx.request_summary || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-xs font-medium text-gray-600">
+                        {isTopup ? '-' : `${tx.input_tokens.toLocaleString()} / ${tx.output_tokens.toLocaleString()}`}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1 text-xs font-bold ${
+                          isTopup && tx.markup_cost < 0 ? 'text-emerald-600' : 'text-red-500'
+                        }`}>
+                          {isTopup && tx.markup_cost < 0 ? (
+                            <><ArrowUpCircle className="w-3 h-3" />+{Math.abs(tx.markup_cost).toFixed(4)}</>
+                          ) : (
+                            <><ArrowDownCircle className="w-3 h-3" />-{tx.markup_cost.toFixed(4)}</>
+                          )}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-400">
+                        {tx.balance_after.toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </div>
   );

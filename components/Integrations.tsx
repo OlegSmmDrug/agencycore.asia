@@ -85,12 +85,6 @@ const INTEGRATION_TEMPLATES = [
     description: 'Аналитика Instagram аккаунтов',
     category: 'marketplace',
   },
-  {
-    integration_type: 'claude_api',
-    name: 'Claude API (Anthropic)',
-    description: 'ИИ-ассистент для автоматизации работы с клиентами',
-    category: 'crm_automation',
-  },
 ];
 
 const CATEGORIES = [

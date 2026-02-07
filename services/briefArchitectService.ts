@@ -1,6 +1,6 @@
 import { BriefMessage, BriefSession } from '../components/brief_architect/types';
 import { BRIEF_SYSTEM_PROMPT } from '../components/brief_architect/constants';
-import { getCurrentOrganizationId } from '../utils/organizationContext';
+import { getCurrentOrganizationId, getCurrentUserId } from '../utils/organizationContext';
 import { supabase } from '../lib/supabase';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -26,8 +26,12 @@ interface ClaudeResponse {
 
 async function callClaudeProxy(body: Record<string, any>): Promise<ClaudeResponse> {
   const organizationId = getCurrentOrganizationId();
+  const userId = getCurrentUserId();
   if (!organizationId) {
     throw new Error('Organization ID not found');
+  }
+  if (!userId) {
+    throw new Error('User ID not found');
   }
 
   const response = await fetch(`${SUPABASE_URL}/functions/v1/claude-proxy`, {
@@ -39,6 +43,7 @@ async function callClaudeProxy(body: Record<string, any>): Promise<ClaudeRespons
     body: JSON.stringify({
       ...body,
       organization_id: organizationId,
+      user_id: userId,
     }),
   });
 

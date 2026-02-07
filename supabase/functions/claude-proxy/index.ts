@@ -10,19 +10,26 @@ const corsHeaders = {
 
 const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
 
+function jsonResponse(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   try {
-    const { model, max_tokens, temperature, system, messages, organization_id } =
+    const { model, max_tokens, temperature, system, messages, organization_id, user_id } =
       await req.json();
 
-    if (!model || !messages || !organization_id) {
-      return new Response(
-        JSON.stringify({ error: "Missing required fields: model, messages, organization_id" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    if (!model || !messages || !organization_id || !user_id) {
+      return jsonResponse(
+        { error: "Missing required fields: model, messages, organization_id, user_id" },
+        400
       );
     }
 
@@ -30,34 +37,53 @@ Deno.serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { data: integration } = await supabase
-      .from("integrations")
-      .select("id")
-      .eq("organization_id", organization_id)
-      .eq("integration_type", "claude_api")
-      .eq("is_active", true)
+    const { data: settings } = await supabase
+      .from("ai_platform_settings")
+      .select("*")
+      .limit(1)
       .maybeSingle();
 
-    if (!integration) {
-      return new Response(
-        JSON.stringify({ error: "Claude API integration not found or inactive" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    if (!settings) {
+      return jsonResponse({ error: "AI platform settings not configured" }, 503);
+    }
+
+    if (!settings.global_ai_enabled) {
+      return jsonResponse({ error: "AI features are temporarily disabled by the platform administrator" }, 403);
+    }
+
+    const masterApiKey = settings.master_api_key;
+    if (!masterApiKey) {
+      return jsonResponse({ error: "AI service is not configured. Contact the platform administrator." }, 503);
+    }
+
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("id, is_ai_enabled, ai_credit_balance, ai_daily_limit")
+      .eq("id", organization_id)
+      .maybeSingle();
+
+    if (!org) {
+      return jsonResponse({ error: "Organization not found" }, 404);
+    }
+
+    if (!org.is_ai_enabled) {
+      return jsonResponse({ error: "AI features are not activated for your organization" }, 403);
+    }
+
+    if (org.ai_credit_balance <= 0) {
+      return jsonResponse(
+        { error: "Insufficient AI credits. Please top up your balance.", code: "INSUFFICIENT_CREDITS" },
+        402
       );
     }
 
-    const { data: credential } = await supabase
-      .from("integration_credentials")
-      .select("credential_value")
-      .eq("integration_id", integration.id)
-      .eq("credential_key", "api_key")
-      .maybeSingle();
+    const dailyLimit = org.ai_daily_limit ?? settings.default_daily_limit;
+    const { data: dailySpend } = await supabase.rpc("get_org_daily_ai_spend", { p_org_id: organization_id });
 
-    const apiKey = credential?.credential_value;
-
-    if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: "Claude API key not configured in integration credentials" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    if (dailySpend !== null && dailySpend >= dailyLimit) {
+      return jsonResponse(
+        { error: "Daily AI spending limit exceeded. Try again tomorrow.", code: "DAILY_LIMIT_EXCEEDED" },
+        429
       );
     }
 
@@ -65,7 +91,7 @@ Deno.serve(async (req: Request) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey,
+        "x-api-key": masterApiKey,
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
@@ -80,20 +106,47 @@ Deno.serve(async (req: Request) => {
     const claudeData = await claudeResponse.json();
 
     if (!claudeResponse.ok) {
-      return new Response(JSON.stringify(claudeData), {
-        status: claudeResponse.status,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(claudeData, claudeResponse.status);
     }
 
-    return new Response(JSON.stringify(claudeData), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const usage = claudeData.usage;
+    const inputTokens = usage?.input_tokens || 0;
+    const outputTokens = usage?.output_tokens || 0;
+
+    const userMessage = messages?.[messages.length - 1]?.content || "";
+    const requestSummary = typeof userMessage === "string"
+      ? userMessage.substring(0, 200)
+      : JSON.stringify(userMessage).substring(0, 200);
+
+    const requestId = `req_${crypto.randomUUID()}`;
+
+    const { data: deductResult } = await supabase.rpc("deduct_ai_credits", {
+      p_org_id: organization_id,
+      p_user_id: user_id,
+      p_request_id: requestId,
+      p_model_slug: model,
+      p_input_tokens: inputTokens,
+      p_output_tokens: outputTokens,
+      p_request_summary: requestSummary,
+    });
+
+    const billing = deductResult || {};
+
+    return jsonResponse({
+      ...claudeData,
+      billing: {
+        credits_deducted: billing.deducted || 0,
+        balance_after: billing.balance_after || 0,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        success: billing.success || false,
+        error: billing.error || null,
+      },
     });
   } catch (error: any) {
-    return new Response(
-      JSON.stringify({ error: error.message || "Internal server error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    return jsonResponse(
+      { error: error.message || "Internal server error" },
+      500
     );
   }
 });

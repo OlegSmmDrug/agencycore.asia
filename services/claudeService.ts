@@ -1,6 +1,6 @@
 import { AIAgent, Message } from '../types';
 import { STYLE_GUIDELINES } from '../constants/aiAgents';
-import { getCurrentOrganizationId } from '../utils/organizationContext';
+import { getCurrentOrganizationId, getCurrentUserId } from '../utils/organizationContext';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -8,6 +8,15 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 interface ClaudeMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+export interface BillingInfo {
+  credits_deducted: number;
+  balance_after: number;
+  input_tokens: number;
+  output_tokens: number;
+  success: boolean;
+  error: string | null;
 }
 
 interface ClaudeResponse {
@@ -21,6 +30,7 @@ interface ClaudeResponse {
     input_tokens: number;
     output_tokens: number;
   };
+  billing?: BillingInfo;
 }
 
 interface AgentResponseResult {
@@ -38,12 +48,26 @@ interface AgentResponseResult {
   };
   tokensUsed: number;
   cost: number;
+  billing?: BillingInfo;
+}
+
+export class AiCreditError extends Error {
+  code: string;
+  constructor(message: string, code: string) {
+    super(message);
+    this.code = code;
+    this.name = 'AiCreditError';
+  }
 }
 
 async function callClaudeProxy(body: Record<string, any>): Promise<ClaudeResponse> {
   const organizationId = getCurrentOrganizationId();
+  const userId = getCurrentUserId();
   if (!organizationId) {
     throw new Error('Organization ID not found');
+  }
+  if (!userId) {
+    throw new Error('User ID not found');
   }
 
   const response = await fetch(`${SUPABASE_URL}/functions/v1/claude-proxy`, {
@@ -55,13 +79,22 @@ async function callClaudeProxy(body: Record<string, any>): Promise<ClaudeRespons
     body: JSON.stringify({
       ...body,
       organization_id: organizationId,
+      user_id: userId,
     }),
   });
 
   const data = await response.json();
 
   if (!response.ok) {
+    const errorCode = data.code || '';
     const msg = data.error?.message || data.error || `Claude API error: ${response.status}`;
+
+    if (response.status === 402 || errorCode === 'INSUFFICIENT_CREDITS') {
+      throw new AiCreditError(String(msg), 'INSUFFICIENT_CREDITS');
+    }
+    if (response.status === 429 || errorCode === 'DAILY_LIMIT_EXCEEDED') {
+      throw new AiCreditError(String(msg), 'DAILY_LIMIT_EXCEEDED');
+    }
     throw new Error(String(msg));
   }
 
@@ -87,7 +120,7 @@ export const processAgentResponse = async (
   const text = data.content[0]?.text || 'Нет ответа от AI';
   const metadata = agent.role === 'seller' ? extractLeadMetadata(text, userInput) : undefined;
   const proposedAction = extractProposedAction(text, agent);
-  const cost = calculateCost(data.usage.input_tokens + data.usage.output_tokens, agent.model);
+  const cost = data.billing?.credits_deducted || calculateCost(data.usage.input_tokens + data.usage.output_tokens, agent.model);
 
   return {
     text,
@@ -95,6 +128,7 @@ export const processAgentResponse = async (
     proposedAction,
     tokensUsed: data.usage.input_tokens + data.usage.output_tokens,
     cost,
+    billing: data.billing,
   };
 };
 

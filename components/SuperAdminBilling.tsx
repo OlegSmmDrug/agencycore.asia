@@ -1,22 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { CreditCard, Package, Calendar, Wallet } from 'lucide-react';
+import { CreditCard, Package, Calendar, Wallet, Cpu } from 'lucide-react';
 import BillingPlansTab, { SubscriptionPlan } from './admin/BillingPlansTab';
 import BillingModulesTab, { PlatformModule } from './admin/BillingModulesTab';
 import BillingPeriodsTab, { PeriodBonus } from './admin/BillingPeriodsTab';
 import BillingBalanceTab from './admin/BillingBalanceTab';
+import BillingAiTab from './admin/BillingAiTab';
 
 interface Props {
   currentUserId: string;
 }
 
-type SubTab = 'plans' | 'modules' | 'periods' | 'balance';
+type SubTab = 'plans' | 'modules' | 'periods' | 'balance' | 'ai';
 
 const TABS: { key: SubTab; label: string; icon: React.ReactNode }[] = [
   { key: 'plans', label: 'Тарифы', icon: <CreditCard className="w-4 h-4" /> },
   { key: 'modules', label: 'Модули', icon: <Package className="w-4 h-4" /> },
   { key: 'periods', label: 'Периоды', icon: <Calendar className="w-4 h-4" /> },
   { key: 'balance', label: 'Баланс', icon: <Wallet className="w-4 h-4" /> },
+  { key: 'ai', label: 'AI Биллинг', icon: <Cpu className="w-4 h-4" /> },
 ];
 
 const SuperAdminBilling: React.FC<Props> = ({ currentUserId }) => {
@@ -85,6 +87,7 @@ const SuperAdminBilling: React.FC<Props> = ({ currentUserId }) => {
       {subTab === 'modules' && <BillingModulesTab modules={modules} onReload={loadAll} />}
       {subTab === 'periods' && <BillingPeriodsTab periods={periods} onReload={loadAll} />}
       {subTab === 'balance' && <BillingBalanceTab adminUserId={currentUserId} />}
+      {subTab === 'ai' && <BillingAiTab adminUserId={currentUserId} />}
     </div>
   );
 };

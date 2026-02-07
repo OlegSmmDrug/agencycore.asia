@@ -12,9 +12,10 @@ import { aiLeadService } from '../services/aiLeadService';
 import { aiActionService } from '../services/aiActionService';
 import { aiKnowledgeService } from '../services/aiKnowledgeService';
 import { aiUsageService } from '../services/aiUsageService';
+import { aiCreditService, AiCreditBalance } from '../services/aiCreditService';
 import { supabase } from '../lib/supabase';
 import { getCurrentOrganizationId } from '../utils/organizationContext';
-import { Key, Settings } from 'lucide-react';
+import { Zap, ShoppingCart, Coins, AlertTriangle } from 'lucide-react';
 
 interface AIAgentsModuleProps {
   onNavigateToIntegrations?: () => void;
@@ -33,33 +34,22 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
     successRate: 100
   });
   const [loading, setLoading] = useState(true);
-  const [apiKeyConfigured, setApiKeyConfigured] = useState<boolean | null>(null);
+  const [creditBalance, setCreditBalance] = useState<AiCreditBalance>({ balance: 0, isAiEnabled: false, dailyLimit: null });
+  const [showTopupModal, setShowTopupModal] = useState(false);
+  const [topupAmount, setTopupAmount] = useState('');
+  const [topupLoading, setTopupLoading] = useState(false);
+  const [creditPriceKzt, setCreditPriceKzt] = useState(1);
 
   useEffect(() => {
-    checkClaudeApiKey();
+    loadAiBalance();
     loadData();
   }, []);
 
-  const checkClaudeApiKey = async () => {
-    try {
-      const organizationId = getCurrentOrganizationId();
-      if (!organizationId) {
-        setApiKeyConfigured(false);
-        return;
-      }
-
-      const { data } = await supabase
-        .from('integrations')
-        .select('id, is_active')
-        .eq('organization_id', organizationId)
-        .eq('integration_type', 'claude_api')
-        .eq('is_active', true)
-        .maybeSingle();
-
-      setApiKeyConfigured(!!data);
-    } catch {
-      setApiKeyConfigured(false);
-    }
+  const loadAiBalance = async () => {
+    const balance = await aiCreditService.getBalance();
+    setCreditBalance(balance);
+    const price = await aiCreditService.getCreditPriceKzt();
+    setCreditPriceKzt(price);
   };
 
   const loadData = async () => {
@@ -160,12 +150,43 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
     }
   };
 
+  const handleToggleAi = async () => {
+    const newState = !creditBalance.isAiEnabled;
+    if (newState && creditBalance.balance <= 0) {
+      setShowTopupModal(true);
+      return;
+    }
+    const ok = await aiCreditService.toggleAi(newState);
+    if (ok) {
+      setCreditBalance(prev => ({ ...prev, isAiEnabled: newState }));
+    }
+  };
+
+  const handlePurchaseCredits = async () => {
+    const amount = parseFloat(topupAmount);
+    if (isNaN(amount) || amount <= 0) return;
+    setTopupLoading(true);
+    const result = await aiCreditService.purchaseCredits(amount);
+    setTopupLoading(false);
+    if (result.success) {
+      setCreditBalance(prev => ({ ...prev, balance: result.balanceAfter || prev.balance }));
+      setShowTopupModal(false);
+      setTopupAmount('');
+    } else {
+      alert(result.error || 'Ошибка покупки');
+    }
+  };
+
   const handleAIResponse = async (agentId: string, response: any) => {
     setStats(prev => ({
       ...prev,
       requestsToday: prev.requestsToday + 1,
       costSpent: prev.costSpent + (response.cost || 0.002),
     }));
+
+    if (response.billing) {
+      setCreditBalance(prev => ({ ...prev, balance: response.billing.balance_after ?? prev.balance }));
+    }
 
     if (response.proposedAction) {
       const agent = agents.find(a => a.id === agentId);
@@ -206,7 +227,7 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
     );
   }
 
-  if (apiKeyConfigured === false) {
+  if (!creditBalance.isAiEnabled) {
     return (
       <div className="relative h-screen overflow-hidden">
         <div className="absolute inset-0 blur-sm opacity-40 pointer-events-none select-none">
@@ -251,23 +272,102 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
 
         <div className="absolute inset-0 flex items-center justify-center z-10 bg-slate-900/20 backdrop-blur-[2px]">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-8 max-w-md w-full mx-4 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mx-auto mb-5">
-              <Key className="w-8 h-8 text-amber-500" />
+            <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-5">
+              <Zap className="w-8 h-8 text-blue-500" />
             </div>
-            <h2 className="text-xl font-bold text-slate-800 mb-2">Подключите Claude API</h2>
-            <p className="text-sm text-slate-500 mb-6 leading-relaxed">
-              Для работы ИИ-агентов необходим ключ Claude API от Anthropic.
-              Подключите его в разделе Интеграции, чтобы активировать модуль.
+            <h2 className="text-xl font-bold text-slate-800 mb-2">Активируйте AI</h2>
+            <p className="text-sm text-slate-500 mb-4 leading-relaxed">
+              Для работы ИИ-агентов необходимо пополнить баланс AI-кредитов и активировать модуль.
+              Никаких сложных настроек -- просто пополните баланс и включите.
             </p>
-            <button
-              onClick={() => onNavigateToIntegrations?.()}
-              className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors"
-            >
-              <Settings className="w-4 h-4" />
-              Перейти в Интеграции
-            </button>
+            {creditBalance.balance > 0 ? (
+              <div className="mb-4 p-3 bg-emerald-50 rounded-xl">
+                <p className="text-xs text-emerald-700 font-medium">Ваш баланс: {creditBalance.balance.toFixed(2)} кредитов</p>
+              </div>
+            ) : (
+              <div className="mb-4 p-3 bg-amber-50 rounded-xl">
+                <p className="text-xs text-amber-700 font-medium">Баланс: 0 кредитов. Пополните, чтобы начать.</p>
+              </div>
+            )}
+            <div className="space-y-2">
+              {creditBalance.balance > 0 && (
+                <button
+                  onClick={handleToggleAi}
+                  className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors"
+                >
+                  <Zap className="w-4 h-4" />
+                  Включить AI
+                </button>
+              )}
+              <button
+                onClick={() => setShowTopupModal(true)}
+                className={`w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold transition-colors ${
+                  creditBalance.balance > 0
+                    ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                <Coins className="w-4 h-4" />
+                Пополнить баланс
+              </button>
+            </div>
           </div>
         </div>
+
+        {showTopupModal && (
+          <div className="absolute inset-0 flex items-center justify-center z-20 bg-slate-900/40 backdrop-blur-[2px]">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 max-w-sm w-full mx-4">
+              <h3 className="text-lg font-bold text-slate-800 mb-1">Купить AI-кредиты</h3>
+              <p className="text-xs text-slate-500 mb-4">Кредиты спишутся с вашего основного баланса (KZT)</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Количество кредитов</label>
+                  <input
+                    type="number"
+                    value={topupAmount}
+                    onChange={e => setTopupAmount(e.target.value)}
+                    placeholder="100"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-lg font-bold focus:outline-none focus:border-blue-500"
+                  />
+                  <div className="flex gap-2 mt-2">
+                    {[100, 500, 1000, 5000].map(v => (
+                      <button
+                        key={v}
+                        onClick={() => setTopupAmount(v.toString())}
+                        className="px-2 py-1 text-xs bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {topupAmount && parseFloat(topupAmount) > 0 && (
+                  <div className="p-3 bg-blue-50 rounded-xl">
+                    <p className="text-xs text-blue-700">
+                      К оплате: <span className="font-bold">{(parseFloat(topupAmount) * creditPriceKzt).toLocaleString()} KZT</span>
+                      <span className="text-blue-500 ml-1">({creditPriceKzt} KZT / кредит)</span>
+                    </p>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setShowTopupModal(false); setTopupAmount(''); }}
+                    className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    onClick={handlePurchaseCredits}
+                    disabled={topupLoading || !topupAmount || parseFloat(topupAmount) <= 0}
+                    className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {topupLoading ? 'Обработка...' : 'Купить'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -353,19 +453,36 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
               {view === 'analytics' && 'Аналитика'}
             </h2>
           </div>
-          <div className="flex items-center gap-4 md:gap-8 w-full md:w-auto justify-between md:justify-end">
-            <div className="text-right flex flex-col items-end">
-              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">Расходы ИИ (Месяц)</span>
-              <span className="text-base md:text-lg font-black text-blue-600">${stats.costSpent.toFixed(3)} / $20.00</span>
-              <div className="w-32 h-1 bg-gray-100 rounded-full mt-1 overflow-hidden">
-                <div className="h-full bg-blue-500" style={{ width: `${Math.min((stats.costSpent / 20) * 100, 100)}%` }}></div>
+          <div className="flex items-center gap-3 md:gap-6 w-full md:w-auto justify-between md:justify-end">
+            <button
+              onClick={() => setShowTopupModal(true)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all ${
+                creditBalance.balance < 10
+                  ? 'bg-red-50 border-red-200 text-red-700'
+                  : creditBalance.balance < 50
+                    ? 'bg-amber-50 border-amber-200 text-amber-700'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+              }`}
+            >
+              <Coins className="w-4 h-4" />
+              <div className="text-right">
+                <span className="text-[10px] font-bold uppercase block leading-none">AI баланс</span>
+                <span className="text-sm font-black">{creditBalance.balance.toFixed(2)} кр.</span>
               </div>
-            </div>
+            </button>
+            <button
+              onClick={handleToggleAi}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
+                creditBalance.isAiEnabled ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+              }`}
+            >
+              {creditBalance.isAiEnabled ? 'AI Вкл' : 'AI Выкл'}
+            </button>
             <button
               onClick={() => setView('review')}
               className="relative p-3 bg-gray-50 rounded-2xl hover:bg-blue-50 transition-all border border-transparent hover:border-blue-100"
             >
-              ⚖️
+              <span className="text-lg">&#9878;</span>
               {actions.filter(a => a.status === 'pending').length > 0 && (
                 <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white animate-bounce">
                   {actions.filter(a => a.status === 'pending').length}
@@ -422,6 +539,61 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
           )}
         </div>
       </main>
+
+      {showTopupModal && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-slate-900/40 backdrop-blur-[2px]">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 max-w-sm w-full mx-4">
+            <h3 className="text-lg font-bold text-slate-800 mb-1">Купить AI-кредиты</h3>
+            <p className="text-xs text-slate-500 mb-4">Кредиты спишутся с вашего основного баланса (KZT)</p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Количество кредитов</label>
+                <input
+                  type="number"
+                  value={topupAmount}
+                  onChange={e => setTopupAmount(e.target.value)}
+                  placeholder="100"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-lg font-bold focus:outline-none focus:border-blue-500"
+                />
+                <div className="flex gap-2 mt-2">
+                  {[100, 500, 1000, 5000].map(v => (
+                    <button
+                      key={v}
+                      onClick={() => setTopupAmount(v.toString())}
+                      className="px-2 py-1 text-xs bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {topupAmount && parseFloat(topupAmount) > 0 && (
+                <div className="p-3 bg-blue-50 rounded-xl">
+                  <p className="text-xs text-blue-700">
+                    К оплате: <span className="font-bold">{(parseFloat(topupAmount) * creditPriceKzt).toLocaleString()} KZT</span>
+                    <span className="text-blue-500 ml-1">({creditPriceKzt} KZT / кредит)</span>
+                  </p>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setShowTopupModal(false); setTopupAmount(''); }}
+                  className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200"
+                >
+                  Отмена
+                </button>
+                <button
+                  onClick={handlePurchaseCredits}
+                  disabled={topupLoading || !topupAmount || parseFloat(topupAmount) <= 0}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {topupLoading ? 'Обработка...' : 'Купить'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
