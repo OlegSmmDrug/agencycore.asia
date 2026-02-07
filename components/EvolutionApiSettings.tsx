@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { QrCode, RefreshCw, Trash2, Check, X, Wifi, WifiOff, Loader, Server, Key, AlertTriangle, CheckCircle } from 'lucide-react';
+import { QrCode, RefreshCw, Trash2, Check, X, Wifi, WifiOff, Loader, Server, AlertTriangle, CheckCircle, Info } from 'lucide-react';
 import { evolutionApiService, EvolutionInstance } from '../services/evolutionApiService';
 import { getCurrentOrganizationId } from '../utils/organizationContext';
 
@@ -20,11 +20,7 @@ export function EvolutionApiSettings({ onInstanceCreated, onInstanceDeleted }: E
   const [loadingQr, setLoadingQr] = useState(false);
   const [pollingInterval, setPollingIntervalState] = useState<ReturnType<typeof setInterval> | null>(null);
 
-  const [serverUrl, setServerUrl] = useState('');
-  const [apiKey, setApiKey] = useState('');
-  const [savingSettings, setSavingSettings] = useState(false);
-  const [settingsStatus, setSettingsStatus] = useState<'unknown' | 'healthy' | 'unhealthy' | 'saving'>('unknown');
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [serverConfigured, setServerConfigured] = useState<boolean | null>(null);
 
   useEffect(() => {
     loadSettings();
@@ -35,13 +31,9 @@ export function EvolutionApiSettings({ onInstanceCreated, onInstanceDeleted }: E
   const loadSettings = async () => {
     try {
       const settings = await evolutionApiService.getSettings();
-      if (settings) {
-        setServerUrl(settings.server_url || '');
-        setSettingsStatus(settings.health_status as any || 'unknown');
-        setSettingsLoaded(true);
-      }
+      setServerConfigured(settings?.health_status === 'healthy');
     } catch {
-      setSettingsLoaded(true);
+      setServerConfigured(false);
     }
   };
 
@@ -56,24 +48,6 @@ export function EvolutionApiSettings({ onInstanceCreated, onInstanceDeleted }: E
       console.error('Error loading Evolution instances:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSaveSettings = async () => {
-    if (!serverUrl.trim() || !apiKey.trim()) return;
-    setSavingSettings(true);
-    setSettingsStatus('saving');
-    try {
-      const connected = await evolutionApiService.saveSettings(serverUrl.trim(), apiKey.trim());
-      setSettingsStatus(connected ? 'healthy' : 'unhealthy');
-      setApiKey('');
-      if (connected) {
-        await loadInstances();
-      }
-    } catch (error: any) {
-      setSettingsStatus('unhealthy');
-    } finally {
-      setSavingSettings(false);
     }
   };
 
@@ -212,71 +186,30 @@ export function EvolutionApiSettings({ onInstanceCreated, onInstanceDeleted }: E
 
   return (
     <div className="space-y-5">
-      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Server className="w-4 h-4 text-slate-600" />
-          <h4 className="text-sm font-bold text-slate-800">Подключение к серверу</h4>
-          {settingsStatus === 'healthy' && (
-            <span className="ml-auto flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-              <CheckCircle className="w-3 h-3" /> Подключен
-            </span>
-          )}
-          {settingsStatus === 'unhealthy' && (
-            <span className="ml-auto flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-              <AlertTriangle className="w-3 h-3" /> Ошибка
-            </span>
-          )}
+      {serverConfigured === null && (
+        <div className="text-center py-8">
+          <Loader className="w-6 h-6 animate-spin mx-auto text-slate-400" />
         </div>
+      )}
 
-        <div className="space-y-2">
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">URL сервера Evolution API</label>
-            <input
-              type="text"
-              value={serverUrl}
-              onChange={(e) => setServerUrl(e.target.value)}
-              placeholder="https://your-evolution-api.com"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">API ключ</label>
-            <div className="relative">
-              <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={settingsStatus === 'healthy' ? '********' : 'Введите API ключ'}
-                className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              />
-            </div>
-          </div>
-          <button
-            onClick={handleSaveSettings}
-            disabled={savingSettings || !serverUrl.trim() || !apiKey.trim()}
-            className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 text-sm font-medium flex items-center justify-center gap-2"
-          >
-            {savingSettings ? (
-              <><Loader className="w-4 h-4 animate-spin" /> Проверка...</>
-            ) : (
-              <><Check className="w-4 h-4" /> Сохранить и проверить</>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {settingsStatus !== 'healthy' && !loading && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-yellow-800">
-            <p className="font-medium">Сервер не подключен</p>
-            <p className="mt-1 text-yellow-700">Укажите URL и API-ключ вашего Evolution API сервера выше, чтобы начать работу.</p>
+      {serverConfigured === false && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 flex items-start gap-3">
+          <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-blue-800">
+            <p className="font-semibold">WhatsApp сервер не настроен</p>
+            <p className="mt-1 text-blue-700">Сервер Evolution API настраивается администратором платформы. Обратитесь к администратору для подключения.</p>
           </div>
         </div>
       )}
 
-      {settingsStatus === 'healthy' && (
+      {serverConfigured === true && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2">
+          <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+          <span className="text-sm text-green-700 font-medium">Сервер Evolution API подключен</span>
+        </div>
+      )}
+
+      {serverConfigured === true && (
         <>
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Инстансы WhatsApp</h3>
