@@ -7,6 +7,8 @@ function mapRow(row: any): Transaction {
     id: row.id,
     clientId: row.client_id,
     projectId: row.project_id,
+    userId: row.user_id || undefined,
+    payrollRecordId: row.payroll_record_id || undefined,
     amount: Number(row.amount) || 0,
     date: row.date,
     type: row.type as PaymentType,
@@ -36,8 +38,8 @@ export const transactionService = {
 
     const { data, error } = await supabase
       .from('transactions')
-      .select('*, clients!inner(organization_id)')
-      .eq('clients.organization_id', organizationId)
+      .select('*')
+      .eq('organization_id', organizationId)
       .order('date', { ascending: false });
 
     if (error) {
@@ -49,9 +51,13 @@ export const transactionService = {
   },
 
   async create(transaction: Omit<Transaction, 'id'>): Promise<Transaction> {
+    const organizationId = getCurrentOrganizationId();
     const insertData: any = {
-      client_id: transaction.clientId,
-      project_id: transaction.projectId,
+      client_id: transaction.clientId || null,
+      project_id: transaction.projectId || null,
+      user_id: transaction.userId || null,
+      payroll_record_id: transaction.payrollRecordId || null,
+      organization_id: organizationId,
       amount: transaction.amount,
       date: transaction.date,
       type: transaction.type,
@@ -107,6 +113,8 @@ export const transactionService = {
     if (updates.linkedTransactionId !== undefined) updateData.linked_transaction_id = updates.linkedTransactionId;
     if (updates.category !== undefined) updateData.category = updates.category;
     if (updates.amountDiscrepancy !== undefined) updateData.amount_discrepancy = updates.amountDiscrepancy;
+    if (updates.userId !== undefined) updateData.user_id = updates.userId;
+    if (updates.payrollRecordId !== undefined) updateData.payroll_record_id = updates.payrollRecordId;
 
     const { error } = await supabase
       .from('transactions')

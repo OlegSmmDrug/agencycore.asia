@@ -93,9 +93,10 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
 
       const { data: payrollData } = await supabase
         .from('payroll_records')
-        .select('month, fix_salary, calculated_kpi, manual_bonus, manual_penalty')
+        .select('month, fix_salary, calculated_kpi, manual_bonus, manual_penalty, status')
         .eq('organization_id', orgId)
-        .in('month', [selectedMonth, prevMonth]);
+        .in('month', [selectedMonth, prevMonth])
+        .in('status', ['FROZEN', 'PAID']);
 
       const calcPayroll = (records: typeof payrollData, m: string) =>
         (records || []).filter(r => r.month === m).reduce((sum, r) =>

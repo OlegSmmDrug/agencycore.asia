@@ -1,4 +1,4 @@
-import { Client, PaymentType, Transaction, BankCounterpartyAlias, ReconciliationStatus } from '../types';
+import { Client, PaymentType, Transaction, BankCounterpartyAlias, ReconciliationStatus, User } from '../types';
 import { sanitizeCounterpartyName, extractBin, reconciliationService, ReconciliationMatch } from './reconciliationService';
 
 export interface CompanyInfo {
@@ -21,7 +21,9 @@ export interface ParsedTransaction {
   paymentType: PaymentType;
   isIncome: boolean;
   matchedClientId: string | null;
-  matchSource: 'bin' | 'alias' | 'name' | 'none';
+  matchedUserId: string | null;
+  isEmployee: boolean;
+  matchSource: 'bin' | 'alias' | 'name' | 'employee_iin' | 'employee_name' | 'none';
   matchStatus: 'matched' | 'unmatched' | 'duplicate';
   reconciliation: ReconciliationMatch;
 }
@@ -207,8 +209,8 @@ function extractOurBin(content: string): string {
   return mostFrequent;
 }
 
-function parse1CFormat(content: string, companyInfo?: CompanyInfo): Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] {
-  const results: Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] = [];
+function parse1CFormat(content: string, companyInfo?: CompanyInfo): Omit<ParsedTransaction, 'matchedClientId' | 'matchedUserId' | 'isEmployee' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] {
+  const results: Omit<ParsedTransaction, 'matchedClientId' | 'matchedUserId' | 'isEmployee' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] = [];
   const sections = content.split(/СекцияДокумент/g).slice(1);
 
   const ourAccount = companyInfo?.iban || extractOurAccount(content);
@@ -429,8 +431,8 @@ function parse1CFormat(content: string, companyInfo?: CompanyInfo): Omit<ParsedT
   return results;
 }
 
-function parseCSVFormat(content: string): Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] {
-  const results: Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] = [];
+function parseCSVFormat(content: string): Omit<ParsedTransaction, 'matchedClientId' | 'matchedUserId' | 'isEmployee' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] {
+  const results: Omit<ParsedTransaction, 'matchedClientId' | 'matchedUserId' | 'isEmployee' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] = [];
 
   const lines = content.trim().split('\n').map(l => l.trim()).filter(l => l.length > 0);
   if (lines.length < 2) return results;
@@ -534,7 +536,8 @@ export async function parseStatementFile(
   clients: Client[],
   existingTransactions: Transaction[],
   aliases: BankCounterpartyAlias[],
-  companyInfo?: CompanyInfo
+  companyInfo?: CompanyInfo,
+  users?: User[]
 ): Promise<ImportResult> {
   let content = await readFileAsText(file, 'windows-1251');
 
@@ -544,7 +547,7 @@ export async function parseStatementFile(
 
   const format = detectFormat(content, file.name);
 
-  let rawTransactions: Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] = [];
+  let rawTransactions: Omit<ParsedTransaction, 'matchedClientId' | 'matchedUserId' | 'isEmployee' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] = [];
 
   if (format === '1c') {
     rawTransactions = parse1CFormat(content, companyInfo);
@@ -562,11 +565,12 @@ export async function parseStatementFile(
   let duplicates = 0;
 
   const transactions: ParsedTransaction[] = rawTransactions.map(t => {
-    const { clientId, matchSource } = reconciliationService.matchClientSmart(
+    const match = reconciliationService.matchClientSmart(
       t.clientName,
       t.clientBin,
       clients,
-      aliases
+      aliases,
+      users
     );
 
     const isDuplicate = t.documentNumber
@@ -576,7 +580,7 @@ export async function parseStatementFile(
     const reconciliation = reconciliationService.findMatchingTransaction(
       t.date,
       t.amount,
-      clientId,
+      match.clientId,
       t.documentNumber,
       existingTransactions
     );
@@ -591,11 +595,15 @@ export async function parseStatementFile(
       newEntries++;
     }
 
+    const isMatched = !!(match.clientId || match.userId);
+
     return {
       ...t,
-      matchedClientId: clientId,
-      matchSource,
-      matchStatus: isDuplicate ? 'duplicate' as const : clientId ? 'matched' as const : 'unmatched' as const,
+      matchedClientId: match.clientId,
+      matchedUserId: match.userId,
+      isEmployee: match.isEmployee,
+      matchSource: match.matchSource,
+      matchStatus: isDuplicate ? 'duplicate' as const : isMatched ? 'matched' as const : 'unmatched' as const,
       reconciliation,
     };
   });

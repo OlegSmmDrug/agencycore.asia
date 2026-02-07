@@ -79,10 +79,12 @@ export default function TransactionJournal({ transactions, clients, projects, us
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(t => {
-        const client = clients.find(c => c.id === t.clientId);
+        const client = t.clientId ? clients.find(c => c.id === t.clientId) : null;
+        const user = t.userId ? users.find(u => u.id === t.userId) : null;
         return (
-          client?.company.toLowerCase().includes(query) ||
-          client?.name.toLowerCase().includes(query) ||
+          client?.company?.toLowerCase().includes(query) ||
+          client?.name?.toLowerCase().includes(query) ||
+          user?.name?.toLowerCase().includes(query) ||
           t.description?.toLowerCase().includes(query) ||
           t.bankClientName?.toLowerCase().includes(query)
         );
@@ -131,8 +133,8 @@ export default function TransactionJournal({ transactions, clients, projects, us
   const handleAddTransaction = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!newTransaction.clientId || !newTransaction.amount) {
-      alert('Заполните обязательные поля: клиент и сумма');
+    if (!newTransaction.amount) {
+      alert('Заполните обязательное поле: сумма');
       return;
     }
 
@@ -172,9 +174,16 @@ export default function TransactionJournal({ transactions, clients, projects, us
     setIsAddModalOpen(false);
   };
 
-  const getClientName = (clientId: string) => {
-    const client = clients.find(c => c.id === clientId);
-    return client?.company || client?.name || 'Неизвестный клиент';
+  const getCounterpartyName = (transaction: Transaction) => {
+    if (transaction.userId) {
+      const user = users.find(u => u.id === transaction.userId);
+      return user?.name || 'Сотрудник';
+    }
+    if (transaction.clientId) {
+      const client = clients.find(c => c.id === transaction.clientId);
+      return client?.company || client?.name || 'Неизвестный клиент';
+    }
+    return transaction.bankClientName || 'Не указан';
   };
 
   const getPaymentTypeLabel = (type: PaymentType) => {
@@ -183,9 +192,11 @@ export default function TransactionJournal({ transactions, clients, projects, us
 
   const handleBankImport = (items: Array<{
     clientId: string;
+    userId?: string;
     amount: number;
     date: string;
     type: PaymentType;
+    category?: string;
     description: string;
     reconciliationStatus: ReconciliationStatus;
     bankDocumentNumber: string;
@@ -194,7 +205,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
     bankBin: string;
   }>) => {
     items.forEach(item => {
-      onAddTransaction(item);
+      onAddTransaction(item as any);
     });
   };
 
@@ -202,7 +213,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
     const headers = ['Дата', 'Клиент', 'Тип платежа', 'Категория', 'Сумма', 'Статус сверки', 'Описание'];
     const rows = filteredTransactions.map(t => [
       new Date(t.date).toLocaleDateString('ru-RU'),
-      getClientName(t.clientId),
+      getCounterpartyName(t),
       getPaymentTypeLabel(t.type),
       EXPENSE_CATEGORIES.find(c => c.value === t.category)?.label || t.category || '',
       t.amount.toString(),
@@ -431,9 +442,12 @@ export default function TransactionJournal({ transactions, clients, projects, us
                         <UserIcon className="h-4 w-4 text-gray-400" />
                         <div>
                           <span className="text-sm font-medium text-gray-900">
-                            {getClientName(transaction.clientId)}
+                            {getCounterpartyName(transaction)}
                           </span>
-                          {transaction.bankBin && (
+                          {transaction.userId && (
+                            <span className="ml-1 inline-flex px-1.5 py-0.5 text-[10px] font-medium rounded bg-blue-50 text-blue-600">Сотрудник</span>
+                          )}
+                          {transaction.bankBin && !transaction.userId && (
                             <span className="ml-1 text-xs text-gray-400">({transaction.bankBin})</span>
                           )}
                         </div>
@@ -486,6 +500,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
         onClose={() => setIsImportModalOpen(false)}
         clients={clients}
         transactions={transactions}
+        users={users}
         onImport={handleBankImport}
         onCreateClient={onCreateClient}
         onReconcile={onReconcile}

@@ -451,7 +451,8 @@ export const financialEngineService = {
       .from('payroll_records')
       .select('fix_salary, calculated_kpi, manual_bonus, manual_penalty')
       .eq('organization_id', orgId)
-      .eq('month', month);
+      .eq('month', month)
+      .in('status', ['FROZEN', 'PAID']);
 
     return (data || []).reduce((sum, r) =>
       sum + (Number(r.fix_salary) || 0) + (Number(r.calculated_kpi) || 0) +

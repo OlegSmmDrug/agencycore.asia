@@ -1,9 +1,9 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Upload, FileText, CheckCircle, AlertTriangle, XCircle, Check, X,
-  ChevronDown, ChevronUp, Building2, Link2, UserPlus, Search
+  ChevronDown, ChevronUp, Building2, Link2, UserPlus, Search, User as UserIcon
 } from 'lucide-react';
-import { Client, PaymentType, Transaction, BankCounterpartyAlias, ReconciliationStatus } from '../types';
+import { Client, PaymentType, Transaction, BankCounterpartyAlias, ReconciliationStatus, User } from '../types';
 import { ParsedTransaction, ImportResult, parseStatementFile, CompanyInfo } from '../services/bankStatementParser';
 import { reconciliationService } from '../services/reconciliationService';
 import { executorCompanyService } from '../services/executorCompanyService';
@@ -14,11 +14,14 @@ interface BankImportModalProps {
   onClose: () => void;
   clients: Client[];
   transactions: Transaction[];
+  users: User[];
   onImport: (items: Array<{
     clientId: string;
+    userId?: string;
     amount: number;
     date: string;
     type: PaymentType;
+    category?: string;
     description: string;
     reconciliationStatus: ReconciliationStatus;
     bankDocumentNumber: string;
@@ -59,6 +62,8 @@ const MATCH_SOURCE_LABELS: Record<string, string> = {
   bin: 'по БИН',
   alias: 'по памяти',
   name: 'по названию',
+  employee_iin: 'сотрудник (ИИН)',
+  employee_name: 'сотрудник (имя)',
   none: '',
 };
 
@@ -167,7 +172,7 @@ function NewClientModal({ isOpen, onClose, bankName, bankBin, clients, onCreateN
   );
 }
 
-export default function BankImportModal({ isOpen, onClose, clients, transactions, onImport, onCreateClient, onReconcile }: BankImportModalProps) {
+export default function BankImportModal({ isOpen, onClose, clients, transactions, users, onImport, onCreateClient, onReconcile }: BankImportModalProps) {
   const [step, setStep] = useState<'upload' | 'preview' | 'result'>('upload');
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
@@ -221,7 +226,7 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
     setIsProcessing(true);
     try {
       const info = companyInfoRef.current;
-      const result = await parseStatementFile(file, clients, transactions, aliases, info);
+      const result = await parseStatementFile(file, clients, transactions, aliases, info, users);
       if (result.transactions.length === 0) {
         alert('Не удалось распознать платежи в файле. Убедитесь, что формат файла поддерживается.');
         setIsProcessing(false);
@@ -242,7 +247,7 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
     } finally {
       setIsProcessing(false);
     }
-  }, [clients, transactions, aliases]);
+  }, [clients, transactions, aliases, users]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -306,9 +311,11 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
 
     const itemsToImport: Array<{
       clientId: string;
+      userId?: string;
       amount: number;
       date: string;
       type: PaymentType;
+      category?: string;
       description: string;
       reconciliationStatus: ReconciliationStatus;
       bankDocumentNumber: string;
@@ -329,7 +336,9 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
       }
 
       const clientId = clientOverrides[i] || t.matchedClientId;
-      if (!clientId) {
+      const isEmployeeMatch = t.isEmployee && t.matchedUserId;
+
+      if (!clientId && !isEmployeeMatch) {
         skipped++;
         continue;
       }
@@ -361,12 +370,21 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
       const signedAmount = t.isIncome ? t.amount : -t.amount;
       const directionTag = t.isIncome ? '' : ' [Расход]';
 
+      const employeeName = isEmployeeMatch
+        ? users.find(u => u.id === t.matchedUserId)?.name
+        : undefined;
+      const descSuffix = isEmployeeMatch && employeeName
+        ? ` [Сотрудник: ${employeeName}]`
+        : '';
+
       itemsToImport.push({
-        clientId,
+        clientId: clientId || '',
+        userId: isEmployeeMatch ? t.matchedUserId! : undefined,
         amount: signedAmount,
         date: t.date,
         type: t.paymentType,
-        description: (t.description + directionTag + rateTag + knpTag + docTag).trim(),
+        category: isEmployeeMatch ? 'Salary' : undefined,
+        description: (t.description + directionTag + descSuffix + rateTag + knpTag + docTag).trim(),
         reconciliationStatus: 'bank_import',
         bankDocumentNumber: t.documentNumber,
         bankAmount: signedAmount,
@@ -374,10 +392,10 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
         bankBin: t.clientBin,
       });
 
-      if (t.matchSource !== 'alias' && clientId) {
+      if (!isEmployeeMatch && t.matchSource !== 'alias' && clientId) {
         await reconciliationService.saveAlias(t.clientName, t.clientBin, clientId);
       }
-      if (t.clientBin && clientId) {
+      if (!isEmployeeMatch && t.clientBin && clientId) {
         await reconciliationService.updateClientBin(clientId, t.clientBin);
       }
 
@@ -589,7 +607,17 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
                             {new Date(t.date).toLocaleDateString('ru-RU')}
                           </td>
                           <td className="px-3 py-2">
-                            {t.matchStatus === 'unmatched' && !overridden ? (
+                            {t.isEmployee && t.matchedUserId ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-100 border border-blue-200 rounded text-xs font-medium text-blue-700">
+                                  <UserIcon className="h-3 w-3" />
+                                  Сотрудник
+                                </span>
+                                <span className="font-medium text-gray-800 truncate max-w-[140px]">
+                                  {users.find(u => u.id === t.matchedUserId)?.name || t.clientName}
+                                </span>
+                              </div>
+                            ) : t.matchStatus === 'unmatched' && !overridden ? (
                               <button
                                 onClick={() => setNewClientModal({ rowIndex: i, bankName: t.clientName, bankBin: t.clientBin })}
                                 className="flex items-center gap-1.5 px-2 py-1 bg-yellow-100 border border-yellow-300 rounded text-xs text-yellow-800 hover:bg-yellow-200 transition-colors"

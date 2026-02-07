@@ -827,7 +827,8 @@ const App: React.FC = () => {
   };
 
   const handleAddManualTransaction = async (transactionData: Omit<Transaction, 'id' | 'createdAt' | 'isVerified'>) => {
-    if (!transactionData.amount || !transactionData.clientId) return;
+    if (!transactionData.amount) return;
+    if (!transactionData.clientId && !transactionData.userId) return;
 
     try {
       const fullTransactionData = {
@@ -838,21 +839,25 @@ const App: React.FC = () => {
       const createdTransaction = await transactionService.create(fullTransactionData);
       setTransactions(prev => [...prev, createdTransaction]);
 
-      const clientTrans = [...transactions, createdTransaction].filter(t => t.clientId === transactionData.clientId);
-      const totalPaid = clientTrans.reduce((sum, t) => sum + t.amount, 0);
+      if (transactionData.clientId) {
+        const clientTrans = [...transactions, createdTransaction].filter(t => t.clientId === transactionData.clientId);
+        const totalPaid = clientTrans.reduce((sum, t) => sum + t.amount, 0);
 
-      await clientService.update(transactionData.clientId, { prepayment: totalPaid });
-      setClients(prev => prev.map(c => c.id === transactionData.clientId ? { ...c, prepayment: totalPaid } : c));
+        await clientService.update(transactionData.clientId, { prepayment: totalPaid });
+        setClients(prev => prev.map(c => c.id === transactionData.clientId ? { ...c, prepayment: totalPaid } : c));
+      }
 
       addNotification('Платеж добавлен', 'success');
 
-      activityLogService.create({
-        userId: getDbUserId(),
-        entityType: 'client',
-        entityId: transactionData.clientId,
-        actionType: 'payment',
-        description: `Добавлен платеж: ${Number(transactionData.amount).toLocaleString('ru-RU')} ₸`
-      }).catch(err => console.error('Activity log error:', err));
+      if (transactionData.clientId) {
+        activityLogService.create({
+          userId: getDbUserId(),
+          entityType: 'client',
+          entityId: transactionData.clientId,
+          actionType: 'payment',
+          description: `Добавлен платеж: ${Number(transactionData.amount).toLocaleString('ru-RU')} ₸`
+        }).catch(err => console.error('Activity log error:', err));
+      }
     } catch (error) {
       console.error('Error adding transaction:', error);
       addNotification('Ошибка добавления платежа', 'warning');
@@ -1631,11 +1636,32 @@ const App: React.FC = () => {
                         });
 
                         const user = users.find(u => u.id === record.userId);
+                        const totalPaid = (record.fixSalary || 0) + (record.calculatedKpi || 0) + (record.manualBonus || 0) - (record.manualPenalty || 0) - (record.advance || 0);
+
                         if (user) {
-                            const totalPaid = (record.fixSalary || 0) + (record.calculatedKpi || 0) + (record.manualBonus || 0) - (record.manualPenalty || 0) - (record.advance || 0);
                             const newBalance = (user.balance || 0) + totalPaid;
                             await userService.update({ ...user, balance: newBalance });
                             setUsers(prev => prev.map(u => u.id === user.id ? { ...u, balance: newBalance } : u));
+                        }
+
+                        const monthLabel = new Date(record.month + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+                        const userName = user?.name || 'Сотрудник';
+                        try {
+                            const salaryTx = await transactionService.create({
+                                clientId: '',
+                                userId: record.userId,
+                                payrollRecordId: paidRecord.id,
+                                amount: -totalPaid,
+                                date: new Date().toISOString(),
+                                type: PaymentType.FULL,
+                                category: 'Salary',
+                                description: `ЗП ${userName} за ${monthLabel}`,
+                                isVerified: true,
+                                reconciliationStatus: 'manual',
+                            });
+                            setTransactions(prev => [salaryTx, ...prev]);
+                        } catch (txErr) {
+                            console.error('Error creating salary transaction:', txErr);
                         }
 
                         setPayrollRecords(prev => prev.map(r =>

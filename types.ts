@@ -150,6 +150,7 @@ export interface User {
   birthday?: string;
   balance?: number;
   isSuperAdmin?: boolean;
+  employmentType?: 'staff' | 'ip' | 'sz' | 'nal';
 }
 
 export interface CalculatorData {
@@ -464,6 +465,8 @@ export interface Transaction {
     id: string;
     clientId: string;
     projectId?: string;
+    userId?: string;
+    payrollRecordId?: string;
     amount: number;
     date: string;
     type: PaymentType;
@@ -863,6 +866,7 @@ export interface PayrollRecord {
   status: 'DRAFT' | 'FROZEN' | 'PAID';
   balanceAtStart: number;
   paidAt?: string;
+  netAmount?: number;
   taskPayments?: Array<{
     task_id: string;
     task_title: string;

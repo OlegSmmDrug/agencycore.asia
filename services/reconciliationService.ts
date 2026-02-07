@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { Client, Transaction, ReconciliationStatus, BankCounterpartyAlias } from '../types';
+import { Client, Transaction, ReconciliationStatus, BankCounterpartyAlias, User } from '../types';
 import { getCurrentOrganizationId } from '../utils/organizationContext';
 
 export function sanitizeCounterpartyName(raw: string): string {
@@ -138,27 +138,61 @@ export const reconciliationService = {
     return partial || null;
   },
 
+  findUserByIin(iin: string, users: User[]): User | null {
+    if (!iin) return null;
+    const cleaned = iin.replace(/\D/g, '');
+    if (cleaned.length < 10) return null;
+    return users.find(u => {
+      if (!u.iin) return false;
+      return u.iin.replace(/\D/g, '') === cleaned;
+    }) || null;
+  },
+
+  findUserByName(bankName: string, users: User[]): User | null {
+    if (!bankName) return null;
+    const normalized = normalizeForComparison(bankName);
+    return users.find(u => {
+      const targets = [u.name].filter(Boolean).map(t => normalizeForComparison(t));
+      return targets.some(t =>
+        t === normalized ||
+        (t.length >= 3 && normalized.includes(t)) ||
+        (normalized.length >= 3 && t.includes(normalized))
+      );
+    }) || null;
+  },
+
   matchClientSmart(
     bankName: string,
     bankBin: string,
     clients: Client[],
-    aliases: BankCounterpartyAlias[]
-  ): { clientId: string | null; matchSource: 'bin' | 'alias' | 'name' | 'none' } {
+    aliases: BankCounterpartyAlias[],
+    users?: User[]
+  ): { clientId: string | null; userId: string | null; matchSource: 'bin' | 'alias' | 'name' | 'employee_iin' | 'employee_name' | 'none'; isEmployee: boolean } {
     const sanitizedName = sanitizeCounterpartyName(bankName);
     const extractedBin = bankBin || extractBin(bankName);
 
     if (extractedBin) {
       const byBin = this.findClientByBin(extractedBin, clients);
-      if (byBin) return { clientId: byBin.id, matchSource: 'bin' };
+      if (byBin) return { clientId: byBin.id, userId: null, matchSource: 'bin', isEmployee: false };
+    }
+
+    if (extractedBin && users && users.length > 0) {
+      const employee = this.findUserByIin(extractedBin, users);
+      if (employee) return { clientId: null, userId: employee.id, matchSource: 'employee_iin', isEmployee: true };
     }
 
     const aliasMatch = this.findClientByAlias(sanitizedName, extractedBin, aliases);
-    if (aliasMatch) return { clientId: aliasMatch, matchSource: 'alias' };
+    if (aliasMatch) return { clientId: aliasMatch, userId: null, matchSource: 'alias', isEmployee: false };
 
     const byName = this.findClientByName(sanitizedName, clients);
-    if (byName) return { clientId: byName.id, matchSource: 'name' };
+    if (byName) return { clientId: byName.id, userId: null, matchSource: 'name', isEmployee: false };
 
-    return { clientId: null, matchSource: 'none' };
+    if (users && users.length > 0) {
+      const employeeByName = this.findUserByName(sanitizedName, users);
+      if (employeeByName) return { clientId: null, userId: employeeByName.id, matchSource: 'employee_name', isEmployee: true };
+    }
+
+    return { clientId: null, userId: null, matchSource: 'none', isEmployee: false };
   },
 
   findMatchingTransaction(
