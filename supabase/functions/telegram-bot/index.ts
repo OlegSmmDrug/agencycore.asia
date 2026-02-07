@@ -181,14 +181,18 @@ function fmtDate(d: string | null): string {
 
 function statusEmoji(s: string): string {
   const map: Record<string, string> = {
-    "todo": "⬜",
-    "in_progress": "🔵",
-    "review": "🟡",
-    "done": "✅",
-    "blocked": "🔴",
+    "To Do": "⬜",
+    "In Progress": "🔵",
+    "Done": "✅",
+    "completed": "✅",
+    "Rejected": "🔴",
   };
   return map[s] || "⬜";
 }
+
+const ACTIVE_TASK_STATUSES = ["To Do", "In Progress"];
+const ACTIVE_PROJECT_STATUSES = ["New", "In Work", "Strategy/KP"];
+const WON_CLIENT_STATUSES = ["Won", "In Work", "Contract Signing"];
 
 async function handleMyTasks(
   supabase: SupaClient,
@@ -198,11 +202,11 @@ async function handleMyTasks(
 ) {
   const { data: tasks } = await supabase
     .from("tasks")
-    .select("title, status, due_date, project_id, projects(name)")
+    .select("title, status, deadline, project_id, projects(name)")
     .eq("assignee_id", user.userId)
     .eq("organization_id", user.organizationId)
-    .in("status", ["todo", "in_progress", "review", "blocked"])
-    .order("due_date", { ascending: true, nullsFirst: false })
+    .in("status", ACTIVE_TASK_STATUSES)
+    .order("deadline", { ascending: true, nullsFirst: false })
     .limit(15);
 
   if (!tasks || tasks.length === 0) {
@@ -213,7 +217,7 @@ async function handleMyTasks(
   let text = `<b>Ваши задачи (${tasks.length}):</b>\n\n`;
   for (const t of tasks) {
     const proj = (t as any).projects?.name || "";
-    const due = t.due_date ? ` | до ${fmtDate(t.due_date)}` : "";
+    const due = t.deadline ? ` | до ${fmtDate(t.deadline)}` : "";
     text += `${statusEmoji(t.status)} <b>${t.title}</b>\n`;
     text += `   ${proj}${due}\n\n`;
   }
@@ -233,13 +237,13 @@ async function handleDeadlines(
 
   const { data: tasks } = await supabase
     .from("tasks")
-    .select("title, status, due_date, projects(name)")
+    .select("title, status, deadline, projects(name)")
     .eq("assignee_id", user.userId)
     .eq("organization_id", user.organizationId)
-    .in("status", ["todo", "in_progress", "review"])
-    .not("due_date", "is", null)
-    .lte("due_date", weekLater.toISOString())
-    .order("due_date", { ascending: true })
+    .in("status", ACTIVE_TASK_STATUSES)
+    .not("deadline", "is", null)
+    .lte("deadline", weekLater.toISOString())
+    .order("deadline", { ascending: true })
     .limit(15);
 
   if (!tasks || tasks.length === 0) {
@@ -250,11 +254,11 @@ async function handleDeadlines(
   let text = `<b>Дедлайны (7 дней):</b>\n\n`;
   for (const t of tasks) {
     const proj = (t as any).projects?.name || "";
-    const dueDate = new Date(t.due_date);
+    const dueDate = new Date(t.deadline);
     const isOverdue = dueDate < now;
     const prefix = isOverdue ? "🔴 ПРОСРОЧЕНО" : "🟡";
     text += `${prefix} <b>${t.title}</b>\n`;
-    text += `   ${proj} | ${fmtDate(t.due_date)}\n\n`;
+    text += `   ${proj} | ${fmtDate(t.deadline)}\n\n`;
   }
 
   await sendTg(botToken, chatId, text);
@@ -269,8 +273,7 @@ async function handleTeamReport(
   const { data: members } = await supabase
     .from("users")
     .select("id, name, job_title")
-    .eq("organization_id", user.organizationId)
-    .eq("is_active", true);
+    .eq("organization_id", user.organizationId);
 
   if (!members || members.length === 0) {
     await sendTg(botToken, chatId, "Нет данных о команде.");
@@ -285,15 +288,15 @@ async function handleTeamReport(
       .select("id", { count: "exact", head: true })
       .eq("assignee_id", m.id)
       .eq("organization_id", user.organizationId)
-      .in("status", ["todo", "in_progress", "review"]);
+      .in("status", ACTIVE_TASK_STATUSES);
 
     const { count: overdue } = await supabase
       .from("tasks")
       .select("id", { count: "exact", head: true })
       .eq("assignee_id", m.id)
       .eq("organization_id", user.organizationId)
-      .in("status", ["todo", "in_progress"])
-      .lt("due_date", new Date().toISOString());
+      .in("status", ACTIVE_TASK_STATUSES)
+      .lt("deadline", new Date().toISOString());
 
     const overdueLabel = (overdue || 0) > 0 ? ` | 🔴 просрочено: ${overdue}` : "";
     text += `<b>${m.name}</b> (${m.job_title || "—"})\n`;
@@ -311,37 +314,36 @@ async function handleFinanceSummary(
 ) {
   const monthStart = new Date();
   monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
+  const monthStr = monthStart.toISOString().slice(0, 10);
 
-  const { data: txIn } = await supabase
+  const { data: txAll } = await supabase
     .from("transactions")
-    .select("amount")
+    .select("amount, type")
     .eq("organization_id", user.organizationId)
-    .eq("type", "income")
-    .gte("date", monthStart.toISOString());
+    .gte("date", monthStr);
 
-  const { data: txOut } = await supabase
-    .from("transactions")
-    .select("amount")
-    .eq("organization_id", user.organizationId)
-    .eq("type", "expense")
-    .gte("date", monthStart.toISOString());
-
-  const income = (txIn || []).reduce((s, t) => s + (t.amount || 0), 0);
-  const expense = (txOut || []).reduce((s, t) => s + (t.amount || 0), 0);
+  let income = 0;
+  let expense = 0;
+  for (const t of txAll || []) {
+    if (t.type === "Refund") {
+      expense += Math.abs(t.amount || 0);
+    } else {
+      income += (t.amount || 0);
+    }
+  }
   const profit = income - expense;
 
   const { count: activeProjects } = await supabase
     .from("projects")
     .select("id", { count: "exact", head: true })
     .eq("organization_id", user.organizationId)
-    .in("status", ["active", "in_progress"]);
+    .in("status", ACTIVE_PROJECT_STATUSES);
 
   const { count: activeClients } = await supabase
     .from("clients")
     .select("id", { count: "exact", head: true })
     .eq("organization_id", user.organizationId)
-    .eq("status", "active");
+    .in("status", WON_CLIENT_STATUSES);
 
   const month = new Date().toLocaleDateString("ru-RU", {
     month: "long",
@@ -398,10 +400,10 @@ async function handleProjectStatus(
 ) {
   const { data: projects } = await supabase
     .from("projects")
-    .select("name, status, deadline, client_name, team_ids")
+    .select("name, status, end_date, client_id, clients(name)")
     .eq("organization_id", user.organizationId)
-    .in("status", ["active", "in_progress", "review"])
-    .order("deadline", { ascending: true, nullsFirst: false })
+    .in("status", ACTIVE_PROJECT_STATUSES)
+    .order("end_date", { ascending: true, nullsFirst: false })
     .limit(10);
 
   if (!projects || projects.length === 0) {
@@ -411,11 +413,12 @@ async function handleProjectStatus(
 
   let text = `<b>Активные проекты (${projects.length}):</b>\n\n`;
   for (const p of projects) {
-    const deadline = p.deadline ? ` | до ${fmtDate(p.deadline)}` : "";
-    const isOverdue = p.deadline && new Date(p.deadline) < new Date();
+    const endDate = p.end_date ? ` | до ${fmtDate(p.end_date)}` : "";
+    const isOverdue = p.end_date && new Date(p.end_date) < new Date();
     const prefix = isOverdue ? "🔴" : "🟢";
+    const clientName = (p as any).clients?.name || "—";
     text += `${prefix} <b>${p.name}</b>\n`;
-    text += `   ${p.client_name || "—"}${deadline}\n\n`;
+    text += `   ${clientName}${endDate}\n\n`;
   }
 
   await sendTg(botToken, chatId, text);
@@ -430,8 +433,7 @@ async function handleTeamWorkload(
   const { data: members } = await supabase
     .from("users")
     .select("id, name, job_title")
-    .eq("organization_id", user.organizationId)
-    .eq("is_active", true);
+    .eq("organization_id", user.organizationId);
 
   if (!members || members.length === 0) {
     await sendTg(botToken, chatId, "Нет данных о команде.");
@@ -444,7 +446,8 @@ async function handleTeamWorkload(
       .from("tasks")
       .select("id", { count: "exact", head: true })
       .eq("assignee_id", m.id)
-      .in("status", ["in_progress", "review"]);
+      .eq("organization_id", user.organizationId)
+      .in("status", ACTIVE_TASK_STATUSES);
 
     const bar = "▓".repeat(Math.min(count || 0, 10)) +
       "░".repeat(Math.max(10 - (count || 0), 0));
@@ -466,14 +469,14 @@ async function handleShootingSchedule(
 
   const { data: tasks } = await supabase
     .from("tasks")
-    .select("title, status, due_date, start_time, end_time, projects(name)")
+    .select("title, status, deadline, start_time, end_time, projects(name)")
     .eq("assignee_id", user.userId)
     .eq("organization_id", user.organizationId)
-    .in("status", ["todo", "in_progress"])
-    .not("due_date", "is", null)
-    .gte("due_date", now.toISOString().split("T")[0])
-    .lte("due_date", weekLater.toISOString().split("T")[0])
-    .order("due_date", { ascending: true })
+    .in("status", ACTIVE_TASK_STATUSES)
+    .not("deadline", "is", null)
+    .gte("deadline", now.toISOString().split("T")[0])
+    .lte("deadline", weekLater.toISOString().split("T")[0])
+    .order("deadline", { ascending: true })
     .limit(15);
 
   if (!tasks || tasks.length === 0) {
@@ -484,7 +487,7 @@ async function handleShootingSchedule(
   let text = `<b>Съёмки на неделю:</b>\n\n`;
   let lastDate = "";
   for (const t of tasks) {
-    const dateStr = fmtDate(t.due_date);
+    const dateStr = fmtDate(t.deadline);
     if (dateStr !== lastDate) {
       text += `\n📅 <b>${dateStr}</b>\n`;
       lastDate = dateStr;
@@ -512,14 +515,14 @@ async function handleContentPlan(
 
   const { data: tasks } = await supabase
     .from("tasks")
-    .select("title, status, due_date, content_type, projects(name)")
+    .select("title, status, deadline, type, projects(name)")
     .eq("assignee_id", user.userId)
     .eq("organization_id", user.organizationId)
-    .in("status", ["todo", "in_progress", "review"])
-    .not("due_date", "is", null)
-    .gte("due_date", now.toISOString().split("T")[0])
-    .lte("due_date", weekLater.toISOString().split("T")[0])
-    .order("due_date", { ascending: true })
+    .in("status", ACTIVE_TASK_STATUSES)
+    .not("deadline", "is", null)
+    .gte("deadline", now.toISOString().split("T")[0])
+    .lte("deadline", weekLater.toISOString().split("T")[0])
+    .order("deadline", { ascending: true })
     .limit(20);
 
   if (!tasks || tasks.length === 0) {
@@ -530,14 +533,14 @@ async function handleContentPlan(
   let text = `<b>Контент-план (7 дней):</b>\n\n`;
   let lastDate = "";
   for (const t of tasks) {
-    const dateStr = fmtDate(t.due_date);
+    const dateStr = fmtDate(t.deadline);
     if (dateStr !== lastDate) {
       text += `\n📅 <b>${dateStr}</b>\n`;
       lastDate = dateStr;
     }
     const proj = (t as any).projects?.name || "";
-    const type = t.content_type ? ` [${t.content_type}]` : "";
-    text += `   ${statusEmoji(t.status)} ${t.title}${type}\n`;
+    const tp = t.type ? ` [${t.type}]` : "";
+    text += `   ${statusEmoji(t.status)} ${t.title}${tp}\n`;
     if (proj) text += `      ${proj}\n`;
   }
 
@@ -554,10 +557,10 @@ async function handleTodayPublications(
 
   const { data: tasks } = await supabase
     .from("tasks")
-    .select("title, status, content_type, projects(name)")
+    .select("title, status, type, projects(name)")
     .eq("assignee_id", user.userId)
     .eq("organization_id", user.organizationId)
-    .eq("due_date", today)
+    .eq("deadline", today)
     .order("created_at", { ascending: true })
     .limit(20);
 
@@ -566,11 +569,11 @@ async function handleTodayPublications(
     return;
   }
 
-  let text = `<b>Публикации на сегодня (${tasks.length}):</b>\n\n`;
+  let text = `<b>Задачи на сегодня (${tasks.length}):</b>\n\n`;
   for (const t of tasks) {
     const proj = (t as any).projects?.name || "";
-    const type = t.content_type ? ` [${t.content_type}]` : "";
-    text += `${statusEmoji(t.status)} <b>${t.title}</b>${type}\n`;
+    const tp = t.type ? ` [${t.type}]` : "";
+    text += `${statusEmoji(t.status)} <b>${t.title}</b>${tp}\n`;
     if (proj) text += `   ${proj}\n`;
     text += "\n";
   }
