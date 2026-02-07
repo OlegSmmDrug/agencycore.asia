@@ -308,15 +308,56 @@ const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clie
   }, [monthlyData, computeRow, startMonth, endMonth]);
 
   const ddsData = useMemo(() => {
+    const safeTransactions = Array.isArray(transactions) ? transactions : [];
     let cumulativeBalance = 0;
-    return displayData.map(d => {
+
+    const getMonthTxRange = (mk: string) => {
+      const start = mk + '-01';
+      const ed = new Date(mk + '-01');
+      ed.setMonth(ed.getMonth() + 1);
+      return { start, end: ed.toISOString().slice(0, 10) };
+    };
+
+    const periodMonthKeys: string[][] = grouping === 'monthly'
+      ? months.map(m => [m.month])
+      : months.reduce<string[][]>((acc, m, i) => {
+          const qIdx = Math.floor(i / 3);
+          if (!acc[qIdx]) acc[qIdx] = [];
+          acc[qIdx].push(m.month);
+          return acc;
+        }, []);
+
+    return periodMonthKeys.map(mks => {
       const startBalance = cumulativeBalance;
-      const operatingFlow = d.netProfit;
-      const totalFlow = operatingFlow;
+      let inflow = 0, salaryOut = 0, marketingOut = 0, officeOut = 0, otherOut = 0;
+
+      for (const mk of mks) {
+        const { start, end } = getMonthTxRange(mk);
+        const mTx = safeTransactions.filter(t => {
+          const d = t.date?.slice(0, 10);
+          return d && d >= start && d < end;
+        });
+        inflow += mTx.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+        salaryOut += Math.abs(mTx.filter(t => t.category === 'Salary' && t.amount < 0).reduce((s, t) => s + t.amount, 0));
+        marketingOut += Math.abs(mTx.filter(t => t.category === 'Marketing' && t.amount < 0).reduce((s, t) => s + t.amount, 0));
+        officeOut += Math.abs(mTx.filter(t => t.category === 'Office' && t.amount < 0).reduce((s, t) => s + t.amount, 0));
+        otherOut += Math.abs(mTx.filter(t => t.category === 'Other' && t.amount < 0).reduce((s, t) => s + t.amount, 0));
+      }
+
+      const totalOutflow = salaryOut + marketingOut + officeOut + otherOut;
+      const operatingNet = inflow - totalOutflow;
+      const investingFlow = 0;
+      const financingFlow = 0;
+      const totalFlow = operatingNet + investingFlow + financingFlow;
       cumulativeBalance += totalFlow;
-      return { startBalance, operatingFlow, investingFlow: 0, financingFlow: 0, totalFlow, endBalance: cumulativeBalance };
+
+      return {
+        startBalance, inflow, salaryOut, marketingOut, officeOut, otherOut,
+        totalOutflow, operatingNet, investingFlow, financingFlow, totalFlow,
+        endBalance: cumulativeBalance,
+      };
     });
-  }, [displayData]);
+  }, [transactions, months, grouping]);
 
   const EditableCell = ({ month, field, value, isBold, isNeg }: {
     month: string; field: string; value: number; isBold?: boolean; isNeg?: boolean;
@@ -706,32 +747,62 @@ const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clie
               </>
             ) : (
               <>
-                <HeaderRow label="ДДС от операционной деятельности" values={ddsData.map(d => d.operatingFlow)} />
+                <HeaderRow label="Операционная деятельность" values={ddsData.map(d => d.operatingNet)} />
                 <tr className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-2.5 px-4 sticky left-0 bg-white z-20 border-r border-slate-100 w-[260px] min-w-[260px] shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
-                    <div className="text-xs font-bold text-slate-700">Чистая прибыль</div>
+                    <div className="text-xs font-bold text-emerald-700">Поступления от клиентов</div>
+                    <div className="text-[9px] text-slate-400 font-bold uppercase mt-0.5">Фактические оплаты</div>
                   </td>
-                  {ddsData.map((d, i) => <ReadOnlyCell key={i} value={d.operatingFlow} accent="green" />)}
+                  {ddsData.map((d, i) => <ReadOnlyCell key={i} value={d.inflow} accent="green" />)}
                 </tr>
-                <TotalRow label="Итого операционный ДДС" values={ddsData.map(d => d.operatingFlow)} accent="blue" />
-
-                <HeaderRow label="ДДС от инвестиционной деятельности" values={ddsData.map(() => 0)} />
                 <tr className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-2.5 px-4 sticky left-0 bg-white z-20 border-r border-slate-100 w-[260px] min-w-[260px] shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
-                    <div className="text-xs font-bold text-slate-700">Капитальные затраты</div>
+                    <div className="text-xs font-bold text-rose-600">Выплата зарплат (ФОТ)</div>
+                  </td>
+                  {ddsData.map((d, i) => <ReadOnlyCell key={i} value={-d.salaryOut} accent="rose" />)}
+                </tr>
+                <tr className="hover:bg-slate-50/80 transition-colors">
+                  <td className="py-2.5 px-4 sticky left-0 bg-white z-20 border-r border-slate-100 w-[260px] min-w-[260px] shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
+                    <div className="text-xs font-bold text-rose-600">Маркетинг и реклама</div>
+                  </td>
+                  {ddsData.map((d, i) => <ReadOnlyCell key={i} value={-d.marketingOut} accent="rose" />)}
+                </tr>
+                <tr className="hover:bg-slate-50/80 transition-colors">
+                  <td className="py-2.5 px-4 sticky left-0 bg-white z-20 border-r border-slate-100 w-[260px] min-w-[260px] shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
+                    <div className="text-xs font-bold text-rose-600">Офис и ПО</div>
+                  </td>
+                  {ddsData.map((d, i) => <ReadOnlyCell key={i} value={-d.officeOut} accent="rose" />)}
+                </tr>
+                <tr className="hover:bg-slate-50/80 transition-colors">
+                  <td className="py-2.5 px-4 sticky left-0 bg-white z-20 border-r border-slate-100 w-[260px] min-w-[260px] shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
+                    <div className="text-xs font-bold text-rose-600">Прочие выплаты</div>
+                  </td>
+                  {ddsData.map((d, i) => <ReadOnlyCell key={i} value={-d.otherOut} accent="rose" />)}
+                </tr>
+                <TotalRow
+                  label="Итого операционный ДДС"
+                  subLabel="Поступления минус выплаты"
+                  values={ddsData.map(d => d.operatingNet)}
+                  accent="blue"
+                />
+
+                <HeaderRow label="Инвестиционная деятельность" values={ddsData.map(d => d.investingFlow)} />
+                <tr className="hover:bg-slate-50/80 transition-colors">
+                  <td className="py-2.5 px-4 sticky left-0 bg-white z-20 border-r border-slate-100 w-[260px] min-w-[260px] shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
+                    <div className="text-xs font-bold text-slate-700">Капитальные затраты (CAPEX)</div>
                   </td>
                   {ddsData.map((_d, i) => <ReadOnlyCell key={i} value={0} />)}
                 </tr>
 
-                <HeaderRow label="ДДС от финансовой деятельности" values={ddsData.map(() => 0)} />
+                <HeaderRow label="Финансовая деятельность" values={ddsData.map(d => d.financingFlow)} />
                 <tr className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-2.5 px-4 sticky left-0 bg-white z-20 border-r border-slate-100 w-[260px] min-w-[260px] shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
-                    <div className="text-xs font-bold text-slate-700">Долговые обязательства / Дивиденды</div>
+                    <div className="text-xs font-bold text-slate-700">Кредиты / Займы / Дивиденды</div>
                   </td>
                   {ddsData.map((_d, i) => <ReadOnlyCell key={i} value={0} />)}
                 </tr>
 
-                <TotalRow label="Итого ДДС за период" values={ddsData.map(d => d.totalFlow)} accent="green" />
+                <TotalRow label="Чистый денежный поток за период" values={ddsData.map(d => d.totalFlow)} accent="green" />
 
                 <HeaderRow label="Остаток денежных средств" values={ddsData.map(d => d.endBalance)} />
                 <tr className="hover:bg-slate-50/80 transition-colors">

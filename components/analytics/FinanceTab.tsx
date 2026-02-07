@@ -6,32 +6,12 @@ import {
 import { Transaction, Project, ProjectStatus } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { financialPlanService, FinancialPlan } from '../../services/financialPlanService';
+import { financialEngineService, CashFlowResult, BurnRateResult } from '../../services/financialEngineService';
 import { getCurrentOrganizationId } from '../../utils/organizationContext';
 
 interface FinanceTabProps {
   transactions: Transaction[];
   projects: Project[];
-}
-
-interface PnlData {
-  revenue: number;
-  cogs: number;
-  grossProfit: number;
-  grossMargin: number;
-  salaries: number;
-  marketing: number;
-  office: number;
-  otherExpenses: number;
-  totalOpex: number;
-  ebitda: number;
-  taxes: number;
-  netProfit: number;
-  netMargin: number;
-  expenseStructure: { name: string; value: number }[];
-  planFact: { name: string; plan: number; fact: number }[];
-  prevRevenue: number;
-  prevNetProfit: number;
-  prevEbitda: number;
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#64748b', '#06b6d4'];
@@ -43,6 +23,13 @@ const UI = {
 };
 
 const formatCurrency = (v: number) => `${Math.round(v).toLocaleString()} ₸`;
+
+const TAX_RATE_OPTIONS = [
+  { label: '3% (ИП упрощ.)', value: 0.03 },
+  { label: '10% (КПН)', value: 0.10 },
+  { label: '15% (стандарт)', value: 0.15 },
+  { label: '20%', value: 0.20 },
+];
 
 const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
@@ -56,13 +43,6 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
   const [prevProjectExpensesTotal, setPrevProjectExpensesTotal] = useState(0);
   const [taxRate, setTaxRate] = useState(0.15);
   const [showTaxSettings, setShowTaxSettings] = useState(false);
-
-  const TAX_RATE_OPTIONS = [
-    { label: '3% (ИП упрощ.)', value: 0.03 },
-    { label: '10% (КПН)', value: 0.10 },
-    { label: '15% (стандарт)', value: 0.15 },
-    { label: '20%', value: 0.20 },
-  ];
 
   const navigateMonth = (direction: 'prev' | 'next') => {
     const date = new Date(selectedMonth + '-01');
@@ -144,7 +124,6 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
     const endDate = new Date(selectedMonth + '-01');
     endDate.setMonth(endDate.getMonth() + 1);
     const end = endDate.toISOString().slice(0, 10);
-
     return (Array.isArray(transactions) ? transactions : []).filter(t => {
       const d = t.date?.slice(0, 10);
       return d && d >= start && d < end;
@@ -156,67 +135,44 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
     const endDate = new Date(prevMonth + '-01');
     endDate.setMonth(endDate.getMonth() + 1);
     const end = endDate.toISOString().slice(0, 10);
-
     return (Array.isArray(transactions) ? transactions : []).filter(t => {
       const d = t.date?.slice(0, 10);
       return d && d >= start && d < end;
     });
   }, [transactions, prevMonth]);
 
-  const calcPnlFromTransactions = (txns: Transaction[], payroll: number, projExpenses: number) => {
-    const revenue = txns.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+  const pnl = useMemo(() =>
+    financialEngineService.calcPnl(monthTransactions, payrollTotal, projectExpensesTotal, taxRate),
+    [monthTransactions, payrollTotal, projectExpensesTotal, taxRate]
+  );
 
-    const salariesFromTx = Math.abs(txns.filter(t => t.category === 'Salary').reduce((s, t) => s + t.amount, 0));
-    const marketingFromTx = Math.abs(txns.filter(t => t.category === 'Marketing').reduce((s, t) => s + t.amount, 0));
-    const officeFromTx = Math.abs(txns.filter(t => t.category === 'Office').reduce((s, t) => s + t.amount, 0));
-    const otherFromTx = Math.abs(txns.filter(t => t.category === 'Other').reduce((s, t) => s + t.amount, 0));
+  const prevPnl = useMemo(() =>
+    financialEngineService.calcPnl(prevMonthTransactions, prevPayrollTotal, prevProjectExpensesTotal, taxRate),
+    [prevMonthTransactions, prevPayrollTotal, prevProjectExpensesTotal, taxRate]
+  );
 
-    const salaries = Math.max(salariesFromTx, payroll);
-    const marketing = marketingFromTx;
-    const office = officeFromTx;
-    const otherExpenses = otherFromTx;
+  const cashFlow = useMemo(() =>
+    financialEngineService.calcCashFlow(transactions, selectedMonth, 0),
+    [transactions, selectedMonth]
+  );
 
-    const cogs = projExpenses;
-    const grossProfit = revenue - cogs;
-    const grossMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
+  const burnRate = useMemo(() =>
+    financialEngineService.calcBurnRate(transactions),
+    [transactions]
+  );
 
-    const totalOpex = salaries + marketing + office + otherExpenses;
-    const ebitda = grossProfit - totalOpex;
-    const taxes = Math.max(0, ebitda * taxRate);
-    const netProfit = ebitda - taxes;
-    const netMargin = revenue > 0 ? (netProfit / revenue) * 100 : 0;
+  const expenseStructure = useMemo(() => [
+    { name: 'Себестоимость (COGS)', value: pnl.cogs },
+    { name: 'ФОТ (Зарплаты)', value: pnl.salaries },
+    { name: 'Маркетинг', value: pnl.marketing },
+    { name: 'Офис и ПО', value: pnl.office },
+    { name: 'Прочее', value: pnl.otherExpenses },
+  ].filter(e => e.value > 0), [pnl]);
 
-    return { revenue, cogs, grossProfit, grossMargin, salaries, marketing, office, otherExpenses, totalOpex, ebitda, taxes, netProfit, netMargin };
-  };
-
-  const pnl: PnlData = useMemo(() => {
-    const current = calcPnlFromTransactions(monthTransactions, payrollTotal, projectExpensesTotal);
-    const prev = calcPnlFromTransactions(prevMonthTransactions, prevPayrollTotal, prevProjectExpensesTotal);
-
-    const expenseStructure = [
-      { name: 'Себестоимость (COGS)', value: current.cogs },
-      { name: 'ФОТ (Зарплаты)', value: current.salaries },
-      { name: 'Маркетинг', value: current.marketing },
-      { name: 'Офис и ПО', value: current.office },
-      { name: 'Прочее', value: current.otherExpenses },
-    ].filter(e => e.value > 0);
-
-    const planRevenue = plan?.plannedRevenue || 0;
-    const planNetProfit = plan?.plannedNetProfit || 0;
-
-    const planFact = [
-      { name: 'Выручка', plan: planRevenue, fact: current.revenue },
-      { name: 'Чистая прибыль', plan: planNetProfit, fact: current.netProfit },
-    ];
-
-    return {
-      ...current,
-      expenseStructure, planFact,
-      prevRevenue: prev.revenue,
-      prevNetProfit: prev.netProfit,
-      prevEbitda: prev.ebitda,
-    };
-  }, [monthTransactions, prevMonthTransactions, payrollTotal, projectExpensesTotal, prevPayrollTotal, prevProjectExpensesTotal, plan, taxRate]);
+  const planFact = useMemo(() => [
+    { name: 'Выручка', plan: plan?.plannedRevenue || 0, fact: pnl.revenue },
+    { name: 'Чистая прибыль', plan: plan?.plannedNetProfit || 0, fact: pnl.netProfit },
+  ], [plan, pnl]);
 
   const getChangePercent = (current: number, prev: number) => {
     if (prev === 0) return null;
@@ -228,7 +184,7 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
     return ((pnl.revenue / plan.plannedRevenue) - 1) * 100;
   }, [pnl.revenue, plan]);
 
-  const revenueVsPrev = getChangePercent(pnl.revenue, pnl.prevRevenue);
+  const revenueVsPrev = getChangePercent(pnl.revenue, prevPnl.revenue);
 
   const handleSavePlan = useCallback(async () => {
     await financialPlanService.upsert(selectedMonth, {
@@ -242,6 +198,82 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
   }, [selectedMonth, planForm]);
 
   const totalAllExpenses = pnl.cogs + pnl.totalOpex;
+
+  const insights = useMemo(() => {
+    const items: { type: 'success' | 'warning' | 'danger'; title: string; text: string }[] = [];
+
+    if (pnl.revenue > 0 && pnl.netMargin < 5) {
+      items.push({
+        type: 'danger',
+        title: `Рентабельность критически низкая: ${pnl.netMargin.toFixed(1)}%`,
+        text: 'Для агентства рекомендуемая чистая маржа -- 15-25%. Пересмотрите ценообразование услуг или оптимизируйте операционные расходы.'
+      });
+    } else if (pnl.revenue > 0 && pnl.netMargin < 15) {
+      items.push({
+        type: 'warning',
+        title: `Маржинальность ниже целевой: ${pnl.netMargin.toFixed(1)}%`,
+        text: 'Целевой показатель для digital-агентств 15-25%. Проверьте, какие проекты тянут маржу вниз через вкладку Юнит-экономика.'
+      });
+    }
+
+    const fotPercent = pnl.revenue > 0 ? (pnl.salaries / pnl.revenue) * 100 : 0;
+    if (fotPercent > 50) {
+      items.push({
+        type: 'danger',
+        title: `ФОТ = ${fotPercent.toFixed(0)}% от выручки`,
+        text: 'Бизнес работает преимущественно на зарплаты. Норма для агентства -- 25-35%. Рассмотрите оптимизацию штата или повышение тарифов.'
+      });
+    } else if (fotPercent > 35 && pnl.revenue > 0) {
+      items.push({
+        type: 'warning',
+        title: `ФОТ = ${fotPercent.toFixed(0)}% от выручки (норма 25-35%)`,
+        text: 'Фонд оплаты труда выше рекомендуемого. Проверьте загрузку команды во вкладке "Команда и HR".'
+      });
+    }
+
+    if (plan && plan.plannedRevenue > 0) {
+      const planDelta = ((pnl.revenue / plan.plannedRevenue) - 1) * 100;
+      if (planDelta < -20) {
+        items.push({
+          type: 'danger',
+          title: `Выручка отстает от плана на ${Math.abs(planDelta).toFixed(0)}%`,
+          text: `Факт: ${formatCurrency(pnl.revenue)} vs План: ${formatCurrency(plan.plannedRevenue)}. Пересмотрите план продаж или усильте лидогенерацию.`
+        });
+      } else if (planDelta < -5) {
+        items.push({
+          type: 'warning',
+          title: `Выручка ниже плана на ${Math.abs(planDelta).toFixed(0)}%`,
+          text: `До конца месяца нужно привлечь еще ${formatCurrency(plan.plannedRevenue - pnl.revenue)} для выполнения плана.`
+        });
+      }
+    }
+
+    if (cashFlow.operatingOutflow > cashFlow.operatingInflow && cashFlow.operatingInflow > 0) {
+      items.push({
+        type: 'danger',
+        title: 'Отрицательный денежный поток в этом месяце',
+        text: `Расход (${formatCurrency(cashFlow.operatingOutflow)}) превышает поступления (${formatCurrency(cashFlow.operatingInflow)}). Проверьте дебиторку и ускорьте сбор платежей.`
+      });
+    }
+
+    if (burnRate.runway < 2 && burnRate.monthlyBurn > 0) {
+      items.push({
+        type: 'danger',
+        title: `Runway всего ${burnRate.runway.toFixed(1)} мес.`,
+        text: `При текущем burn rate (${formatCurrency(burnRate.monthlyBurn)}/мес.) и остатке ${formatCurrency(burnRate.currentCash)} денег хватит менее чем на 2 месяца.`
+      });
+    }
+
+    if (pnl.revenue > 0 && pnl.netMargin > 20 && items.length === 0) {
+      items.push({
+        type: 'success',
+        title: `Финансовое здоровье в норме`,
+        text: `Маржинальность ${pnl.netMargin.toFixed(1)}%, ФОТ ${fotPercent.toFixed(0)}%. Показатели в рамках целевых значений.`
+      });
+    }
+
+    return items;
+  }, [pnl, prevPnl, plan, cashFlow, burnRate]);
 
   if (loading) {
     return (
@@ -266,51 +298,28 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
             Отчет о прибылях и убытках за {monthLabel}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigateMonth('prev')}
-            className="p-2 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200"
-          >
-            <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <div className="text-center min-w-[140px]">
-            <div className="text-sm font-black text-slate-900">
-              {new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long' })}
-            </div>
-            <div className="text-xs text-slate-500 font-bold">
-              {new Date(selectedMonth + '-01').getFullYear()}
-            </div>
-          </div>
-          <button
-            onClick={() => navigateMonth('next')}
-            className="p-2 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200"
-          >
-            <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-        </div>
+        <MonthNavigator selectedMonth={selectedMonth} onNavigate={navigateMonth} />
       </div>
 
+      {insights.length > 0 && (
+        <div className="space-y-3">
+          {insights.map((item, i) => (
+            <InsightCard key={i} type={item.type} title={item.title} text={item.text} />
+          ))}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className={UI.CARD}>
-          <p className={UI.LABEL}>Выручка</p>
-          <p className={UI.VALUE}>{formatCurrency(pnl.revenue)}</p>
+        <KpiCard label="Выручка" value={formatCurrency(pnl.revenue)}>
           <div className="mt-2 flex items-center gap-2 flex-wrap">
             {revenuePlanPercent !== null && (
-              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${revenuePlanPercent >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                {revenuePlanPercent >= 0 ? '↑' : '↓'} {Math.abs(revenuePlanPercent).toFixed(0)}% к плану
-              </span>
+              <Badge positive={revenuePlanPercent >= 0} label={`${revenuePlanPercent >= 0 ? '↑' : '↓'} ${Math.abs(revenuePlanPercent).toFixed(0)}% к плану`} />
             )}
             {revenueVsPrev !== null && (
-              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${revenueVsPrev >= 0 ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>
-                {revenueVsPrev >= 0 ? '↑' : '↓'} {Math.abs(revenueVsPrev).toFixed(0)}% MoM
-              </span>
+              <Badge positive={revenueVsPrev >= 0} label={`${revenueVsPrev >= 0 ? '↑' : '↓'} ${Math.abs(revenueVsPrev).toFixed(0)}% MoM`} alt />
             )}
           </div>
-        </div>
+        </KpiCard>
 
         <div className={UI.CARD}>
           <div className="group relative">
@@ -411,158 +420,23 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
         </div>
       </div>
 
+      <CashFlowSummary cashFlow={cashFlow} burnRate={burnRate} />
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className={UI.CARD}>
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="font-black text-xs uppercase tracking-widest text-slate-900 flex items-center gap-2">
-              <div className="w-1 h-4 bg-blue-600 rounded-full" /> Выполнение фин. плана
-            </h3>
-            <button
-              onClick={() => setEditingPlan(!editingPlan)}
-              className="text-[10px] font-bold text-blue-600 hover:text-blue-800 transition-colors px-3 py-1 rounded-lg hover:bg-blue-50"
-            >
-              {editingPlan ? 'Отмена' : 'Задать план'}
-            </button>
-          </div>
+        <PlanFactChart
+          editingPlan={editingPlan}
+          setEditingPlan={setEditingPlan}
+          planForm={planForm}
+          setPlanForm={setPlanForm}
+          handleSavePlan={handleSavePlan}
+          plan={plan}
+          planFact={planFact}
+        />
 
-          {editingPlan && (
-            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase">План выручки</label>
-                <input
-                  type="number"
-                  value={planForm.revenue || ''}
-                  onChange={e => setPlanForm(p => ({ ...p, revenue: Number(e.target.value) }))}
-                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold"
-                  placeholder="0"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase">План расходов</label>
-                <input
-                  type="number"
-                  value={planForm.expenses || ''}
-                  onChange={e => setPlanForm(p => ({ ...p, expenses: Number(e.target.value) }))}
-                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold"
-                  placeholder="0"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase">План чистой прибыли</label>
-                <input
-                  type="number"
-                  value={planForm.netProfit || ''}
-                  onChange={e => setPlanForm(p => ({ ...p, netProfit: Number(e.target.value) }))}
-                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold"
-                  placeholder="0"
-                />
-              </div>
-              <button
-                onClick={handleSavePlan}
-                className="w-full py-2 bg-blue-600 text-white rounded-lg text-xs font-black uppercase hover:bg-blue-700 transition-colors"
-              >
-                Сохранить план
-              </button>
-            </div>
-          )}
-
-          {plan && (plan.plannedRevenue > 0 || plan.plannedNetProfit > 0) ? (
-            <div className="h-[350px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={pnl.planFact} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} dy={10} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
-                  <Tooltip
-                    cursor={{ fill: '#f8fafc' }}
-                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                    formatter={(v: number) => formatCurrency(v)}
-                  />
-                  <Bar dataKey="plan" name="План" fill="#e2e8f0" radius={[6, 6, 0, 0]} barSize={50} />
-                  <Bar dataKey="fact" name="Факт" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={50} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <p className="text-slate-500 text-sm font-bold">План не задан</p>
-              <p className="text-slate-400 text-xs mt-1">Нажмите "Задать план" чтобы установить цели</p>
-            </div>
-          )}
-        </div>
-
-        <div className={UI.CARD}>
-          <h3 className="font-black text-xs uppercase tracking-widest mb-8 text-slate-900 flex items-center gap-2">
-            <div className="w-1 h-4 bg-emerald-500 rounded-full" /> Структура расходов
-          </h3>
-          {totalAllExpenses > 0 ? (
-            <div className="h-[350px] w-full flex flex-col md:flex-row items-center">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={pnl.expenseStructure}
-                    innerRadius={80}
-                    outerRadius={110}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {pnl.expenseStructure.map((_entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="w-full md:w-80 space-y-4 px-4">
-                {pnl.expenseStructure.map((item, i) => {
-                  const pct = totalAllExpenses > 0 ? (item.value / totalAllExpenses) * 100 : 0;
-                  return (
-                    <div key={i}>
-                      <div className="flex justify-between items-center mb-1.5">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                          <span className="text-[11px] text-slate-600 font-bold uppercase">{item.name}</span>
-                        </div>
-                        <div className="text-right">
-                          <span className="font-black text-slate-900 text-xs">{pct.toFixed(0)}%</span>
-                          <span className="text-[9px] text-slate-400 ml-2">{formatCurrency(item.value)}</span>
-                        </div>
-                      </div>
-                      <div className="w-full bg-slate-50 h-1.5 rounded-full overflow-hidden">
-                        <div
-                          className="h-full transition-all duration-1000"
-                          style={{ backgroundColor: COLORS[i % COLORS.length], width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-                <div className="pt-3 border-t border-slate-100">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[11px] text-slate-900 font-black uppercase">Итого расходов</span>
-                    <span className="font-black text-slate-900 text-sm">{formatCurrency(totalAllExpenses)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-                </svg>
-              </div>
-              <p className="text-slate-500 text-sm font-bold">Нет данных по расходам</p>
-              <p className="text-slate-400 text-xs mt-1">Заполните расходы проектов или добавьте исходящие платежи</p>
-            </div>
-          )}
-        </div>
+        <ExpenseStructureChart
+          expenseStructure={expenseStructure}
+          totalAllExpenses={totalAllExpenses}
+        />
       </div>
 
       {pnl.revenue === 0 && totalAllExpenses === 0 && (
@@ -587,20 +461,287 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
   );
 };
 
+const MonthNavigator = ({ selectedMonth, onNavigate }: { selectedMonth: string; onNavigate: (d: 'prev' | 'next') => void }) => (
+  <div className="flex items-center gap-3">
+    <button onClick={() => onNavigate('prev')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200">
+      <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+      </svg>
+    </button>
+    <div className="text-center min-w-[140px]">
+      <div className="text-sm font-black text-slate-900">
+        {new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long' })}
+      </div>
+      <div className="text-xs text-slate-500 font-bold">
+        {new Date(selectedMonth + '-01').getFullYear()}
+      </div>
+    </div>
+    <button onClick={() => onNavigate('next')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200">
+      <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+      </svg>
+    </button>
+  </div>
+);
+
+const KpiCard = ({ label, value, children }: { label: string; value: string; children?: React.ReactNode }) => (
+  <div className={UI.CARD}>
+    <p className={UI.LABEL}>{label}</p>
+    <p className={UI.VALUE}>{value}</p>
+    {children}
+  </div>
+);
+
+const Badge = ({ positive, label, alt }: { positive: boolean; label: string; alt?: boolean }) => (
+  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+    alt
+      ? (positive ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600')
+      : (positive ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600')
+  }`}>
+    {label}
+  </span>
+);
+
+const InsightCard = ({ type, title, text }: { type: 'success' | 'warning' | 'danger'; title: string; text: string }) => {
+  const styles = {
+    success: { border: 'border-l-emerald-500 bg-emerald-50/30', icon: 'bg-emerald-100 text-emerald-600' },
+    warning: { border: 'border-l-amber-400 bg-amber-50/30', icon: 'bg-amber-100 text-amber-600' },
+    danger: { border: 'border-l-rose-500 bg-rose-50/30', icon: 'bg-rose-100 text-rose-600' },
+  };
+  const s = styles[type];
+  const iconPath = type === 'success'
+    ? 'M5 13l4 4L19 7'
+    : 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z';
+
+  return (
+    <div className={`${UI.CARD} border-l-4 ${s.border}`}>
+      <div className="flex items-start gap-3">
+        <div className={`w-9 h-9 ${s.icon} rounded-xl flex items-center justify-center shrink-0 mt-0.5`}>
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
+          </svg>
+        </div>
+        <div>
+          <p className="font-black text-slate-900 text-sm">{title}</p>
+          <p className="text-xs text-slate-600 mt-1">{text}</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CashFlowSummary = ({ cashFlow, burnRate }: { cashFlow: CashFlowResult; burnRate: BurnRateResult }) => {
+  if (cashFlow.operatingInflow === 0 && cashFlow.operatingOutflow === 0) return null;
+
+  return (
+    <div className={UI.CARD}>
+      <h3 className="font-black text-xs uppercase tracking-widest mb-6 text-slate-900 flex items-center gap-2">
+        <div className="w-1 h-4 bg-blue-600 rounded-full" /> Движение денежных средств (ДДС)
+      </h3>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
+          <p className="text-[9px] font-black text-emerald-600 uppercase mb-1">Поступления</p>
+          <p className="text-lg font-black text-emerald-700">{formatCurrency(cashFlow.operatingInflow)}</p>
+        </div>
+        <div className="bg-rose-50 rounded-2xl p-4 border border-rose-100">
+          <p className="text-[9px] font-black text-rose-600 uppercase mb-1">Списания</p>
+          <p className="text-lg font-black text-rose-700">{formatCurrency(cashFlow.operatingOutflow)}</p>
+        </div>
+        <div className={`rounded-2xl p-4 border ${cashFlow.operatingNet >= 0 ? 'bg-blue-50 border-blue-100' : 'bg-amber-50 border-amber-100'}`}>
+          <p className={`text-[9px] font-black uppercase mb-1 ${cashFlow.operatingNet >= 0 ? 'text-blue-600' : 'text-amber-600'}`}>
+            Чистый поток
+          </p>
+          <p className={`text-lg font-black ${cashFlow.operatingNet >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>
+            {cashFlow.operatingNet >= 0 ? '+' : ''}{formatCurrency(cashFlow.operatingNet)}
+          </p>
+        </div>
+        <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
+          <p className="text-[9px] font-black text-slate-500 uppercase mb-1">Остаток на счете</p>
+          <p className="text-lg font-black text-slate-900">{formatCurrency(burnRate.currentCash)}</p>
+        </div>
+        <div className={`rounded-2xl p-4 border ${burnRate.runway > 3 ? 'bg-emerald-50 border-emerald-100' : burnRate.runway > 1 ? 'bg-amber-50 border-amber-100' : 'bg-rose-50 border-rose-100'}`}>
+          <p className={`text-[9px] font-black uppercase mb-1 ${burnRate.runway > 3 ? 'text-emerald-600' : burnRate.runway > 1 ? 'text-amber-600' : 'text-rose-600'}`}>
+            Runway
+          </p>
+          <p className={`text-lg font-black ${burnRate.runway > 3 ? 'text-emerald-700' : burnRate.runway > 1 ? 'text-amber-700' : 'text-rose-700'}`}>
+            {burnRate.monthlyBurn > 0 ? `${burnRate.runway.toFixed(1)} мес.` : '--'}
+          </p>
+          {burnRate.monthlyBurn > 0 && (
+            <p className="text-[8px] text-slate-400 font-bold mt-1">Burn: {formatCurrency(burnRate.monthlyBurn)}/мес</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PlanFactChart = ({
+  editingPlan, setEditingPlan, planForm, setPlanForm, handleSavePlan, plan, planFact
+}: {
+  editingPlan: boolean;
+  setEditingPlan: (v: boolean) => void;
+  planForm: { revenue: number; expenses: number; netProfit: number };
+  setPlanForm: React.Dispatch<React.SetStateAction<{ revenue: number; expenses: number; netProfit: number }>>;
+  handleSavePlan: () => void;
+  plan: FinancialPlan | null;
+  planFact: { name: string; plan: number; fact: number }[];
+}) => (
+  <div className={UI.CARD}>
+    <div className="flex items-center justify-between mb-8">
+      <h3 className="font-black text-xs uppercase tracking-widest text-slate-900 flex items-center gap-2">
+        <div className="w-1 h-4 bg-blue-600 rounded-full" /> Выполнение фин. плана
+      </h3>
+      <button
+        onClick={() => setEditingPlan(!editingPlan)}
+        className="text-[10px] font-bold text-blue-600 hover:text-blue-800 transition-colors px-3 py-1 rounded-lg hover:bg-blue-50"
+      >
+        {editingPlan ? 'Отмена' : 'Задать план'}
+      </button>
+    </div>
+
+    {editingPlan && (
+      <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+        <div>
+          <label className="text-[10px] font-bold text-slate-500 uppercase">План выручки</label>
+          <input
+            type="number" value={planForm.revenue || ''}
+            onChange={e => setPlanForm(p => ({ ...p, revenue: Number(e.target.value) }))}
+            className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold" placeholder="0"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-slate-500 uppercase">План расходов</label>
+          <input
+            type="number" value={planForm.expenses || ''}
+            onChange={e => setPlanForm(p => ({ ...p, expenses: Number(e.target.value) }))}
+            className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold" placeholder="0"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-slate-500 uppercase">План чистой прибыли</label>
+          <input
+            type="number" value={planForm.netProfit || ''}
+            onChange={e => setPlanForm(p => ({ ...p, netProfit: Number(e.target.value) }))}
+            className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold" placeholder="0"
+          />
+        </div>
+        <button
+          onClick={handleSavePlan}
+          className="w-full py-2 bg-blue-600 text-white rounded-lg text-xs font-black uppercase hover:bg-blue-700 transition-colors"
+        >
+          Сохранить план
+        </button>
+      </div>
+    )}
+
+    {plan && (plan.plannedRevenue > 0 || plan.plannedNetProfit > 0) ? (
+      <div className="h-[350px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={planFact} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} dy={10} />
+            <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
+            <Tooltip
+              cursor={{ fill: '#f8fafc' }}
+              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+              formatter={(v: number) => formatCurrency(v)}
+            />
+            <Bar dataKey="plan" name="План" fill="#e2e8f0" radius={[6, 6, 0, 0]} barSize={50} />
+            <Bar dataKey="fact" name="Факт" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={50} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    ) : (
+      <div className="text-center py-12">
+        <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+        </div>
+        <p className="text-slate-500 text-sm font-bold">План не задан</p>
+        <p className="text-slate-400 text-xs mt-1">Нажмите "Задать план" чтобы установить цели</p>
+      </div>
+    )}
+  </div>
+);
+
+const ExpenseStructureChart = ({
+  expenseStructure, totalAllExpenses
+}: {
+  expenseStructure: { name: string; value: number }[];
+  totalAllExpenses: number;
+}) => (
+  <div className={UI.CARD}>
+    <h3 className="font-black text-xs uppercase tracking-widest mb-8 text-slate-900 flex items-center gap-2">
+      <div className="w-1 h-4 bg-emerald-500 rounded-full" /> Структура расходов
+    </h3>
+    {totalAllExpenses > 0 ? (
+      <div className="h-[350px] w-full flex flex-col md:flex-row items-center">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={expenseStructure} innerRadius={80} outerRadius={110} paddingAngle={4} dataKey="value">
+              {expenseStructure.map((_entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip formatter={(v: number) => formatCurrency(v)} />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="w-full md:w-80 space-y-4 px-4">
+          {expenseStructure.map((item, i) => {
+            const pct = totalAllExpenses > 0 ? (item.value / totalAllExpenses) * 100 : 0;
+            return (
+              <div key={i}>
+                <div className="flex justify-between items-center mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                    <span className="text-[11px] text-slate-600 font-bold uppercase">{item.name}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-black text-slate-900 text-xs">{pct.toFixed(0)}%</span>
+                    <span className="text-[9px] text-slate-400 ml-2">{formatCurrency(item.value)}</span>
+                  </div>
+                </div>
+                <div className="w-full bg-slate-50 h-1.5 rounded-full overflow-hidden">
+                  <div
+                    className="h-full transition-all duration-1000"
+                    style={{ backgroundColor: COLORS[i % COLORS.length], width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+          <div className="pt-3 border-t border-slate-100">
+            <div className="flex justify-between items-center">
+              <span className="text-[11px] text-slate-900 font-black uppercase">Итого расходов</span>
+              <span className="font-black text-slate-900 text-sm">{formatCurrency(totalAllExpenses)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    ) : (
+      <div className="text-center py-12">
+        <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+          </svg>
+        </div>
+        <p className="text-slate-500 text-sm font-bold">Нет данных по расходам</p>
+        <p className="text-slate-400 text-xs mt-1">Заполните расходы проектов или добавьте исходящие платежи</p>
+      </div>
+    )}
+  </div>
+);
+
 const PnlRow = ({ label, value, revenue, bold, sub, accent }: {
-  label: string;
-  value: number;
-  revenue: number;
-  bold?: boolean;
-  sub?: boolean;
-  accent?: string;
+  label: string; value: number; revenue: number; bold?: boolean; sub?: boolean; accent?: string;
 }) => {
   const pct = revenue > 0 ? (Math.abs(value) / revenue) * 100 : 0;
   const colorClass = accent === 'emerald'
     ? (value >= 0 ? 'text-emerald-600' : 'text-rose-600')
-    : accent === 'blue'
-      ? 'text-blue-600'
-      : (value < 0 ? 'text-rose-500' : 'text-slate-900');
+    : accent === 'blue' ? 'text-blue-600'
+    : (value < 0 ? 'text-rose-500' : 'text-slate-900');
 
   return (
     <tr className={`group hover:bg-slate-50/50 transition-all ${bold ? 'bg-slate-50/30' : ''}`}>
