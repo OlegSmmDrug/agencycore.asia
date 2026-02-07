@@ -284,8 +284,6 @@ const Integrations: React.FC = () => {
         return ['counter_id', 'oauth_token'];
       case 'yandex_direct':
         return ['client_login', 'oauth_token'];
-      case 'claude_api':
-        return ['api_key'];
       case 'telegram':
         return ['bot_token'];
       case 'email':

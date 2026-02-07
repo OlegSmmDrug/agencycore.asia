@@ -12,10 +12,10 @@ import { aiLeadService } from '../services/aiLeadService';
 import { aiActionService } from '../services/aiActionService';
 import { aiKnowledgeService } from '../services/aiKnowledgeService';
 import { aiUsageService } from '../services/aiUsageService';
-import { aiCreditService, AiCreditBalance } from '../services/aiCreditService';
+import { aiCreditService, AiCreditBalance, AiModelPricing } from '../services/aiCreditService';
 import { supabase } from '../lib/supabase';
 import { getCurrentOrganizationId } from '../utils/organizationContext';
-import { Zap, ShoppingCart, Coins, AlertTriangle } from 'lucide-react';
+import { Zap, Coins, Cpu, Calculator, CheckCircle } from 'lucide-react';
 
 interface AIAgentsModuleProps {
   onNavigateToIntegrations?: () => void;
@@ -39,6 +39,8 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
   const [topupAmount, setTopupAmount] = useState('');
   const [topupLoading, setTopupLoading] = useState(false);
   const [creditPriceKzt, setCreditPriceKzt] = useState(1);
+  const [modelPricing, setModelPricing] = useState<AiModelPricing[]>([]);
+  const [minTopup, setMinTopup] = useState(5);
 
   useEffect(() => {
     loadAiBalance();
@@ -46,10 +48,16 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
   }, []);
 
   const loadAiBalance = async () => {
-    const balance = await aiCreditService.getBalance();
+    const [balance, price, models, minCredits] = await Promise.all([
+      aiCreditService.getBalance(),
+      aiCreditService.getCreditPriceKzt(),
+      aiCreditService.getModelPricing(),
+      aiCreditService.getMinTopupCredits(),
+    ]);
     setCreditBalance(balance);
-    const price = await aiCreditService.getCreditPriceKzt();
     setCreditPriceKzt(price);
+    setModelPricing(models.filter(m => m.is_active));
+    setMinTopup(minCredits);
   };
 
   const loadData = async () => {
@@ -228,97 +236,158 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
   }
 
   if (!creditBalance.isAiEnabled) {
-    return (
-      <div className="relative h-screen overflow-hidden">
-        <div className="absolute inset-0 blur-sm opacity-40 pointer-events-none select-none">
-          <div className="flex flex-col md:flex-row h-full bg-[#f8f9fa] text-gray-900 font-sans">
-            <aside className="w-full md:w-64 border-r bg-white shrink-0">
-              <div className="p-6 border-b">
-                <h2 className="text-xl font-black text-gray-900">ИИ-Агенты</h2>
-                <p className="text-xs text-gray-500 mt-1">AI Operations Center</p>
-              </div>
-              <nav className="p-4 space-y-2">
-                <div className="px-4 py-3 rounded-xl bg-blue-50 text-blue-600 font-bold text-sm">Центр управления</div>
-                <div className="px-4 py-3 rounded-xl text-gray-400 font-bold text-sm">База знаний</div>
-                <div className="px-4 py-3 rounded-xl text-gray-400 font-bold text-sm">Аналитика</div>
-                <div className="px-4 py-3 rounded-xl text-gray-400 font-bold text-sm">Панель контроля</div>
-              </nav>
-              <div className="p-4 border-t">
-                <p className="text-xs font-bold text-gray-400 uppercase mb-3">Агенты (6)</p>
-                <div className="space-y-2">
-                  {['Продавец', 'Проектописатель', 'ТЗ-составитель', 'Контролёр', 'Финализатор', 'Отзывник'].map((name) => (
-                    <div key={name} className="px-3 py-2 rounded-xl text-xs font-medium text-gray-400 flex items-center justify-between">
-                      <span>{name}</span>
-                      <span className="w-2 h-2 rounded-full bg-gray-300"></span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </aside>
-            <main className="flex-1 p-10">
-              <div className="grid grid-cols-4 gap-6 mb-8">
-                {[1, 2, 3, 4].map(i => (
-                  <div key={i} className="bg-white rounded-2xl p-6 h-28 border border-gray-100"></div>
-                ))}
-              </div>
-              <div className="grid grid-cols-3 gap-6">
-                {[1, 2, 3, 4, 5, 6].map(i => (
-                  <div key={i} className="bg-white rounded-2xl p-6 h-40 border border-gray-100"></div>
-                ))}
-              </div>
-            </main>
-          </div>
-        </div>
+    const estimateRequests = (credits: number, model: AiModelPricing) => {
+      const avgInput = 800;
+      const avgOutput = 400;
+      const costPerReq = ((avgInput / 1_000_000) * model.input_price_per_1m + (avgOutput / 1_000_000) * model.output_price_per_1m) * model.markup_multiplier;
+      return costPerReq > 0 ? Math.floor(credits / costPerReq) : 0;
+    };
 
-        <div className="absolute inset-0 flex items-center justify-center z-10 bg-slate-900/20 backdrop-blur-[2px]">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-8 max-w-md w-full mx-4 text-center">
+    return (
+      <div className="h-screen overflow-y-auto bg-gradient-to-b from-slate-50 to-white">
+        <div className="max-w-3xl mx-auto px-4 py-12 space-y-8">
+          <div className="text-center">
             <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-5">
               <Zap className="w-8 h-8 text-blue-500" />
             </div>
-            <h2 className="text-xl font-bold text-slate-800 mb-2">Активируйте AI</h2>
-            <p className="text-sm text-slate-500 mb-4 leading-relaxed">
-              Для работы ИИ-агентов необходимо пополнить баланс AI-кредитов и активировать модуль.
-              Никаких сложных настроек -- просто пополните баланс и включите.
+            <h1 className="text-2xl font-black text-slate-800 mb-2">ИИ-Агенты</h1>
+            <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
+              Автоматизируйте работу с клиентами, генерируйте контент и анализируйте данные
+              с помощью ИИ. Пополните баланс и включите -- никаких сложных настроек.
             </p>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <Coins className="w-5 h-5 text-blue-500" />
+                Ваш AI-баланс
+              </h2>
+              <span className="text-2xl font-black text-slate-800">{creditBalance.balance.toFixed(2)} <span className="text-sm font-normal text-slate-400">кредитов</span></span>
+            </div>
+
             {creditBalance.balance > 0 ? (
-              <div className="mb-4 p-3 bg-emerald-50 rounded-xl">
-                <p className="text-xs text-emerald-700 font-medium">Ваш баланс: {creditBalance.balance.toFixed(2)} кредитов</p>
-              </div>
-            ) : (
-              <div className="mb-4 p-3 bg-amber-50 rounded-xl">
-                <p className="text-xs text-amber-700 font-medium">Баланс: 0 кредитов. Пополните, чтобы начать.</p>
-              </div>
-            )}
-            <div className="space-y-2">
-              {creditBalance.balance > 0 && (
+              <div className="flex gap-3">
                 <button
                   onClick={handleToggleAi}
-                  className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors"
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors"
                 >
                   <Zap className="w-4 h-4" />
                   Включить AI
                 </button>
-              )}
+                <button
+                  onClick={() => setShowTopupModal(true)}
+                  className="px-5 py-3 bg-slate-100 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-200 transition-colors"
+                >
+                  Пополнить
+                </button>
+              </div>
+            ) : (
               <button
                 onClick={() => setShowTopupModal(true)}
-                className={`w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold transition-colors ${
-                  creditBalance.balance > 0
-                    ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                }`}
+                className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors"
               >
                 <Coins className="w-4 h-4" />
-                Пополнить баланс
+                Пополнить баланс для начала работы
               </button>
+            )}
+          </div>
+
+          {modelPricing.length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2 mb-4">
+                <Cpu className="w-5 h-5 text-slate-500" />
+                Тарифы AI-моделей
+              </h2>
+              <div className="space-y-3">
+                {modelPricing.map(model => {
+                  const effectiveInput = (model.input_price_per_1m * model.markup_multiplier);
+                  const effectiveOutput = (model.output_price_per_1m * model.markup_multiplier);
+                  const reqsFor5 = estimateRequests(5, model);
+                  const reqsFor100 = estimateRequests(100, model);
+                  return (
+                    <div key={model.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">{model.display_name}</p>
+                          <p className="text-[11px] text-slate-400 font-mono">{model.model_slug}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                        <div>
+                          <p className="text-slate-400 font-medium">Ввод / 1M токенов</p>
+                          <p className="font-bold text-slate-700">{effectiveInput.toFixed(2)} кр.</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-400 font-medium">Вывод / 1M токенов</p>
+                          <p className="font-bold text-slate-700">{effectiveOutput.toFixed(2)} кр.</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-400 font-medium">~5 кредитов</p>
+                          <p className="font-bold text-emerald-600">~{reqsFor5} запросов</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-400 font-medium">~100 кредитов</p>
+                          <p className="font-bold text-emerald-600">~{reqsFor100} запросов</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-3">
+                * Расчёт запросов приблизительный (среднее: ~800 входных + ~400 выходных токенов на запрос)
+              </p>
+            </div>
+          )}
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            <h2 className="text-base font-bold text-slate-800 flex items-center gap-2 mb-4">
+              <Calculator className="w-5 h-5 text-slate-500" />
+              Калькулятор стоимости
+            </h2>
+            <p className="text-xs text-slate-500 mb-3">Стоимость 1 кредита = <span className="font-bold text-slate-700">{creditPriceKzt} KZT</span></p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[5, 25, 100, 500].map(credits => (
+                <div key={credits} className="bg-slate-50 rounded-xl p-3 text-center border border-slate-100">
+                  <p className="text-lg font-black text-slate-800">{credits}</p>
+                  <p className="text-[10px] text-slate-400 font-medium uppercase">кредитов</p>
+                  <p className="text-sm font-bold text-blue-600 mt-1">{(credits * creditPriceKzt).toLocaleString()} KZT</p>
+                  {modelPricing.length > 0 && (
+                    <p className="text-[10px] text-emerald-600 mt-0.5">
+                      ~{estimateRequests(credits, modelPricing[0])} запросов
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            <h2 className="text-base font-bold text-slate-800 mb-3">Что умеют AI-агенты?</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {[
+                'Автоматические ответы клиентам в WhatsApp',
+                'Генерация описаний проектов и ТЗ',
+                'Квалификация и скоринг лидов',
+                'Анализ текстов и формирование контент-планов',
+                'Создание брифов через диалог с AI',
+                'Контроль качества и финализация проектов',
+              ].map((item, i) => (
+                <div key={i} className="flex items-center gap-2.5 p-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                  <span className="text-sm text-slate-600">{item}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
 
         {showTopupModal && (
-          <div className="absolute inset-0 flex items-center justify-center z-20 bg-slate-900/40 backdrop-blur-[2px]">
+          <div className="fixed inset-0 flex items-center justify-center z-50 bg-slate-900/40 backdrop-blur-[2px]">
             <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 max-w-sm w-full mx-4">
               <h3 className="text-lg font-bold text-slate-800 mb-1">Купить AI-кредиты</h3>
-              <p className="text-xs text-slate-500 mb-4">Кредиты спишутся с вашего основного баланса (KZT)</p>
+              <p className="text-xs text-slate-500 mb-4">Кредиты спишутся с вашего основного баланса (KZT). Мин. {minTopup} кр.</p>
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1">Количество кредитов</label>
@@ -326,27 +395,35 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
                     type="number"
                     value={topupAmount}
                     onChange={e => setTopupAmount(e.target.value)}
-                    placeholder="100"
+                    placeholder={String(minTopup)}
+                    min={minTopup}
                     className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-lg font-bold focus:outline-none focus:border-blue-500"
                   />
                   <div className="flex gap-2 mt-2">
-                    {[100, 500, 1000, 5000].map(v => (
+                    {[5, 25, 100, 500].map(v => (
                       <button
                         key={v}
                         onClick={() => setTopupAmount(v.toString())}
-                        className="px-2 py-1 text-xs bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                        className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                          topupAmount === v.toString() ? 'bg-blue-100 text-blue-700 font-bold' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                        }`}
                       >
-                        {v}
+                        {v} кр.
                       </button>
                     ))}
                   </div>
                 </div>
                 {topupAmount && parseFloat(topupAmount) > 0 && (
-                  <div className="p-3 bg-blue-50 rounded-xl">
+                  <div className="p-3 bg-blue-50 rounded-xl space-y-1">
                     <p className="text-xs text-blue-700">
                       К оплате: <span className="font-bold">{(parseFloat(topupAmount) * creditPriceKzt).toLocaleString()} KZT</span>
                       <span className="text-blue-500 ml-1">({creditPriceKzt} KZT / кредит)</span>
                     </p>
+                    {modelPricing.length > 0 && (
+                      <p className="text-[11px] text-blue-500">
+                        ~{estimateRequests(parseFloat(topupAmount), modelPricing[0])} запросов ({modelPricing[0].display_name})
+                      </p>
+                    )}
                   </div>
                 )}
                 <div className="flex gap-2">
@@ -358,7 +435,7 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
                   </button>
                   <button
                     onClick={handlePurchaseCredits}
-                    disabled={topupLoading || !topupAmount || parseFloat(topupAmount) <= 0}
+                    disabled={topupLoading || !topupAmount || parseFloat(topupAmount) < minTopup}
                     className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 disabled:opacity-50"
                   >
                     {topupLoading ? 'Обработка...' : 'Купить'}
@@ -544,7 +621,7 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
         <div className="fixed inset-0 flex items-center justify-center z-50 bg-slate-900/40 backdrop-blur-[2px]">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 max-w-sm w-full mx-4">
             <h3 className="text-lg font-bold text-slate-800 mb-1">Купить AI-кредиты</h3>
-            <p className="text-xs text-slate-500 mb-4">Кредиты спишутся с вашего основного баланса (KZT)</p>
+            <p className="text-xs text-slate-500 mb-4">Кредиты спишутся с вашего основного баланса (KZT). Мин. {minTopup} кр.</p>
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Количество кредитов</label>
@@ -552,27 +629,42 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
                   type="number"
                   value={topupAmount}
                   onChange={e => setTopupAmount(e.target.value)}
-                  placeholder="100"
+                  placeholder={String(minTopup)}
+                  min={minTopup}
                   className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-lg font-bold focus:outline-none focus:border-blue-500"
                 />
                 <div className="flex gap-2 mt-2">
-                  {[100, 500, 1000, 5000].map(v => (
+                  {[5, 25, 100, 500].map(v => (
                     <button
                       key={v}
                       onClick={() => setTopupAmount(v.toString())}
-                      className="px-2 py-1 text-xs bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                      className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                        topupAmount === v.toString() ? 'bg-blue-100 text-blue-700 font-bold' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                      }`}
                     >
-                      {v}
+                      {v} кр.
                     </button>
                   ))}
                 </div>
               </div>
               {topupAmount && parseFloat(topupAmount) > 0 && (
-                <div className="p-3 bg-blue-50 rounded-xl">
+                <div className="p-3 bg-blue-50 rounded-xl space-y-1">
                   <p className="text-xs text-blue-700">
                     К оплате: <span className="font-bold">{(parseFloat(topupAmount) * creditPriceKzt).toLocaleString()} KZT</span>
                     <span className="text-blue-500 ml-1">({creditPriceKzt} KZT / кредит)</span>
                   </p>
+                  {modelPricing.length > 0 && (() => {
+                    const m = modelPricing[0];
+                    const avg = 800;
+                    const avgOut = 400;
+                    const cost = ((avg / 1e6) * m.input_price_per_1m + (avgOut / 1e6) * m.output_price_per_1m) * m.markup_multiplier;
+                    const reqs = cost > 0 ? Math.floor(parseFloat(topupAmount) / cost) : 0;
+                    return (
+                      <p className="text-[11px] text-blue-500">
+                        ~{reqs} запросов ({m.display_name})
+                      </p>
+                    );
+                  })()}
                 </div>
               )}
               <div className="flex gap-2">
@@ -584,7 +676,7 @@ const AIAgentsModule: React.FC<AIAgentsModuleProps> = ({ onNavigateToIntegration
                 </button>
                 <button
                   onClick={handlePurchaseCredits}
-                  disabled={topupLoading || !topupAmount || parseFloat(topupAmount) <= 0}
+                  disabled={topupLoading || !topupAmount || parseFloat(topupAmount) < minTopup}
                   className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 disabled:opacity-50"
                 >
                   {topupLoading ? 'Обработка...' : 'Купить'}

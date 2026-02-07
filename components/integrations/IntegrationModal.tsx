@@ -375,10 +375,6 @@ export const IntegrationModal: React.FC<IntegrationModalProps> = ({
           { key: 'client_login', label: 'Логин клиента', type: 'text', required: true },
           { key: 'oauth_token', label: 'OAuth токен', type: 'text', required: true },
         ];
-      case 'claude_api':
-        return [
-          { key: 'api_key', label: 'API ключ Anthropic', type: 'text', required: true },
-        ];
       case 'telegram':
         return [
           { key: 'bot_token', label: 'Токен бота (от @BotFather)', type: 'text', required: true },
@@ -713,31 +709,6 @@ export const IntegrationModal: React.FC<IntegrationModalProps> = ({
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                 <p className="text-sm text-yellow-800">
                   Интеграция находится в разработке. Функционал email-рассылок будет доступен в ближайшем обновлении.
-                </p>
-              </div>
-            </div>
-          </div>
-        );
-      case 'claude_api':
-        return (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Настройка Claude API (Anthropic)</h3>
-            <div className="space-y-3">
-              <div>
-                <h4 className="font-medium text-gray-900 mb-2">1. Получите API-ключ</h4>
-                <p className="text-sm text-gray-600">
-                  Зарегистрируйтесь на <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">console.anthropic.com</a> и создайте API-ключ в разделе "API Keys".
-                </p>
-              </div>
-              <div>
-                <h4 className="font-medium text-gray-900 mb-2">2. Возможности</h4>
-                <p className="text-sm text-gray-600">
-                  ИИ-ассистент помогает автоматически генерировать ответы клиентам, создавать описания задач, анализировать тексты и формировать контент-планы.
-                </p>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-sm text-blue-800">
-                  Использование Claude API тарифицируется отдельно через ваш аккаунт Anthropic. Стоимость зависит от объема запросов.
                 </p>
               </div>
             </div>
