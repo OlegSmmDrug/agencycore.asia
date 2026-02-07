@@ -14,6 +14,7 @@ export interface ParsedTransaction {
   documentNumber: string;
   knpCode: string;
   paymentType: PaymentType;
+  isIncome: boolean;
   matchedClientId: string | null;
   matchSource: 'bin' | 'alias' | 'name' | 'none';
   matchStatus: 'matched' | 'unmatched' | 'duplicate';
@@ -130,9 +131,30 @@ function parseCSVLine(line: string, delimiter: string): string[] {
   return result;
 }
 
+function extractOurAccount(content: string): string {
+  const accountMatch = content.match(/СекцияРасworkers|РасsectionСчет|СекцияРасчСчет[\s\S]*?РасsectionСчет=(\S+)|НомерСчета=(\S+)/i);
+  if (accountMatch) return (accountMatch[1] || accountMatch[2] || '').trim();
+
+  const simpleMatch = content.match(/РасsectionСчет=(\S+)/i) || content.match(/НомерСчета=(\S+)/i);
+  if (simpleMatch) return simpleMatch[1].trim();
+
+  const accountSection = content.match(/СекцияРасчСчет([\s\S]*?)КонецРасчСчет/i);
+  if (accountSection) {
+    const accMatch = accountSection[1].match(/(?:РасчСчет|НомерСчета|ДатаНачала)[\s\S]*?(?:РасчСчет|НомерСчета)=(\S+)/i);
+    if (accMatch) return accMatch[1].trim();
+  }
+
+  const anyAccount = content.match(/РасчСчет=(\S+)/i);
+  if (anyAccount) return anyAccount[1].trim();
+
+  return '';
+}
+
 function parse1CFormat(content: string): Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] {
   const results: Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] = [];
   const sections = content.split(/СекцияДокумент/g).slice(1);
+
+  const ourAccount = extractOurAccount(content);
 
   for (const section of sections) {
     if (!section.includes('КонецДокумента')) continue;
@@ -152,36 +174,65 @@ function parse1CFormat(content: string): Omit<ParsedTransaction, 'matchedClientI
     const dateStr = getField('ДатаДокумента') || getField('ДатаОперации');
     const amountStr = getField('Сумма');
     const docNumber = getField('НомерДокумента');
-    const payerNameRaw = getField('ПлательщикНаименование') || getField('Плательщик');
-    const payerBinRaw = getField('Плательщик_ИНН') || getField('Плательщик_БИН') || getField('ПлательщикИНН');
     const description = getField('НазначениеПлатежа');
     const knpCode = getField('КодНазначенияПлатежа') || '';
     const currency = getField('Валюта') || 'KZT';
 
+    const payerAccount = getField('ПлательщикСчет') || getField('ПлательщикРасWorkers') || '';
+    const recipientAccount = getField('ПолучательСчет') || getField('ПолучательРасWorkers') || '';
+
+    const payerNameRaw = getField('ПлательщикНаименование') || getField('Плательщик') || '';
+    const payerBinRaw = getField('Плательщик_ИНН') || getField('Плательщик_БИН') || getField('ПлательщикИНН') || '';
+    const recipientNameRaw = getField('ПолучательНаименование') || getField('Получатель') || '';
+    const recipientBinRaw = getField('Получатель_ИНН') || getField('Получатель_БИН') || getField('ПолучательИНН') || '';
+
     if (!dateStr || !amountStr) continue;
 
     const amountOriginal = parseFloat(amountStr.replace(/\s/g, '').replace(',', '.')) || 0;
-    if (amountOriginal <= 0) continue;
+    if (amountOriginal === 0) continue;
+
+    let isIncome = true;
+    let counterpartyNameRaw = payerNameRaw;
+    let counterpartyBinRaw = payerBinRaw;
+
+    if (ourAccount) {
+      if (payerAccount === ourAccount) {
+        isIncome = false;
+        counterpartyNameRaw = recipientNameRaw;
+        counterpartyBinRaw = recipientBinRaw;
+      } else {
+        isIncome = true;
+        counterpartyNameRaw = payerNameRaw;
+        counterpartyBinRaw = payerBinRaw;
+      }
+    } else {
+      if (recipientNameRaw && payerNameRaw) {
+        isIncome = true;
+        counterpartyNameRaw = payerNameRaw;
+        counterpartyBinRaw = payerBinRaw;
+      }
+    }
 
     const exchangeRate = currency.toUpperCase() === 'USD' ? parseExchangeRate(description) : null;
-    const amountKZT = exchangeRate ? amountOriginal * exchangeRate : amountOriginal;
+    const amountKZT = exchangeRate ? Math.abs(amountOriginal) * exchangeRate : Math.abs(amountOriginal);
 
-    const clientNameSanitized = sanitizeCounterpartyName(payerNameRaw);
-    const clientBin = payerBinRaw || extractBin(payerNameRaw);
+    const clientNameSanitized = sanitizeCounterpartyName(counterpartyNameRaw);
+    const clientBin = counterpartyBinRaw || extractBin(counterpartyNameRaw);
 
     results.push({
       date: parseDate(dateStr),
       amount: Math.round(amountKZT * 100) / 100,
-      amountOriginal,
+      amountOriginal: Math.abs(amountOriginal),
       currency: currency.toUpperCase(),
       exchangeRate,
       clientName: clientNameSanitized,
-      clientNameRaw: payerNameRaw,
+      clientNameRaw: counterpartyNameRaw,
       clientBin,
       description,
       documentNumber: docNumber,
       knpCode,
       paymentType: detectPaymentTypeFromText(description),
+      isIncome,
     });
   }
 
@@ -224,16 +275,28 @@ function parseCSVFormat(content: string): Omit<ParsedTransaction, 'matchedClient
     if (!dateStr) continue;
 
     let amount = 0;
-    if (creditCol >= 0 && cells[creditCol]) {
-      amount = parseFloat(cells[creditCol].replace(/\s/g, '').replace(',', '.')) || 0;
+    let isIncome = true;
+
+    if (creditCol >= 0 && debitCol >= 0) {
+      const creditVal = parseFloat((cells[creditCol] || '').replace(/\s/g, '').replace(',', '.')) || 0;
+      const debitVal = parseFloat((cells[debitCol] || '').replace(/\s/g, '').replace(',', '.')) || 0;
+      if (creditVal > 0) {
+        amount = creditVal;
+        isIncome = true;
+      } else if (debitVal > 0) {
+        amount = debitVal;
+        isIncome = false;
+      }
     } else if (amountCol >= 0 && cells[amountCol]) {
-      amount = parseFloat(cells[amountCol].replace(/\s/g, '').replace(',', '.')) || 0;
+      const rawAmount = parseFloat(cells[amountCol].replace(/\s/g, '').replace(',', '.')) || 0;
+      amount = Math.abs(rawAmount);
+      isIncome = rawAmount >= 0;
+    } else if (creditCol >= 0 && cells[creditCol]) {
+      amount = parseFloat(cells[creditCol].replace(/\s/g, '').replace(',', '.')) || 0;
+      isIncome = true;
     }
 
-    if (amount <= 0 && debitCol >= 0 && cells[debitCol]) {
-      continue;
-    }
-    if (amount <= 0) continue;
+    if (amount === 0) continue;
 
     const clientNameRaw = nameCol >= 0 ? (cells[nameCol] || '') : '';
     const clientNameSanitized = sanitizeCounterpartyName(clientNameRaw);
@@ -260,6 +323,7 @@ function parseCSVFormat(content: string): Omit<ParsedTransaction, 'matchedClient
       documentNumber: '',
       knpCode,
       paymentType,
+      isIncome,
     });
   }
 

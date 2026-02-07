@@ -325,15 +325,18 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
         : '';
       const knpTag = t.knpCode ? ` [KNP:${t.knpCode}]` : '';
 
+      const signedAmount = t.isIncome ? t.amount : -t.amount;
+      const directionTag = t.isIncome ? '' : ' [Расход]';
+
       itemsToImport.push({
         clientId,
-        amount: t.amount,
+        amount: signedAmount,
         date: t.date,
         type: t.paymentType,
-        description: (t.description + rateTag + knpTag + docTag).trim(),
+        description: (t.description + directionTag + rateTag + knpTag + docTag).trim(),
         reconciliationStatus: 'bank_import',
         bankDocumentNumber: t.documentNumber,
-        bankAmount: t.amount,
+        bankAmount: signedAmount,
         bankClientName: t.clientName,
         bankBin: t.clientBin,
       });
@@ -373,13 +376,20 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
     duplicates: importResult.transactions.filter(t => t.matchStatus === 'duplicate').length,
     verified: importResult.summary.verified,
     discrepancies: importResult.summary.discrepancies,
-    totalAmount: importResult.transactions
+    income: importResult.transactions.filter(t => t.isIncome).length,
+    expense: importResult.transactions.filter(t => !t.isIncome).length,
+    totalIncome: importResult.transactions
       .filter((_, i) => selectedRows.has(i))
+      .filter(t => t.isIncome)
+      .reduce((sum, t) => sum + t.amount, 0),
+    totalExpense: importResult.transactions
+      .filter((_, i) => selectedRows.has(i))
+      .filter(t => !t.isIncome)
       .reduce((sum, t) => sum + t.amount, 0),
   } : null;
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Импорт банковской выписки">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Импорт банковской выписки" size="5xl">
       <div className="min-h-[400px]">
         {step === 'upload' && (
           <div className="space-y-6">
@@ -436,18 +446,26 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
               </p>
             </div>
 
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-4 lg:grid-cols-7 gap-2">
               <div className="bg-gray-50 rounded-lg p-2.5 text-center">
                 <p className="text-xl font-bold text-gray-900">{stats.total}</p>
                 <p className="text-xs text-gray-500">Всего</p>
+              </div>
+              <div className="bg-emerald-50 rounded-lg p-2.5 text-center">
+                <p className="text-xl font-bold text-emerald-700">{stats.income}</p>
+                <p className="text-xs text-emerald-600">Доходы</p>
+              </div>
+              <div className="bg-rose-50 rounded-lg p-2.5 text-center">
+                <p className="text-xl font-bold text-rose-700">{stats.expense}</p>
+                <p className="text-xs text-rose-600">Расходы</p>
               </div>
               <div className="bg-green-50 rounded-lg p-2.5 text-center">
                 <p className="text-xl font-bold text-green-700">{stats.matched}</p>
                 <p className="text-xs text-green-600">Найдены</p>
               </div>
-              <div className="bg-emerald-50 rounded-lg p-2.5 text-center">
-                <p className="text-xl font-bold text-emerald-700">{stats.verified}</p>
-                <p className="text-xs text-emerald-600">Сверены</p>
+              <div className="bg-blue-50 rounded-lg p-2.5 text-center">
+                <p className="text-xl font-bold text-blue-700">{stats.verified}</p>
+                <p className="text-xs text-blue-600">Сверены</p>
               </div>
               <div className="bg-yellow-50 rounded-lg p-2.5 text-center">
                 <p className="text-xl font-bold text-yellow-700">{stats.unmatched}</p>
@@ -477,10 +495,11 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
                         className="rounded border-gray-300"
                       />
                     </th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Вид</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Статус</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Сверка</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Дата</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Клиент</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Контрагент</th>
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Сумма</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Тип</th>
                     <th className="px-3 py-2 w-8"></th>
@@ -508,6 +527,15 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
                               disabled={t.matchStatus === 'duplicate'}
                               className="rounded border-gray-300 disabled:opacity-30"
                             />
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${
+                              t.isIncome
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-rose-100 text-rose-700'
+                            }`}>
+                              {t.isIncome ? 'Доход' : 'Расход'}
+                            </span>
                           </td>
                           <td className="px-3 py-2">
                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${config.text} ${config.bg} border ${config.border}`}>
@@ -557,8 +585,11 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
                             )}
                           </td>
                           <td className="px-3 py-2 text-right whitespace-nowrap">
-                            <span className={`font-semibold ${t.reconciliation.amountDiffers ? 'text-amber-600' : 'text-gray-900'}`}>
-                              {t.amount.toLocaleString('ru-RU')} T
+                            <span className={`font-semibold ${
+                              t.reconciliation.amountDiffers ? 'text-amber-600' :
+                              t.isIncome ? 'text-emerald-700' : 'text-rose-600'
+                            }`}>
+                              {t.isIncome ? '+' : '-'}{t.amount.toLocaleString('ru-RU')} T
                             </span>
                             {t.reconciliation.amountDiffers && t.reconciliation.existingTransaction && (
                               <div className="text-xs text-amber-500">
@@ -586,7 +617,7 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
                         </tr>
                         {isExpanded && (
                           <tr className={config.bg}>
-                            <td colSpan={8} className="px-6 py-3">
+                            <td colSpan={9} className="px-6 py-3">
                               <div className="text-xs text-gray-600 space-y-1">
                                 {t.clientNameRaw !== t.clientName && (
                                   <p><span className="font-medium">Исходное имя:</span> {t.clientNameRaw}</p>
@@ -614,14 +645,20 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
             </div>
 
             <div className="flex items-center justify-between pt-2">
-              <p className="text-sm text-gray-600">
-                Выбрано: <span className="font-semibold">{selectedRows.size}</span> из {stats.total}
-                {stats.totalAmount > 0 && (
-                  <span className="ml-2">
-                    на сумму <span className="font-semibold text-green-700">{stats.totalAmount.toLocaleString('ru-RU')} T</span>
-                  </span>
-                )}
-              </p>
+              <div className="text-sm text-gray-600 space-y-0.5">
+                <p>
+                  Выбрано: <span className="font-semibold">{selectedRows.size}</span> из {stats.total}
+                </p>
+                <p>
+                  {stats.totalIncome > 0 && (
+                    <span className="text-emerald-700 font-semibold">+{stats.totalIncome.toLocaleString('ru-RU')} T</span>
+                  )}
+                  {stats.totalIncome > 0 && stats.totalExpense > 0 && <span className="mx-1.5 text-gray-400">/</span>}
+                  {stats.totalExpense > 0 && (
+                    <span className="text-rose-600 font-semibold">-{stats.totalExpense.toLocaleString('ru-RU')} T</span>
+                  )}
+                </p>
+              </div>
               <div className="flex gap-3">
                 <button
                   onClick={() => { setStep('upload'); setImportResult(null); }}
