@@ -28,6 +28,8 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
   const [payrollBreakdown, setPayrollBreakdown] = useState<PayrollBreakdown | null>(null);
   const [payrollTotal, setPayrollTotal] = useState(0);
   const [cogsFot, setCogsFot] = useState(0);
+  const [cogsKpiInCogs, setCogsKpiInCogs] = useState(0);
+  const [projectExpensesTotal, setProjectExpensesTotal] = useState(0);
 
   const safeTrans = useMemo(() => Array.isArray(transactions) ? transactions : [], [transactions]);
   const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
@@ -62,7 +64,8 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
       .reduce((s, t) => s + t.amount, 0));
 
     const salaryFromTx = Math.abs(safeTrans.filter(t => t.category === 'Salary').reduce((s, t) => s + t.amount, 0));
-    const salaryExpenses = Math.max(salaryFromTx, payrollTotal);
+    const salaryExpensesRaw = Math.max(salaryFromTx, payrollTotal);
+    const salaryExpenses = Math.max(0, salaryExpensesRaw - cogsFot - cogsKpiInCogs);
     const fotPercent = totalIncome > 0 ? (salaryExpenses / totalIncome) * 100 : 0;
 
     const activeProjects = projects.filter(p => p.status !== ProjectStatus.COMPLETED && p.status !== ProjectStatus.ARCHIVED);
@@ -81,7 +84,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
       revPerEmployee: totalIncome / (users.length || 1),
       lostRate,
     };
-  }, [safeTrans, projects, clients, users, payrollTotal]);
+  }, [safeTrans, projects, clients, users, payrollTotal, cogsFot, cogsKpiInCogs]);
 
   const burnRate = useMemo(() => financialEngineService.calcBurnRate(safeTrans), [safeTrans]);
 
@@ -128,7 +131,9 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
     });
     financialEngineService.loadCogsBreakdown(currentMonth, projects).then(cogs => {
       setCogsFot(cogs.fot);
+      setCogsKpiInCogs(cogs.kpiInCogs);
     });
+    financialEngineService.loadProjectExpensesForMonth(currentMonth, projects).then(setProjectExpensesTotal);
   }, [currentMonth, projects]);
 
   useEffect(() => {
@@ -136,12 +141,13 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
   }, [clients, safeTrans]);
 
   useEffect(() => {
-    const pnl = financialEngineService.calcPnl(safeTrans, payrollTotal, 0, 0.15, 0);
+    const cogsFotTotal = cogsFot + cogsKpiInCogs;
+    const pnl = financialEngineService.calcPnl(safeTrans, payrollTotal, projectExpensesTotal, 0.15, cogsFotTotal);
     const result = financialEngineService.calcBusinessHealth(
       pnl, burnRate, overview.fotPercent, overview.lostRate, ar.total, overview.totalIncome
     );
     setHealth(result);
-  }, [safeTrans, burnRate, overview, ar, payrollTotal]);
+  }, [safeTrans, burnRate, overview, ar, payrollTotal, projectExpensesTotal, cogsFot, cogsKpiInCogs]);
 
   const problematicProjects = useMemo(() => unitProjectList.filter(p => p.margin < 15), [unitProjectList]);
   const topProjects = useMemo(() => unitProjectList.slice(0, 5), [unitProjectList]);

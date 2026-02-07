@@ -45,6 +45,7 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
   const [showTaxSettings, setShowTaxSettings] = useState(false);
   const [payrollBreakdown, setPayrollBreakdown] = useState<PayrollBreakdown | null>(null);
   const [cogsBreakdown, setCogsBreakdown] = useState<CogsBreakdown | null>(null);
+  const [prevCogsBreakdown, setPrevCogsBreakdown] = useState<CogsBreakdown | null>(null);
   const [showFotDetail, setShowFotDetail] = useState(false);
   const [showCogsDetail, setShowCogsDetail] = useState(false);
 
@@ -70,15 +71,17 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
       const orgId = getCurrentOrganizationId();
       if (!orgId) { setLoading(false); return; }
 
-      const [planData, breakdown, cogs] = await Promise.all([
+      const [planData, breakdown, cogs, prevCogs] = await Promise.all([
         financialPlanService.getByMonth(selectedMonth),
         financialEngineService.loadPayrollBreakdown(selectedMonth),
         financialEngineService.loadCogsBreakdown(selectedMonth, projects),
+        financialEngineService.loadCogsBreakdown(prevMonth, projects),
       ]);
 
       setPlan(planData);
       setPayrollBreakdown(breakdown);
       setCogsBreakdown(cogs);
+      setPrevCogsBreakdown(prevCogs);
 
       if (planData) {
         setPlanForm({
@@ -155,7 +158,8 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
     });
   }, [transactions, prevMonth]);
 
-  const cogsFot = cogsBreakdown?.fot || 0;
+  const cogsFot = (cogsBreakdown?.fot || 0) + (cogsBreakdown?.kpiInCogs || 0);
+  const prevCogsFot = (prevCogsBreakdown?.fot || 0) + (prevCogsBreakdown?.kpiInCogs || 0);
 
   const pnl = useMemo(() =>
     financialEngineService.calcPnl(monthTransactions, payrollTotal, projectExpensesTotal, taxRate, cogsFot),
@@ -163,8 +167,8 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
   );
 
   const prevPnl = useMemo(() =>
-    financialEngineService.calcPnl(prevMonthTransactions, prevPayrollTotal, prevProjectExpensesTotal, taxRate, 0),
-    [prevMonthTransactions, prevPayrollTotal, prevProjectExpensesTotal, taxRate]
+    financialEngineService.calcPnl(prevMonthTransactions, prevPayrollTotal, prevProjectExpensesTotal, taxRate, prevCogsFot),
+    [prevMonthTransactions, prevPayrollTotal, prevProjectExpensesTotal, taxRate, prevCogsFot]
   );
 
   const cashFlow = useMemo(() =>
@@ -311,12 +315,26 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
     if (cogsFot > 0 && pnl.salariesRaw > 0) {
       const salariesFromTx = Math.abs(monthTransactions.filter(t => t.category === 'Salary').reduce((s, t) => s + t.amount, 0));
       if (salariesFromTx > 0 || payrollTotal > 0) {
+        const fotPart = cogsBreakdown?.fot || 0;
+        const kpiPart = cogsBreakdown?.kpiInCogs || 0;
+        const details = [
+          fotPart > 0 ? `оклады: ${formatCurrency(fotPart)}` : '',
+          kpiPart > 0 ? `KPI за задачи: ${formatCurrency(kpiPart)}` : '',
+        ].filter(Boolean).join(', ');
         items.push({
           type: 'warning',
           title: `ФОТ дедупликация: ${formatCurrency(cogsFot)} вычтено`,
-          text: `Зарплаты сотрудников (${formatCurrency(pnl.salariesRaw)}) уже частично учтены в себестоимости проектов (${formatCurrency(cogsFot)}). Система автоматически вычла эту сумму из строки ФОТ, чтобы избежать двойного учета.`
+          text: `Зарплаты сотрудников (${formatCurrency(pnl.salariesRaw)}) уже частично учтены в себестоимости проектов (${details}). Система автоматически вычла эту сумму из строки ФОТ, чтобы избежать двойного учета.`
         });
       }
+    }
+
+    if (cogsFot > pnl.salariesRaw && pnl.salariesRaw > 0) {
+      items.push({
+        type: 'danger',
+        title: `Расхождение: ФОТ в себестоимости (${formatCurrency(cogsFot)}) превышает общий ФОТ (${formatCurrency(pnl.salariesRaw)})`,
+        text: 'ФОТ, распределенный по проектам, больше фактического фонда оплаты труда. Проверьте корректность зарплатных схем и расчетов себестоимости проектов.'
+      });
     }
 
     if (pnl.revenue > 0 && pnl.netMargin > 20 && items.length === 0) {

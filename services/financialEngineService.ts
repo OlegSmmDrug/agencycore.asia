@@ -46,6 +46,7 @@ export interface CogsBreakdown {
   production: number;
   target: number;
   fot: number;
+  kpiInCogs: number;
   models: number;
   other: number;
   total: number;
@@ -590,17 +591,17 @@ export const financialEngineService = {
       .filter(p => p.status !== ProjectStatus.COMPLETED && p.status !== ProjectStatus.ARCHIVED)
       .map(p => p.id);
 
-    if (activeProjectIds.length === 0) return { smm: 0, production: 0, target: 0, fot: 0, models: 0, other: 0, total: 0 };
+    if (activeProjectIds.length === 0) return { smm: 0, production: 0, target: 0, fot: 0, kpiInCogs: 0, models: 0, other: 0, total: 0 };
 
     const { data } = await supabase
       .from('project_expenses')
-      .select('smm_expenses, production_expenses, targetologist_expenses, fot_expenses, models_expenses, other_expenses, total_expenses')
+      .select('smm_expenses, production_expenses, targetologist_expenses, fot_expenses, models_expenses, other_expenses, total_expenses, dynamic_expenses')
       .in('project_id', activeProjectIds)
       .eq('month', month);
 
-    if (!data || data.length === 0) return { smm: 0, production: 0, target: 0, fot: 0, models: 0, other: 0, total: 0 };
+    if (!data || data.length === 0) return { smm: 0, production: 0, target: 0, fot: 0, kpiInCogs: 0, models: 0, other: 0, total: 0 };
 
-    const result = { smm: 0, production: 0, target: 0, fot: 0, models: 0, other: 0, total: 0 };
+    const result = { smm: 0, production: 0, target: 0, fot: 0, kpiInCogs: 0, models: 0, other: 0, total: 0 };
     data.forEach(r => {
       result.smm += Number(r.smm_expenses) || 0;
       result.production += Number(r.production_expenses) || 0;
@@ -609,6 +610,17 @@ export const financialEngineService = {
       result.models += Number(r.models_expenses) || 0;
       result.other += Number(r.other_expenses) || 0;
       result.total += Number(r.total_expenses) || 0;
+
+      if (r.dynamic_expenses && typeof r.dynamic_expenses === 'object') {
+        for (const key in r.dynamic_expenses) {
+          if (key.startsWith('task_')) {
+            const item = (r.dynamic_expenses as Record<string, any>)[key];
+            if (item && typeof item === 'object' && 'cost' in item) {
+              result.kpiInCogs += Number(item.cost) || 0;
+            }
+          }
+        }
+      }
     });
     return result;
   },

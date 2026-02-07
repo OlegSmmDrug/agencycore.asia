@@ -39,13 +39,18 @@ const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions 
     });
   }, [selectedMonth]);
 
-  const totalRevenue = useMemo(
-    () => (Array.isArray(transactions) ? transactions : []).filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0),
-    [transactions]
-  );
+  const monthlyRevenue = useMemo(() => {
+    const start = selectedMonth + '-01';
+    const endDate = new Date(selectedMonth + '-01');
+    endDate.setMonth(endDate.getMonth() + 1);
+    const end = endDate.toISOString().slice(0, 10);
+    return (Array.isArray(transactions) ? transactions : [])
+      .filter(t => t.amount > 0 && t.date?.slice(0, 10) >= start && t.date?.slice(0, 10) < end)
+      .reduce((s, t) => s + t.amount, 0);
+  }, [transactions, selectedMonth]);
 
   const teamData = useMemo(() => {
-    const revPerEmployee = totalRevenue / (users.length || 1);
+    const revPerEmployee = monthlyRevenue / (users.length || 1);
     const completedTasks = tasks.filter(t => t.status === TaskStatus.DONE);
     const totalTasks = tasks.length;
 
@@ -120,7 +125,7 @@ const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions 
 
     return {
       revPerEmployee,
-      totalRevenue,
+      totalRevenue: monthlyRevenue,
       totalEmployees: users.length,
       totalTasks,
       completedTasksCount: completedTasks.length,
@@ -130,11 +135,11 @@ const TeamTab: React.FC<TeamTabProps> = ({ users, tasks, projects, transactions 
       totalPayrollCost,
       avgUtilization,
       capacityLeft,
-      costPerRevenue: totalRevenue > 0 ? (totalPayrollCost / totalRevenue) * 100 : 0,
+      costPerRevenue: monthlyRevenue > 0 ? (totalPayrollCost / monthlyRevenue) * 100 : 0,
       totalWorkloadRevenue,
       teamRoi: totalPayrollCost > 0 ? ((totalWorkloadRevenue / totalPayrollCost) - 1) * 100 : 0,
     };
-  }, [users, projects, tasks, totalRevenue, payrollCosts, payrollPerUser]);
+  }, [users, projects, tasks, monthlyRevenue, payrollCosts, payrollPerUser]);
 
   const monthLabel = useMemo(() =>
     new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }),
