@@ -422,8 +422,8 @@ export default function TransactionJournal({ transactions, clients, projects, us
                       </span>
                     </td>
                     <td className="px-3 md:px-6 py-3 md:py-4 whitespace-nowrap text-right">
-                      <span className={`text-sm font-semibold ${transaction.amountDiscrepancy ? 'text-amber-600' : 'text-green-600'}`}>
-                        +{transaction.amount.toLocaleString('ru-RU')} T
+                      <span className={`text-sm font-semibold ${transaction.amountDiscrepancy ? 'text-amber-600' : transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        {transaction.amount < 0 ? '' : '+'}{transaction.amount.toLocaleString('ru-RU')} T
                       </span>
                       {transaction.amountDiscrepancy && transaction.bankAmount && transaction.bankAmount !== transaction.amount && (
                         <div className="text-xs text-amber-500">
