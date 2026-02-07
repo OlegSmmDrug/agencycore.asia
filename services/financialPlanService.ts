@@ -1,6 +1,12 @@
 import { supabase } from '../lib/supabase';
 import { getCurrentOrganizationId } from '../utils/organizationContext';
 
+export interface CustomDdsRow {
+  id: string;
+  name: string;
+  section: 'operating_outflow' | 'investing' | 'financing';
+}
+
 export interface FinancialPlan {
   id: string;
   organizationId: string;
@@ -16,6 +22,10 @@ export interface FinancialPlan {
   plannedOtherOpex: number;
   plannedTaxes: number;
   plannedDepreciation: number;
+  taxRate: number;
+  customDdsRows: CustomDdsRow[];
+  ddsCapex: number;
+  ddsFinancing: number;
   isEditable: boolean;
   notes: string;
   createdAt: string;
@@ -38,6 +48,10 @@ function mapRow(row: any): FinancialPlan {
     plannedOtherOpex: Number(row.planned_other_opex) || 0,
     plannedTaxes: Number(row.planned_taxes) || 0,
     plannedDepreciation: Number(row.planned_depreciation) || 0,
+    taxRate: Number(row.tax_rate) || 0.15,
+    customDdsRows: Array.isArray(row.custom_dds_rows) ? row.custom_dds_rows : [],
+    ddsCapex: Number(row.dds_capex) || 0,
+    ddsFinancing: Number(row.dds_financing) || 0,
     isEditable: row.is_editable ?? true,
     notes: row.notes || '',
     createdAt: row.created_at,
@@ -129,11 +143,50 @@ export const financialPlanService = {
       planned_net_profit: p.plannedNetProfit ?? 0,
       planned_ebitda: p.plannedEbitda ?? 0,
       planned_expenses: p.plannedExpenses ?? 0,
+      tax_rate: (p as any).taxRate ?? 0.15,
+      custom_dds_rows: (p as any).customDdsRows ?? [],
+      dds_capex: (p as any).ddsCapex ?? 0,
+      dds_financing: (p as any).ddsFinancing ?? 0,
       updated_at: new Date().toISOString(),
     }));
 
     await supabase
       .from('financial_plans')
       .upsert(rows, { onConflict: 'organization_id,month' });
+  },
+
+  async getTaxRate(): Promise<number> {
+    const organizationId = getCurrentOrganizationId();
+    if (!organizationId) return 0.15;
+
+    const { data } = await supabase
+      .from('company_settings')
+      .select('tax_rate')
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+
+    return data?.tax_rate != null ? Number(data.tax_rate) : 0.15;
+  },
+
+  async saveTaxRate(rate: number): Promise<void> {
+    const organizationId = getCurrentOrganizationId();
+    if (!organizationId) return;
+
+    const { data: existing } = await supabase
+      .from('company_settings')
+      .select('id')
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+
+    if (existing) {
+      await supabase
+        .from('company_settings')
+        .update({ tax_rate: rate })
+        .eq('organization_id', organizationId);
+    } else {
+      await supabase
+        .from('company_settings')
+        .insert({ organization_id: organizationId, tax_rate: rate });
+    }
   },
 };
