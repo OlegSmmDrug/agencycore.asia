@@ -135,6 +135,8 @@ const Dashboard: React.FC<DashboardProps> = ({
           users={users}
           currentUser={currentUser}
           onAddTransaction={onAddTransaction || (() => {})}
+          onUpdateTransaction={onUpdateTransaction}
+          onDeleteTransaction={onDeleteTransaction}
           onCreateClient={onCreateClient}
           onReconcile={onReconcile}
         />

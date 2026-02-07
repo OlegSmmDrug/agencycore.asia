@@ -22,6 +22,8 @@ interface AnalyticsProps {
     activeTab?: string;
     onUpdatePnl?: (id: string, d: ProjectFinancials) => void;
     onAddTransaction?: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'isVerified'>) => void;
+    onUpdateTransaction?: (transaction: Transaction) => void;
+    onDeleteTransaction?: (id: string) => void;
     onCreateClient?: (client: { name: string; company: string; bin: string }) => Promise<Client>;
     onReconcile?: (existingId: string, bankData: { amount: number; clientName: string; bin: string; docNumber: string }) => Promise<void>;
     currentUser: User;
@@ -41,6 +43,8 @@ const Analytics: React.FC<AnalyticsProps> = ({
     transactions = [],
     activeTab: externalTab,
     onAddTransaction,
+    onUpdateTransaction,
+    onDeleteTransaction,
     onCreateClient,
     onReconcile,
     currentUser
@@ -261,6 +265,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
                         <TransactionJournal
                             transactions={transactions} clients={clients} projects={projects}
                             users={users} onAddTransaction={onAddTransaction}
+                            onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction}
                             onCreateClient={onCreateClient} onReconcile={onReconcile}
                         />
                     ) : (

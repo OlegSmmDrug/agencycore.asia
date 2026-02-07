@@ -12,6 +12,8 @@ interface AccountantDashboardProps {
   users: User[];
   currentUser: User;
   onAddTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'isVerified'>) => void;
+  onUpdateTransaction?: (transaction: Transaction) => void;
+  onDeleteTransaction?: (id: string) => void;
   onCreateClient?: (client: { name: string; company: string; bin: string }) => Promise<Client>;
   onReconcile?: (existingId: string, bankData: { amount: number; clientName: string; bin: string; docNumber: string }) => Promise<void>;
 }
@@ -24,6 +26,8 @@ const AccountantDashboard: React.FC<AccountantDashboardProps> = ({
   users,
   currentUser,
   onAddTransaction,
+  onUpdateTransaction,
+  onDeleteTransaction,
   onCreateClient,
   onReconcile
 }) => {
@@ -287,6 +291,8 @@ const AccountantDashboard: React.FC<AccountantDashboardProps> = ({
         projects={projects}
         users={users}
         onAddTransaction={onAddTransaction}
+        onUpdateTransaction={onUpdateTransaction}
+        onDeleteTransaction={onDeleteTransaction}
         onCreateClient={onCreateClient}
         onReconcile={onReconcile}
       />

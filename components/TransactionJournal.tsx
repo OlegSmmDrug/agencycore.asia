@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Download, Upload, Search, Calendar, DollarSign, User as UserIcon, X, Clock, CheckCircle, AlertTriangle, Building2, Tag } from 'lucide-react';
+import { Plus, Download, Upload, Search, Calendar, DollarSign, User as UserIcon, X, Clock, CheckCircle, AlertTriangle, Building2, Tag, Pencil, Trash2 } from 'lucide-react';
 import { Transaction, Client, PaymentType, Project, User, ReconciliationStatus, TransactionCategory } from '../types';
 import Modal from './Modal';
 import BankImportModal from './BankImportModal';
@@ -18,6 +18,8 @@ interface Props {
   projects: Project[];
   users: User[];
   onAddTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'isVerified'>) => void;
+  onUpdateTransaction?: (transaction: Transaction) => void;
+  onDeleteTransaction?: (id: string) => void;
   onCreateClient?: (client: { name: string; company: string; bin: string }) => Promise<Client>;
   onReconcile?: (existingId: string, bankData: {
     amount: number;
@@ -42,7 +44,7 @@ const RECONCILIATION_STATUS_CONFIG: Record<string, { icon: typeof Clock; text: s
   bank_import: { icon: Building2, text: 'text-blue-700', bg: 'bg-blue-50', label: 'Банковский импорт' },
 };
 
-export default function TransactionJournal({ transactions, clients, projects, users, onAddTransaction, onCreateClient, onReconcile }: Props) {
+export default function TransactionJournal({ transactions, clients, projects, users, onAddTransaction, onUpdateTransaction, onDeleteTransaction, onCreateClient, onReconcile }: Props) {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -54,6 +56,9 @@ export default function TransactionJournal({ transactions, clients, projects, us
   const [filterDateTo, setFilterDateTo] = useState<string>('');
   const [filterReconciliation, setFilterReconciliation] = useState<ReconciliationStatus | 'all'>('all');
   const [filterCategory, setFilterCategory] = useState<TransactionCategory | 'all'>('all');
+
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const [newTransaction, setNewTransaction] = useState<{
     clientId: string;
@@ -172,6 +177,19 @@ export default function TransactionJournal({ transactions, clients, projects, us
       category: 'Income',
     });
     setIsAddModalOpen(false);
+  };
+
+  const handleEditSave = () => {
+    if (!editingTransaction || !onUpdateTransaction) return;
+    const updated = { ...editingTransaction, reconciliationStatus: 'manual' as ReconciliationStatus };
+    onUpdateTransaction(updated);
+    setEditingTransaction(null);
+  };
+
+  const handleDelete = (id: string) => {
+    if (!onDeleteTransaction) return;
+    onDeleteTransaction(id);
+    setDeleteConfirm(null);
   };
 
   const getCounterpartyName = (transaction: Transaction) => {
@@ -423,6 +441,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
                   <th className="px-3 md:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Сумма</th>
                   <th className="px-3 md:px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Сверка</th>
                   <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Описание</th>
+                  {onUpdateTransaction && <th className="px-2 py-3 w-20"></th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -487,6 +506,47 @@ export default function TransactionJournal({ transactions, clients, projects, us
                     <td className="px-3 md:px-6 py-3 md:py-4">
                       <span className="text-sm text-gray-600 line-clamp-1">{transaction.description || '--'}</span>
                     </td>
+                    {onUpdateTransaction && (
+                      <td className="px-2 py-3 md:py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setEditingTransaction({ ...transaction })}
+                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                            title="Редактировать"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          {onDeleteTransaction && (
+                            deleteConfirm === transaction.id ? (
+                              <div className="flex items-center gap-0.5">
+                                <button
+                                  onClick={() => handleDelete(transaction.id)}
+                                  className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                  title="Подтвердить удаление"
+                                >
+                                  <CheckCircle className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => setDeleteConfirm(null)}
+                                  className="p-1.5 text-gray-400 hover:bg-gray-100 rounded transition-colors"
+                                  title="Отмена"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setDeleteConfirm(transaction.id)}
+                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                title="Удалить"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -632,6 +692,134 @@ export default function TransactionJournal({ transactions, clients, projects, us
           </div>
         </form>
       </Modal>
+
+      {editingTransaction && (
+        <Modal isOpen={true} onClose={() => setEditingTransaction(null)} title="Редактировать платеж">
+          <div className="space-y-4">
+            {editingTransaction.reconciliationStatus === 'bank_import' && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+                Этот платеж был импортирован из банковской выписки. После редактирования статус сверки изменится на "Ручной ввод".
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Клиент / Юр. лицо</label>
+              <select
+                value={editingTransaction.clientId || ''}
+                onChange={(e) => setEditingTransaction({ ...editingTransaction, clientId: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Не указан</option>
+                {clients.map(client => (
+                  <option key={client.id} value={client.id}>
+                    {client.company || client.name} {client.inn ? `(ИНН: ${client.inn})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Сумма</label>
+                <input
+                  type="number"
+                  value={editingTransaction.amount || ''}
+                  onChange={(e) => setEditingTransaction({ ...editingTransaction, amount: Number(e.target.value) })}
+                  onFocus={(e) => e.target.select()}
+                  step="0.01"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Дата</label>
+                <input
+                  type="date"
+                  value={editingTransaction.date?.split('T')[0] || ''}
+                  onChange={(e) => setEditingTransaction({ ...editingTransaction, date: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Тип платежа</label>
+                <select
+                  value={editingTransaction.type}
+                  onChange={(e) => setEditingTransaction({ ...editingTransaction, type: e.target.value as PaymentType })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  {PAYMENT_TYPES.map(pt => (
+                    <option key={pt.value} value={pt.value}>{pt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Категория</label>
+                <select
+                  value={editingTransaction.category || ''}
+                  onChange={(e) => setEditingTransaction({ ...editingTransaction, category: e.target.value as TransactionCategory })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Без категории</option>
+                  {EXPENSE_CATEGORIES.map(cat => (
+                    <option key={cat.value} value={cat.value}>{cat.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Проект</label>
+              <select
+                value={editingTransaction.projectId || ''}
+                onChange={(e) => setEditingTransaction({ ...editingTransaction, projectId: e.target.value || undefined })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Без привязки к проекту</option>
+                {projects.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Описание</label>
+              <textarea
+                value={editingTransaction.description || ''}
+                onChange={(e) => setEditingTransaction({ ...editingTransaction, description: e.target.value })}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {editingTransaction.bankClientName && (
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600 space-y-1">
+                <p><span className="font-medium">Банковские данные:</span> {editingTransaction.bankClientName}</p>
+                {editingTransaction.bankBin && <p>БИН: {editingTransaction.bankBin}</p>}
+                {editingTransaction.bankDocumentNumber && <p>Документ: {editingTransaction.bankDocumentNumber}</p>}
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-4">
+              <button
+                type="button"
+                onClick={() => setEditingTransaction(null)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={handleEditSave}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Сохранить
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

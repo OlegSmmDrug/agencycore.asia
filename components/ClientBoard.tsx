@@ -17,12 +17,14 @@ interface ClientBoardProps {
   onClientClick: (client: Client) => void;
   onAddClient: () => void;
   onAddTransaction?: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'isVerified'>) => void;
+  onUpdateTransaction?: (transaction: Transaction) => void;
+  onDeleteTransaction?: (id: string) => void;
   onArchiveClient: (clientId: string, archive: boolean) => void;
   onCreateClient?: (client: { name: string; company: string; bin: string }) => Promise<Client>;
   onReconcile?: (existingId: string, bankData: { amount: number; clientName: string; bin: string; docNumber: string }) => Promise<void>;
 }
 
-const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, transactions = [], projects = [], onClientStatusChange, onClientClick, onAddClient, onAddTransaction, onArchiveClient, onCreateClient, onReconcile }) => {
+const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, transactions = [], projects = [], onClientStatusChange, onClientClick, onAddClient, onAddTransaction, onUpdateTransaction, onDeleteTransaction, onArchiveClient, onCreateClient, onReconcile }) => {
   const { organization: currentOrganization } = useOrganization();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSource, setSelectedSource] = useState<string>('all');
@@ -282,6 +284,8 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
               projects={projects}
               users={users}
               onAddTransaction={onAddTransaction}
+              onUpdateTransaction={onUpdateTransaction}
+              onDeleteTransaction={onDeleteTransaction}
               onCreateClient={onCreateClient}
               onReconcile={onReconcile}
           />

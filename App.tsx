@@ -1322,6 +1322,8 @@ const App: React.FC = () => {
             transactions={transactions}
             currentUser={currentUser}
             onAddTransaction={handleAddManualTransaction}
+            onUpdateTransaction={handleUpdateTransaction}
+            onDeleteTransaction={handleDeleteTransaction}
             onCreateClient={handleCreateClientFromBank}
             onReconcile={handleReconcileTransaction}
           />
@@ -1352,6 +1354,8 @@ const App: React.FC = () => {
             onClientClick={(client) => handleOpenClientModal(client)}
             onAddClient={() => handleOpenClientModal(null)}
             onAddTransaction={handleAddManualTransaction}
+            onUpdateTransaction={handleUpdateTransaction}
+            onDeleteTransaction={handleDeleteTransaction}
             onArchiveClient={handleArchiveClient}
             onCreateClient={handleCreateClientFromBank}
             onReconcile={handleReconcileTransaction}
