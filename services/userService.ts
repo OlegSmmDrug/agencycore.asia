@@ -50,6 +50,7 @@ export const userService = {
       teamLeadId: row.team_lead_id || undefined,
       salary: Number(row.salary) || 0,
       iin: row.iin || '',
+      phone: row.phone || '',
       birthday: row.birthday || parseBirthdayFromIIN(row.iin),
       balance: Number(row.balance) || 0
     }));
@@ -81,6 +82,7 @@ export const userService = {
       teamLeadId: data.team_lead_id || undefined,
       salary: Number(data.salary) || 0,
       iin: data.iin || '',
+      phone: data.phone || '',
       birthday: data.birthday || undefined,
       balance: Number(data.balance) || 0
     };
@@ -105,6 +107,7 @@ export const userService = {
         team_lead_id: user.teamLeadId || null,
         salary: user.salary,
         iin: user.iin || null,
+        phone: user.phone || null,
         birthday: user.birthday || parseBirthdayFromIIN(user.iin) || null,
         balance: user.balance || 0
       })
@@ -130,6 +133,7 @@ export const userService = {
       teamLeadId: data.team_lead_id || undefined,
       salary: Number(data.salary) || 0,
       iin: data.iin || '',
+      phone: data.phone || '',
       birthday: data.birthday || undefined,
       balance: Number(data.balance) || 0
     };
@@ -154,6 +158,7 @@ export const userService = {
         team_lead_id: user.teamLeadId || null,
         salary: user.salary,
         iin: user.iin || null,
+        phone: user.phone || null,
         birthday: user.birthday || parseBirthdayFromIIN(user.iin) || null,
         balance: user.balance || 0,
         organization_id: organizationId
@@ -178,6 +183,7 @@ export const userService = {
       teamLeadId: data.team_lead_id || undefined,
       salary: Number(data.salary) || 0,
       iin: data.iin || '',
+      phone: data.phone || '',
       birthday: data.birthday || undefined,
       balance: Number(data.balance) || 0
     };
@@ -239,6 +245,7 @@ export const userService = {
     name?: string;
     jobTitle?: string;
     iin?: string;
+    phone?: string;
     avatar?: string;
   }): Promise<User> {
     const updateData: any = {};
@@ -249,6 +256,7 @@ export const userService = {
       const bd = parseBirthdayFromIIN(updates.iin);
       if (bd) updateData.birthday = bd;
     }
+    if (updates.phone !== undefined) updateData.phone = updates.phone || null;
     if (updates.avatar !== undefined) updateData.avatar = updates.avatar;
 
     const { data, error } = await supabase
@@ -275,6 +283,7 @@ export const userService = {
       teamLeadId: data.team_lead_id || undefined,
       salary: Number(data.salary) || 0,
       iin: data.iin || '',
+      phone: data.phone || '',
       birthday: data.birthday || undefined,
       balance: Number(data.balance) || 0
     };
@@ -305,6 +314,7 @@ export const userService = {
       teamLeadId: data.team_lead_id || undefined,
       salary: Number(data.salary) || 0,
       iin: data.iin || '',
+      phone: data.phone || '',
       birthday: data.birthday || undefined,
       balance: Number(data.balance) || 0
     };

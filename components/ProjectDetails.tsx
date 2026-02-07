@@ -3041,6 +3041,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
           project={project}
           onClose={() => setIsShareModalOpen(false)}
           currentUserId={currentUser.id}
+          currentUser={currentUser}
         />
       )}
 

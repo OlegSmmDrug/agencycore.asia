@@ -2,18 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { X, Copy, Check, Users, Calendar, ExternalLink, Link2, Shield, Eye, User, Mail, Phone, Send, Loader2 } from 'lucide-react';
 import { guestAccessService } from '../services/guestAccessService';
 import { guestUserService } from '../services/guestUserService';
-import { GuestAccess, GuestUser, Project } from '../types';
+import { GuestAccess, GuestUser, Project, User as UserType } from '../types';
 
 interface ShareProjectModalProps {
   project: Project;
   onClose: () => void;
   currentUserId: string;
+  currentUser?: UserType;
 }
 
 export const ShareProjectModal: React.FC<ShareProjectModalProps> = ({
   project,
   onClose,
-  currentUserId
+  currentUserId,
+  currentUser
 }) => {
   const [guestAccess, setGuestAccess] = useState<GuestAccess | null>(null);
   const [guests, setGuests] = useState<GuestUser[]>([]);
@@ -38,11 +40,27 @@ export const ShareProjectModal: React.FC<ShareProjectModalProps> = ({
         setGuestAccess(accesses[0]);
         setIsEnabled(accesses[0].isActive);
         setPermissions(accesses[0].permissions);
-        setManagerContacts({
-          name: accesses[0].managerName || '',
-          phone: accesses[0].managerPhone || '',
-          email: accesses[0].managerEmail || ''
-        });
+        const hasManagerData = accesses[0].managerName || accesses[0].managerPhone || accesses[0].managerEmail;
+        if (hasManagerData) {
+          setManagerContacts({
+            name: accesses[0].managerName || '',
+            phone: accesses[0].managerPhone || '',
+            email: accesses[0].managerEmail || ''
+          });
+        } else if (currentUser) {
+          const autoContacts = {
+            name: currentUser.name || '',
+            phone: currentUser.phone || '',
+            email: currentUser.email || ''
+          };
+          setManagerContacts(autoContacts);
+          guestAccessService.updateManagerContacts(
+            accesses[0].id,
+            autoContacts.name,
+            autoContacts.phone,
+            autoContacts.email
+          ).catch(() => {});
+        }
       }
     } catch (error) {
       console.error('Error loading guest access:', error);
@@ -66,6 +84,20 @@ export const ShareProjectModal: React.FC<ShareProjectModalProps> = ({
       setGuestAccess(newAccess);
       setIsEnabled(true);
       setPermissions(newAccess.permissions);
+      if (currentUser) {
+        const autoContacts = {
+          name: currentUser.name || '',
+          phone: currentUser.phone || '',
+          email: currentUser.email || ''
+        };
+        setManagerContacts(autoContacts);
+        guestAccessService.updateManagerContacts(
+          newAccess.id,
+          autoContacts.name,
+          autoContacts.phone,
+          autoContacts.email
+        ).catch(() => {});
+      }
     } catch (error) {
       console.error('Error generating link:', error);
     }

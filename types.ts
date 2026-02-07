@@ -148,6 +148,7 @@ export interface User {
   salary: number;
   iin?: string;
   birthday?: string;
+  phone?: string;
   balance?: number;
   isSuperAdmin?: boolean;
   employmentType?: 'staff' | 'ip' | 'sz' | 'nal';
