@@ -150,7 +150,7 @@ export const telegramNotificationService = {
     title: string,
     message: string,
     type?: string
-  ): Promise<{ sent: boolean; reason?: string }> {
+  ): Promise<{ sent: boolean; reason?: string; error?: string }> {
     try {
       const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL;
       const anonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY;
@@ -166,10 +166,21 @@ export const telegramNotificationService = {
           body: JSON.stringify({ user_id: userId, title, message, type }),
         }
       );
-      return await resp.json();
+
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        return { sent: false, reason: 'edge_function_error', error: data.error || `HTTP ${resp.status}` };
+      }
+
+      if (data.error) {
+        return { sent: false, reason: 'edge_function_error', error: data.error };
+      }
+
+      return data;
     } catch (error) {
       console.error('Failed to send Telegram notification:', error);
-      return { sent: false, reason: 'fetch_error' };
+      return { sent: false, reason: 'fetch_error', error: error instanceof Error ? error.message : 'Network error' };
     }
   },
 };

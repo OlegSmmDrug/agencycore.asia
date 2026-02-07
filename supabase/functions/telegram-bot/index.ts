@@ -35,7 +35,7 @@ async function sendTelegramMessage(
   chatId: number | string,
   text: string,
   parseMode: string = "HTML"
-) {
+): Promise<{ ok: boolean; description?: string }> {
   const resp = await fetch(
     `https://api.telegram.org/bot${botToken}/sendMessage`,
     {
@@ -48,7 +48,11 @@ async function sendTelegramMessage(
       }),
     }
   );
-  return resp.json();
+  const result = await resp.json();
+  if (!result.ok) {
+    console.error(`Telegram API error for chat ${chatId}:`, result.description);
+  }
+  return result;
 }
 
 async function handleStart(
@@ -320,13 +324,23 @@ async function handleSendNotification(
   const text = `<b>${body.title}</b>\n\n${body.message}`;
 
   let sentCount = 0;
+  const errors: string[] = [];
   for (const link of links) {
     try {
-      await sendTelegramMessage(botToken, link.telegram_chat_id, text);
-      sentCount++;
+      const result = await sendTelegramMessage(botToken, link.telegram_chat_id, text);
+      if (result.ok) {
+        sentCount++;
+      } else {
+        errors.push(`chat ${link.telegram_chat_id}: ${result.description || "unknown error"}`);
+      }
     } catch (e) {
       console.error(`Failed to send to chat ${link.telegram_chat_id}:`, e);
+      errors.push(`chat ${link.telegram_chat_id}: ${e instanceof Error ? e.message : "exception"}`);
     }
+  }
+
+  if (sentCount === 0 && errors.length > 0) {
+    return { sent: false, reason: "telegram_api_error", error: errors.join("; ") };
   }
 
   return { sent: true, sent_count: sentCount };

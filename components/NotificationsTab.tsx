@@ -152,17 +152,21 @@ export const NotificationsTab: React.FC<NotificationsTabProps> = ({
           no_linked_accounts: 'Нет привязанных Telegram-аккаунтов',
           telegram_disabled: 'Telegram-уведомления отключены',
           notification_type_disabled: 'Этот тип уведомлений отключен',
+          fetch_error: 'Ошибка сети при отправке',
+          edge_function_error: 'Ошибка сервера',
+          telegram_api_error: 'Ошибка Telegram API',
         };
+        const errorDetail = (result as any).error ? `: ${(result as any).error}` : '';
         setTestResult({
           success: false,
-          message: reasons[result.reason || ''] || 'Не удалось отправить уведомление',
+          message: (reasons[result.reason || ''] || 'Не удалось отправить уведомление') + errorDetail,
         });
       }
-    } catch {
-      setTestResult({ success: false, message: 'Ошибка при отправке' });
+    } catch (e) {
+      setTestResult({ success: false, message: `Ошибка при отправке: ${e instanceof Error ? e.message : 'Неизвестная ошибка'}` });
     } finally {
       setTestSending(false);
-      setTimeout(() => setTestResult(null), 5000);
+      setTimeout(() => setTestResult(null), 8000);
     }
   };
 
