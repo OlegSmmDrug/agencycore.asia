@@ -81,7 +81,9 @@ const ProjectRaceTrack: React.FC<ProjectRaceTrackProps> = ({ projects, tasks, cl
             let stageStatus: 'locked' | 'active' | 'completed' = 'active';
             let isInNewProjectStage = false;
 
-            if (statuses.length > 0) {
+            const hasRoadmap = statuses.length > 0 && statuses.some(s => s.orderIndex > 0);
+
+            if (hasRoadmap) {
               const activeStatus = statuses.find(s => s.status === 'active');
               const completedCount = statuses.filter(s => s.status === 'completed').length;
 
@@ -105,6 +107,27 @@ const ProjectRaceTrack: React.FC<ProjectRaceTrackProps> = ({ projects, tasks, cl
                   currentStage = lastCompletedOrderIndex;
                 }
                 stageProgress = 0;
+              }
+            } else if (project.startDate && project.endDate) {
+              const start = new Date(project.startDate).getTime();
+              const end = new Date(project.endDate).getTime();
+              const now = Date.now();
+              const totalDuration = end - start;
+
+              if (totalDuration > 0) {
+                const elapsed = Math.max(0, Math.min(now - start, totalDuration));
+                const overallPercent = (elapsed / totalDuration) * 100;
+
+                if (overallPercent >= 100) {
+                  currentStage = 4;
+                  stageProgress = 100;
+                  stageStatus = 'completed';
+                } else {
+                  currentStage = Math.floor(overallPercent / 25) + 1;
+                  if (currentStage > 4) currentStage = 4;
+                  stageProgress = ((overallPercent % 25) / 25) * 100;
+                  stageStatus = 'active';
+                }
               }
             }
 
