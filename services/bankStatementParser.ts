@@ -131,17 +131,21 @@ function parseCSVLine(line: string, delimiter: string): string[] {
   return result;
 }
 
+function normalizeAccount(acc: string): string {
+  return acc.replace(/\s/g, '').replace(/[-\.]/g, '').toUpperCase();
+}
+
 function extractOurAccount(content: string): string {
-  const accountSection = content.match(/СекцияРасчСчет([\s\S]*?)КонецРасчСчет/i);
+  const accountSection = content.match(/СекцияРасчСч[её]т([\s\S]*?)КонецРасчСч[её]т/i);
   if (accountSection) {
-    const accMatch = accountSection[1].match(/РасчСчет=(\S+)/i);
+    const accMatch = accountSection[1].match(/РасчСч[её]т=(\S+)/i);
     if (accMatch) return accMatch[1].trim();
-    const numMatch = accountSection[1].match(/НомерСчета=(\S+)/i);
+    const numMatch = accountSection[1].match(/НомерСч[её]та=(\S+)/i);
     if (numMatch) return numMatch[1].trim();
   }
 
   const headerPart = content.split(/СекцияДокумент/i)[0] || '';
-  const fallbackMatch = headerPart.match(/РасчСчет=(\S+)/i);
+  const fallbackMatch = headerPart.match(/РасчСч[её]т=(\S+)/i);
   if (fallbackMatch) return fallbackMatch[1].trim();
 
   const sections = content.split(/СекцияДокумент/g).slice(1);
@@ -149,10 +153,16 @@ function extractOurAccount(content: string): string {
 
   const accountCounts = new Map<string, number>();
   for (const section of sections) {
-    const payer = section.match(/ПлательщикСчет=(\S+)/i);
-    const recipient = section.match(/ПолучательСчет=(\S+)/i);
-    if (payer) accountCounts.set(payer[1].trim(), (accountCounts.get(payer[1].trim()) || 0) + 1);
-    if (recipient) accountCounts.set(recipient[1].trim(), (accountCounts.get(recipient[1].trim()) || 0) + 1);
+    const payer = section.match(/Плат[её]льщикСч[её]т=(\S+)/i) || section.match(/ПлательщикРасчСч[её]т=(\S+)/i);
+    const recipient = section.match(/Получат[её]льСч[её]т=(\S+)/i) || section.match(/ПолучательРасчСч[её]т=(\S+)/i);
+    if (payer) {
+      const acc = normalizeAccount(payer[1]);
+      accountCounts.set(acc, (accountCounts.get(acc) || 0) + 1);
+    }
+    if (recipient) {
+      const acc = normalizeAccount(recipient[1]);
+      accountCounts.set(acc, (accountCounts.get(acc) || 0) + 1);
+    }
   }
 
   let maxCount = 0;
@@ -185,10 +195,10 @@ function parse1CFormat(content: string): Omit<ParsedTransaction, 'matchedClientI
         if (curKey) { fieldMap.set(curKey, curVal); curKey = ''; curVal = ''; }
         continue;
       }
-      const fm = trimmed.match(/^([А-Яа-яA-Za-z_0-9]+)=(.*)/);
+      const fm = trimmed.match(/^([А-ЯЁа-яёA-Za-z_0-9]+)=(.*)/);
       if (fm) {
         if (curKey) fieldMap.set(curKey, curVal);
-        curKey = fm[1];
+        curKey = fm[1].replace(/ё/g, 'е').replace(/Ё/g, 'Е');
         curVal = fm[2];
       } else if (curKey) {
         curVal += '\n' + trimmed;
@@ -205,13 +215,13 @@ function parse1CFormat(content: string): Omit<ParsedTransaction, 'matchedClientI
     const knpCode = getField('КодНазначенияПлатежа') || '';
     const currency = getField('Валюта') || 'KZT';
 
-    const payerAccount = getField('ПлательщикСчет') || getField('ПлательщикРасчСчет') || '';
-    const recipientAccount = getField('ПолучательСчет') || getField('ПолучательРасчСчет') || '';
+    const payerAccount = getField('ПлательщикСчет') || getField('ПлательщикРасчСчет') || getField('Плательщик1') || '';
+    const recipientAccount = getField('ПолучательСчет') || getField('ПолучательРасчСчет') || getField('Получатель1') || '';
 
-    const payerNameRaw = getField('ПлательщикНаименование') || getField('Плательщик') || '';
-    const payerBinRaw = getField('Плательщик_ИНН') || getField('Плательщик_БИН') || getField('ПлательщикИНН') || '';
-    const recipientNameRaw = getField('ПолучательНаименование') || getField('Получатель') || '';
-    const recipientBinRaw = getField('Получатель_ИНН') || getField('Получатель_БИН') || getField('ПолучательИНН') || '';
+    const payerNameRaw = getField('ПлательщикНаименование') || getField('Плательщик') || getField('ПлательщикНаименование1') || '';
+    const payerBinRaw = getField('Плательщик_ИНН') || getField('Плательщик_БИН') || getField('ПлательщикИНН') || getField('ПлательщикБИН') || '';
+    const recipientNameRaw = getField('ПолучательНаименование') || getField('Получатель') || getField('ПолучательНаименование1') || '';
+    const recipientBinRaw = getField('Получатель_ИНН') || getField('Получатель_БИН') || getField('ПолучательИНН') || getField('ПолучательБИН') || '';
 
     if (!dateStr || !amountStr) continue;
 
@@ -222,21 +232,41 @@ function parse1CFormat(content: string): Omit<ParsedTransaction, 'matchedClientI
     let counterpartyNameRaw = payerNameRaw;
     let counterpartyBinRaw = payerBinRaw;
 
-    if (ourAccount) {
-      if (payerAccount === ourAccount) {
+    const normalOur = ourAccount ? normalizeAccount(ourAccount) : '';
+    const normalPayer = payerAccount ? normalizeAccount(payerAccount) : '';
+    const normalRecipient = recipientAccount ? normalizeAccount(recipientAccount) : '';
+
+    if (normalOur) {
+      if (normalPayer && normalPayer === normalOur) {
         isIncome = false;
         counterpartyNameRaw = recipientNameRaw;
         counterpartyBinRaw = recipientBinRaw;
-      } else {
+      } else if (normalRecipient && normalRecipient === normalOur) {
         isIncome = true;
         counterpartyNameRaw = payerNameRaw;
         counterpartyBinRaw = payerBinRaw;
       }
-    } else {
-      if (recipientNameRaw && payerNameRaw) {
+    }
+
+    if (!normalOur || (!normalPayer && !normalRecipient)) {
+      const debitCredit = getField('ДебетКредит') || getField('ВидДвижения') || getField('ВидОперации') || '';
+      const dcLower = debitCredit.toLowerCase();
+      if (dcLower.includes('списан') || dcLower === '1' || dcLower.includes('дебет') || dcLower.includes('расход')) {
+        isIncome = false;
+        counterpartyNameRaw = recipientNameRaw || payerNameRaw;
+        counterpartyBinRaw = recipientBinRaw || payerBinRaw;
+      } else if (dcLower.includes('поступ') || dcLower === '2' || dcLower.includes('кредит') || dcLower.includes('приход') || dcLower.includes('зачис')) {
         isIncome = true;
-        counterpartyNameRaw = payerNameRaw;
-        counterpartyBinRaw = payerBinRaw;
+        counterpartyNameRaw = payerNameRaw || recipientNameRaw;
+        counterpartyBinRaw = payerBinRaw || recipientBinRaw;
+      } else {
+        const docTypeMatch = section.match(/^=(.+?)[\r\n]/);
+        const docType = docTypeMatch ? docTypeMatch[1].trim().toLowerCase() : '';
+        if (docType.includes('списан') || docType.includes('исход')) {
+          isIncome = false;
+          counterpartyNameRaw = recipientNameRaw || payerNameRaw;
+          counterpartyBinRaw = recipientBinRaw || payerBinRaw;
+        }
       }
     }
 
