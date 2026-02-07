@@ -176,11 +176,33 @@ function extractOurAccount(content: string): string {
   return '';
 }
 
+function extractOurBin(content: string): string {
+  const sections = content.split(/СекцияДокумент/g).slice(1);
+  if (sections.length === 0) return '';
+
+  const binCounts = new Map<string, number>();
+  for (const section of sections) {
+    const payerBin = section.match(/Плательщик_ИНН=(\d+)/) || section.match(/ПлательщикИНН=(\d+)/) || section.match(/Плательщик_БИН=(\d+)/) || section.match(/ПлательщикБИН=(\d+)/);
+    const recipientBin = section.match(/Получатель_ИНН=(\d+)/) || section.match(/ПолучательИНН=(\d+)/) || section.match(/Получатель_БИН=(\d+)/) || section.match(/ПолучательБИН=(\d+)/);
+    if (payerBin) binCounts.set(payerBin[1], (binCounts.get(payerBin[1]) || 0) + 1);
+    if (recipientBin) binCounts.set(recipientBin[1], (binCounts.get(recipientBin[1]) || 0) + 1);
+  }
+
+  let maxCount = 0;
+  let mostFrequent = '';
+  binCounts.forEach((count, bin) => {
+    if (count > maxCount) { maxCount = count; mostFrequent = bin; }
+  });
+
+  return mostFrequent;
+}
+
 function parse1CFormat(content: string): Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] {
   const results: Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus' | 'matchSource' | 'reconciliation'>[] = [];
   const sections = content.split(/СекцияДокумент/g).slice(1);
 
   const ourAccount = extractOurAccount(content);
+  const ourBin = extractOurBin(content);
 
   for (const section of sections) {
     if (!section.includes('КонецДокумента')) continue;
@@ -231,24 +253,58 @@ function parse1CFormat(content: string): Omit<ParsedTransaction, 'matchedClientI
     let isIncome = true;
     let counterpartyNameRaw = payerNameRaw;
     let counterpartyBinRaw = payerBinRaw;
+    let directionDetermined = false;
 
     const normalOur = ourAccount ? normalizeAccount(ourAccount) : '';
     const normalPayer = payerAccount ? normalizeAccount(payerAccount) : '';
     const normalRecipient = recipientAccount ? normalizeAccount(recipientAccount) : '';
 
-    if (normalOur) {
+    if (normalOur && (normalPayer || normalRecipient)) {
       if (normalPayer && normalPayer === normalOur) {
         isIncome = false;
         counterpartyNameRaw = recipientNameRaw;
         counterpartyBinRaw = recipientBinRaw;
+        directionDetermined = true;
       } else if (normalRecipient && normalRecipient === normalOur) {
         isIncome = true;
         counterpartyNameRaw = payerNameRaw;
         counterpartyBinRaw = payerBinRaw;
+        directionDetermined = true;
       }
     }
 
-    if (!normalOur || (!normalPayer && !normalRecipient)) {
+    if (!directionDetermined && ourBin) {
+      if (payerBinRaw === ourBin && recipientBinRaw !== ourBin) {
+        isIncome = false;
+        counterpartyNameRaw = recipientNameRaw;
+        counterpartyBinRaw = recipientBinRaw;
+        directionDetermined = true;
+      } else if (recipientBinRaw === ourBin && payerBinRaw !== ourBin) {
+        isIncome = true;
+        counterpartyNameRaw = payerNameRaw;
+        counterpartyBinRaw = payerBinRaw;
+        directionDetermined = true;
+      } else if (payerBinRaw === ourBin && recipientBinRaw === ourBin) {
+        if (normalOur && normalPayer && normalPayer === normalOur) {
+          isIncome = false;
+          counterpartyNameRaw = recipientNameRaw;
+          counterpartyBinRaw = recipientBinRaw;
+          directionDetermined = true;
+        } else if (normalOur && normalRecipient && normalRecipient === normalOur) {
+          isIncome = true;
+          counterpartyNameRaw = payerNameRaw;
+          counterpartyBinRaw = payerBinRaw;
+          directionDetermined = true;
+        } else {
+          isIncome = false;
+          counterpartyNameRaw = recipientNameRaw || payerNameRaw;
+          counterpartyBinRaw = recipientBinRaw || payerBinRaw;
+          directionDetermined = true;
+        }
+      }
+    }
+
+    if (!directionDetermined) {
       const debitCredit = getField('ДебетКредит') || getField('ВидДвижения') || getField('ВидОперации') || '';
       const dcLower = debitCredit.toLowerCase();
       if (dcLower.includes('списан') || dcLower === '1' || dcLower.includes('дебет') || dcLower.includes('расход')) {
@@ -259,14 +315,6 @@ function parse1CFormat(content: string): Omit<ParsedTransaction, 'matchedClientI
         isIncome = true;
         counterpartyNameRaw = payerNameRaw || recipientNameRaw;
         counterpartyBinRaw = payerBinRaw || recipientBinRaw;
-      } else {
-        const docTypeMatch = section.match(/^=(.+?)[\r\n]/);
-        const docType = docTypeMatch ? docTypeMatch[1].trim().toLowerCase() : '';
-        if (docType.includes('списан') || docType.includes('исход')) {
-          isIncome = false;
-          counterpartyNameRaw = recipientNameRaw || payerNameRaw;
-          counterpartyBinRaw = recipientBinRaw || payerBinRaw;
-        }
       }
     }
 
