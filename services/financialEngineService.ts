@@ -5,9 +5,12 @@ import { getCurrentOrganizationId } from '../utils/organizationContext';
 export interface PnlResult {
   revenue: number;
   cogs: number;
+  cogsFot: number;
   grossProfit: number;
   grossMargin: number;
   salaries: number;
+  salariesRaw: number;
+  salariesSource: 'transactions' | 'payroll' | 'none';
   marketing: number;
   office: number;
   otherExpenses: number;
@@ -117,7 +120,8 @@ export const financialEngineService = {
     transactions: Transaction[],
     payrollTotal: number,
     projectExpensesTotal: number,
-    taxRate: number = 0.15
+    taxRate: number = 0.15,
+    cogsFotTotal: number = 0
   ): PnlResult {
     const revenue = transactions.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
 
@@ -126,12 +130,18 @@ export const financialEngineService = {
     const officeFromTx = Math.abs(transactions.filter(t => t.category === 'Office').reduce((s, t) => s + t.amount, 0));
     const otherFromTx = Math.abs(transactions.filter(t => t.category === 'Other' && t.amount < 0).reduce((s, t) => s + t.amount, 0));
 
-    const salaries = Math.max(salariesFromTx, payrollTotal);
+    const salariesRaw = Math.max(salariesFromTx, payrollTotal);
+    const salariesSource: PnlResult['salariesSource'] =
+      salariesFromTx === 0 && payrollTotal === 0 ? 'none' :
+      payrollTotal >= salariesFromTx ? 'payroll' : 'transactions';
+
+    const salaries = Math.max(0, salariesRaw - cogsFotTotal);
     const marketing = marketingFromTx;
     const office = officeFromTx;
     const otherExpenses = otherFromTx;
 
     const cogs = projectExpensesTotal;
+    const cogsFot = cogsFotTotal;
     const grossProfit = revenue - cogs;
     const grossMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
 
@@ -142,8 +152,8 @@ export const financialEngineService = {
     const netMargin = revenue > 0 ? (netProfit / revenue) * 100 : 0;
 
     return {
-      revenue, cogs, grossProfit, grossMargin,
-      salaries, marketing, office, otherExpenses,
+      revenue, cogs, cogsFot, grossProfit, grossMargin,
+      salaries, salariesRaw, salariesSource, marketing, office, otherExpenses,
       totalOpex, ebitda, taxes, netProfit, netMargin
     };
   },
@@ -153,10 +163,11 @@ export const financialEngineService = {
     month: string,
     payrollTotal: number,
     projectExpensesTotal: number,
-    taxRate?: number
+    taxRate?: number,
+    cogsFotTotal?: number
   ): PnlResult {
     const monthTx = filterTransactionsByMonth(allTransactions, month);
-    return this.calcPnl(monthTx, payrollTotal, projectExpensesTotal, taxRate);
+    return this.calcPnl(monthTx, payrollTotal, projectExpensesTotal, taxRate, cogsFotTotal);
   },
 
   calcCashFlow(

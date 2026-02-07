@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Client, User, Task, Project, Transaction, ProjectStatus, ClientStatus, TaskStatus } from '../../types';
-import { financialEngineService, BusinessHealthResult, LtvMetrics, BurnRateResult, PayrollBreakdown } from '../../services/financialEngineService';
+import { financialEngineService, BusinessHealthResult, LtvMetrics, BurnRateResult, PayrollBreakdown, CogsBreakdown } from '../../services/financialEngineService';
 
 interface OverviewTabProps {
   clients: Client[];
@@ -27,6 +27,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
   const [ltv, setLtv] = useState<LtvMetrics | null>(null);
   const [payrollBreakdown, setPayrollBreakdown] = useState<PayrollBreakdown | null>(null);
   const [payrollTotal, setPayrollTotal] = useState(0);
+  const [cogsFot, setCogsFot] = useState(0);
 
   const safeTrans = useMemo(() => Array.isArray(transactions) ? transactions : [], [transactions]);
   const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
@@ -125,19 +126,22 @@ const OverviewTab: React.FC<OverviewTabProps> = ({
       setPayrollTotal(result.total);
       setPayrollBreakdown(result);
     });
-  }, [currentMonth]);
+    financialEngineService.loadCogsBreakdown(currentMonth, projects).then(cogs => {
+      setCogsFot(cogs.fot);
+    });
+  }, [currentMonth, projects]);
 
   useEffect(() => {
     financialEngineService.calcLtv(clients, safeTrans).then(setLtv);
   }, [clients, safeTrans]);
 
   useEffect(() => {
-    const pnl = financialEngineService.calcPnl(safeTrans, 0, 0);
+    const pnl = financialEngineService.calcPnl(safeTrans, payrollTotal, 0, 0.15, 0);
     const result = financialEngineService.calcBusinessHealth(
       pnl, burnRate, overview.fotPercent, overview.lostRate, ar.total, overview.totalIncome
     );
     setHealth(result);
-  }, [safeTrans, burnRate, overview, ar]);
+  }, [safeTrans, burnRate, overview, ar, payrollTotal]);
 
   const problematicProjects = useMemo(() => unitProjectList.filter(p => p.margin < 15), [unitProjectList]);
   const topProjects = useMemo(() => unitProjectList.slice(0, 5), [unitProjectList]);
