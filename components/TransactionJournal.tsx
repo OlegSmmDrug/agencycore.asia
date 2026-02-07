@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Download, Filter, Search, Calendar, DollarSign, User as UserIcon, X } from 'lucide-react';
+import { Plus, Download, Upload, Search, Calendar, DollarSign, User as UserIcon, X } from 'lucide-react';
 import { Transaction, Client, PaymentType, Project, User } from '../types';
 import Modal from './Modal';
+import BankImportModal from './BankImportModal';
 
 interface Props {
   transactions: Transaction[];
@@ -21,6 +22,7 @@ const PAYMENT_TYPES = [
 
 export default function TransactionJournal({ transactions, clients, projects, users, onAddTransaction }: Props) {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<PaymentType | 'all'>('all');
   const [filterClient, setFilterClient] = useState<string>('all');
@@ -137,6 +139,18 @@ export default function TransactionJournal({ transactions, clients, projects, us
     return PAYMENT_TYPES.find(pt => pt.value === type)?.label || type;
   };
 
+  const handleBankImport = (items: Array<{
+    clientId: string;
+    amount: number;
+    date: string;
+    type: PaymentType;
+    description: string;
+  }>) => {
+    items.forEach(item => {
+      onAddTransaction(item);
+    });
+  };
+
   const exportToCSV = () => {
     const headers = ['Дата', 'Клиент', 'Тип платежа', 'Сумма', 'Описание'];
     const rows = filteredTransactions.map(t => [
@@ -177,11 +191,20 @@ export default function TransactionJournal({ transactions, clients, projects, us
             <span className="hidden sm:inline">Экспорт</span>
           </button>
           <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="flex items-center justify-center gap-2 px-3 md:px-4 py-2 border border-blue-300 text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 flex-1 sm:flex-initial"
+          >
+            <Upload className="h-4 w-4" />
+            <span className="hidden sm:inline">Импорт выписки</span>
+            <span className="sm:hidden">Импорт</span>
+          </button>
+          <button
             onClick={() => setIsAddModalOpen(true)}
             className="flex items-center justify-center gap-2 px-3 md:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex-1 sm:flex-initial"
           >
             <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Добавить</span> <span className="sm:hidden">Добавить</span>
+            <span className="hidden sm:inline">Добавить</span>
+            <span className="sm:hidden">Добавить</span>
           </button>
         </div>
       </div>
@@ -353,6 +376,14 @@ export default function TransactionJournal({ transactions, clients, projects, us
           </div>
         )}
       </div>
+
+      <BankImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        clients={clients}
+        transactions={transactions}
+        onImport={handleBankImport}
+      />
 
       <Modal isOpen={isAddModalOpen} onClose={resetForm} title="Добавить платеж">
         <form onSubmit={handleAddTransaction} className="space-y-4">
