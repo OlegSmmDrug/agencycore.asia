@@ -6,6 +6,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import ChannelTable from './marketing/ChannelTable';
 import AddChannelModal from './marketing/AddChannelModal';
 import SpendEntryModal from './marketing/SpendEntryModal';
+import UtmAnalysis from './marketing/UtmAnalysis';
+import { getEffectiveChannel, CHANNEL_COLORS, SOURCE_LABELS } from './marketing/utmMapping';
 
 interface MarketingTabProps {
   clients: Client[];
@@ -72,23 +74,19 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions }) =>
   const cac = newClientsWon > 0 && totalSpend > 0 ? totalSpend / newClientsWon : 0;
   const roas = totalSpend > 0 ? monthRevenue / totalSpend : 0;
 
-  const leadsBySource = useMemo(() => {
-    const sources: Record<string, number> = {};
+  const leadsByChannel = useMemo(() => {
+    const channels: Record<string, number> = {};
     clients.forEach(c => {
-      const src = c.source || 'Other';
-      sources[src] = (sources[src] || 0) + 1;
+      const ch = getEffectiveChannel(c);
+      channels[ch] = (channels[ch] || 0) + 1;
     });
-    const colors: Record<string, string> = {
-      Website: '#3b82f6', Referral: '#10b981', 'Cold Call': '#f59e0b',
-      Socials: '#ec4899', Creatium: '#06b6d4', Other: '#94a3b8', Manual: '#64748b',
-    };
-    const total = Object.values(sources).reduce((a, b) => a + b, 0);
-    return Object.entries(sources).sort((a, b) => b[1] - a[1]).map(([source, count]) => ({
-      source, count, fill: colors[source] || '#94a3b8', percent: total > 0 ? (count / total * 100).toFixed(1) : '0',
+    const total = Object.values(channels).reduce((a, b) => a + b, 0);
+    return Object.entries(channels).sort((a, b) => b[1] - a[1]).map(([channel, count]) => ({
+      source: channel, count, fill: CHANNEL_COLORS[channel] || '#94a3b8', percent: total > 0 ? (count / total * 100).toFixed(1) : '0',
     }));
   }, [clients]);
 
-  const sourceConversion = useMemo(() => {
+  const channelConversion = useMemo(() => {
     const data: Record<string, { total: number; won: number; revenue: number }> = {};
     const clientRevenue: Record<string, number> = {};
     transactions.filter(t => t.amount > 0 && t.clientId).forEach(t => {
@@ -96,29 +94,29 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions }) =>
     });
 
     clients.forEach(c => {
-      const src = c.source || 'Other';
-      if (!data[src]) data[src] = { total: 0, won: 0, revenue: 0 };
-      data[src].total++;
+      const ch = getEffectiveChannel(c);
+      if (!data[ch]) data[ch] = { total: 0, won: 0, revenue: 0 };
+      data[ch].total++;
       if ([ClientStatus.IN_WORK, ClientStatus.WON, ClientStatus.CONTRACT].includes(c.status)) {
-        data[src].won++;
-        data[src].revenue += clientRevenue[c.id] || 0;
+        data[ch].won++;
+        data[ch].revenue += clientRevenue[c.id] || 0;
       }
     });
 
-    const colors: Record<string, string> = {
-      Website: '#3b82f6', Referral: '#10b981', 'Cold Call': '#f59e0b',
-      Socials: '#ec4899', Creatium: '#06b6d4', Other: '#94a3b8', Manual: '#64748b',
-    };
-
-    return Object.entries(data).map(([source, d]) => ({
-      source,
+    return Object.entries(data).map(([channel, d]) => ({
+      source: channel,
       leads: d.total,
       clients: d.won,
       conversion: d.total > 0 ? (d.won / d.total * 100) : 0,
       revenue: d.revenue,
-      fill: colors[source] || '#94a3b8',
+      fill: CHANNEL_COLORS[channel] || '#94a3b8',
     })).sort((a, b) => b.revenue - a.revenue);
   }, [clients, transactions]);
+
+  const utmCoverage = useMemo(() => {
+    const withUtm = clients.filter(c => c.utmSource && c.utmSource !== '-').length;
+    return clients.length > 0 ? Math.round(withUtm / clients.length * 100) : 0;
+  }, [clients]);
 
   const spendByMonth = useMemo(() => {
     const months: Record<string, Record<string, number>> = {};
@@ -199,6 +197,7 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions }) =>
         channels={channels}
         spendData={currentMonthSpend}
         clients={monthClients}
+        allClients={clients}
         onAddChannel={() => setShowAddChannel(true)}
         onEditSpend={setShowSpendEntry}
         onDeleteChannel={handleDeleteChannel}
@@ -207,16 +206,23 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions }) =>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className={UI.CARD}>
-          <h3 className="font-black text-xs uppercase tracking-widest mb-6 text-slate-900 flex items-center gap-2">
-            <div className="w-1 h-4 bg-blue-500 rounded-full" /> Атрибуция лидов по источникам
-          </h3>
-          {leadsBySource.length > 0 ? (
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="font-black text-xs uppercase tracking-widest text-slate-900 flex items-center gap-2">
+              <div className="w-1 h-4 bg-blue-500 rounded-full" /> Каналы привлечения
+            </h3>
+            {utmCoverage > 0 && (
+              <span className="px-2.5 py-1 bg-blue-50 text-blue-600 text-[9px] font-black rounded-lg border border-blue-100">
+                UTM: {utmCoverage}%
+              </span>
+            )}
+          </div>
+          {leadsByChannel.length > 0 ? (
             <div className="flex items-center gap-6">
               <div className="w-48 h-48 shrink-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={leadsBySource}
+                      data={leadsByChannel}
                       dataKey="count"
                       nameKey="source"
                       cx="50%"
@@ -226,7 +232,7 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions }) =>
                       paddingAngle={2}
                       strokeWidth={0}
                     >
-                      {leadsBySource.map((entry, i) => (
+                      {leadsByChannel.map((entry, i) => (
                         <Cell key={i} fill={entry.fill} />
                       ))}
                     </Pie>
@@ -238,7 +244,7 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions }) =>
                 </ResponsiveContainer>
               </div>
               <div className="flex-1 space-y-2">
-                {leadsBySource.map((s, i) => (
+                {leadsByChannel.map((s, i) => (
                   <div key={i} className="flex items-center gap-3">
                     <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.fill }} />
                     <span className="text-[11px] font-bold text-slate-600 flex-1">{s.source}</span>
@@ -255,14 +261,14 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions }) =>
 
         <div className={UI.CARD}>
           <h3 className="font-black text-xs uppercase tracking-widest mb-6 text-slate-900 flex items-center gap-2">
-            <div className="w-1 h-4 bg-emerald-500 rounded-full" /> Конверсия по источникам
+            <div className="w-1 h-4 bg-emerald-500 rounded-full" /> Конверсия по каналам
           </h3>
-          {sourceConversion.length > 0 ? (
+          {channelConversion.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
                   <tr>
-                    <th className="pb-3">Источник</th>
+                    <th className="pb-3">Канал</th>
                     <th className="pb-3 text-right">Лиды</th>
                     <th className="pb-3 text-right">Клиенты</th>
                     <th className="pb-3 text-right">Конверсия</th>
@@ -270,7 +276,7 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions }) =>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {sourceConversion.map((s, i) => (
+                  {channelConversion.map((s, i) => (
                     <tr key={i} className="hover:bg-slate-50/50 transition-all">
                       <td className="py-3">
                         <div className="flex items-center gap-2">
@@ -298,6 +304,8 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions }) =>
           )}
         </div>
       </div>
+
+      <UtmAnalysis clients={clients} transactions={transactions} />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className={UI.CARD}>

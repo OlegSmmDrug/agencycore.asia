@@ -1,11 +1,13 @@
 import React from 'react';
 import { MarketingChannel, MarketingSpend } from '../../../services/marketingChannelService';
 import { Client, ClientStatus } from '../../../types';
+import { countUtmLeadsForChannel } from './utmMapping';
 
 interface ChannelTableProps {
   channels: MarketingChannel[];
   spendData: MarketingSpend[];
   clients: Client[];
+  allClients?: Client[];
   month: string;
   onAddChannel: () => void;
   onEditSpend: (channel: MarketingChannel) => void;
@@ -19,7 +21,7 @@ const UI = {
 const fmt = (v: number) => `${Math.round(v).toLocaleString()} ₸`;
 
 const ChannelTable: React.FC<ChannelTableProps> = ({
-  channels, spendData, clients, month, onAddChannel, onEditSpend, onDeleteChannel,
+  channels, spendData, clients, allClients, month, onAddChannel, onEditSpend, onDeleteChannel,
 }) => {
   const activeChannels = channels.filter(c => c.isActive);
 
@@ -31,11 +33,13 @@ const ChannelTable: React.FC<ChannelTableProps> = ({
     const impressions = spend?.impressions || 0;
     const cpl = leads > 0 && amount > 0 ? amount / leads : 0;
     const ctr = impressions > 0 ? (clicks / impressions * 100) : 0;
+    const utmLeads = allClients ? countUtmLeadsForChannel(ch.name, allClients) : 0;
 
     return {
       ...ch,
       amount,
       leads,
+      utmLeads,
       clicks,
       impressions,
       cpl,
@@ -70,7 +74,8 @@ const ChannelTable: React.FC<ChannelTableProps> = ({
                 <th className="pb-4">Канал</th>
                 <th className="pb-4 text-center">Тип</th>
                 <th className="pb-4 text-right">Расход</th>
-                <th className="pb-4 text-right">Лиды</th>
+                <th className="pb-4 text-right">Лиды (ручн.)</th>
+                <th className="pb-4 text-right">Лиды (UTM)</th>
                 <th className="pb-4 text-right">CPL</th>
                 <th className="pb-4 text-right">Клики</th>
                 <th className="pb-4 text-right">CTR</th>
@@ -103,6 +108,11 @@ const ChannelTable: React.FC<ChannelTableProps> = ({
                     {ch.amount > 0 ? fmt(ch.amount) : '--'}
                   </td>
                   <td className="py-4 text-right text-sm text-slate-600 font-bold">{ch.leads || '--'}</td>
+                  <td className="py-4 text-right">
+                    {ch.utmLeads > 0 ? (
+                      <span className="text-sm font-bold text-blue-600">{ch.utmLeads}</span>
+                    ) : <span className="text-xs text-slate-300">--</span>}
+                  </td>
                   <td className="py-4 text-right">
                     {ch.cpl > 0 ? (
                       <span className="text-sm font-black text-slate-900">{fmt(ch.cpl)}</span>
@@ -145,6 +155,9 @@ const ChannelTable: React.FC<ChannelTableProps> = ({
                   <td className="py-4" />
                   <td className="py-4 text-right font-black text-sm text-slate-900">{totalSpend > 0 ? fmt(totalSpend) : '--'}</td>
                   <td className="py-4 text-right text-sm text-slate-600 font-bold">{totalLeads || '--'}</td>
+                  <td className="py-4 text-right text-sm font-bold text-blue-600">
+                    {channelMetrics.reduce((s, c) => s + c.utmLeads, 0) || '--'}
+                  </td>
                   <td className="py-4 text-right font-black text-sm text-slate-900">
                     {totalLeads > 0 && totalSpend > 0 ? fmt(totalSpend / totalLeads) : '--'}
                   </td>
