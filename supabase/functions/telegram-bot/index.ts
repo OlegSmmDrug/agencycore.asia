@@ -8,33 +8,30 @@ const corsHeaders = {
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-function getSupabaseClient() {
+type SupaClient = ReturnType<typeof createClient>;
+
+function getSupabaseClient(): SupaClient {
   return createClient(
     Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 }
 
-async function getBotToken(
-  supabase: ReturnType<typeof createClient>
-): Promise<string> {
+async function getBotToken(supabase: SupaClient): Promise<string> {
   const { data, error } = await supabase
     .from("telegram_bot_config")
     .select("bot_token")
     .limit(1)
     .maybeSingle();
-
-  if (error || !data) {
-    throw new Error("Bot token not configured");
-  }
+  if (error || !data) throw new Error("Bot token not configured");
   return data.bot_token;
 }
 
-async function sendTelegramMessage(
+async function sendTg(
   botToken: string,
   chatId: number | string,
   text: string,
-  parseMode: string = "HTML"
+  extra: Record<string, unknown> = {},
 ): Promise<{ ok: boolean; description?: string }> {
   const resp = await fetch(
     `https://api.telegram.org/bot${botToken}/sendMessage`,
@@ -44,9 +41,10 @@ async function sendTelegramMessage(
       body: JSON.stringify({
         chat_id: chatId,
         text,
-        parse_mode: parseMode,
+        parse_mode: "HTML",
+        ...extra,
       }),
-    }
+    },
   );
   const result = await resp.json();
   if (!result.ok) {
@@ -55,39 +53,709 @@ async function sendTelegramMessage(
   return result;
 }
 
+function keyboard(rows: string[][]) {
+  return {
+    reply_markup: {
+      keyboard: rows.map((row) => row.map((t) => ({ text: t }))),
+      resize_keyboard: true,
+      one_time_keyboard: false,
+    },
+  };
+}
+
+type UserRole =
+  | "director"
+  | "pm"
+  | "smm"
+  | "targetologist"
+  | "videographer"
+  | "mobilograph"
+  | "photographer"
+  | "sales"
+  | "accountant"
+  | "member";
+
+function detectRole(jobTitle: string | null | undefined): UserRole {
+  if (!jobTitle) return "member";
+  const t = jobTitle.toLowerCase();
+  if (/ceo|директор|владел|собственн/i.test(t)) return "director";
+  if (/pm|project.?manager|проджект|проект.?менедж/i.test(t)) return "pm";
+  if (/smm|смм|контент/i.test(t)) return "smm";
+  if (/target|таргет/i.test(t)) return "targetologist";
+  if (/video|видеограф/i.test(t)) return "videographer";
+  if (/mobilo|мобилограф/i.test(t)) return "mobilograph";
+  if (/photo|фотограф/i.test(t)) return "photographer";
+  if (/sale|продаж|менеджер/i.test(t)) return "sales";
+  if (/бухгалт|accountant/i.test(t)) return "accountant";
+  return "member";
+}
+
+interface LinkedUser {
+  userId: string;
+  organizationId: string;
+  name: string;
+  jobTitle: string | null;
+  role: UserRole;
+}
+
+async function getLinkedUser(
+  supabase: SupaClient,
+  chatId: number,
+): Promise<LinkedUser | null> {
+  const { data: link } = await supabase
+    .from("user_telegram_links")
+    .select("user_id, organization_id")
+    .eq("telegram_chat_id", chatId)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (!link) return null;
+
+  const { data: user } = await supabase
+    .from("users")
+    .select("name, job_title")
+    .eq("id", link.user_id)
+    .maybeSingle();
+
+  return {
+    userId: link.user_id,
+    organizationId: link.organization_id,
+    name: user?.name || "—",
+    jobTitle: user?.job_title || null,
+    role: detectRole(user?.job_title),
+  };
+}
+
+const ROLE_MENUS: Record<UserRole, string[][]> = {
+  director: [
+    ["Мои задачи", "Дедлайны"],
+    ["Отчёт по команде", "Финансовая сводка"],
+    ["Новые клиенты", "Статус проектов"],
+  ],
+  pm: [
+    ["Мои задачи", "Дедлайны"],
+    ["Статус проектов", "Загрузка команды"],
+  ],
+  smm: [
+    ["Мои задачи", "Дедлайны"],
+    ["Контент-план", "Публикации сегодня"],
+  ],
+  targetologist: [
+    ["Мои задачи", "Дедлайны"],
+    ["Рекламные кампании"],
+  ],
+  videographer: [
+    ["Мои задачи", "Дедлайны"],
+    ["Съёмки на неделю"],
+  ],
+  mobilograph: [
+    ["Мои задачи", "Дедлайны"],
+    ["Съёмки на неделю"],
+  ],
+  photographer: [
+    ["Мои задачи", "Дедлайны"],
+    ["Съёмки на неделю"],
+  ],
+  sales: [
+    ["Мои задачи", "Дедлайны"],
+    ["Новые клиенты", "Воронка продаж"],
+  ],
+  accountant: [
+    ["Мои задачи", "Дедлайны"],
+    ["Финансовая сводка"],
+  ],
+  member: [
+    ["Мои задачи", "Дедлайны"],
+  ],
+};
+
+function fmtDate(d: string | null): string {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function statusEmoji(s: string): string {
+  const map: Record<string, string> = {
+    "todo": "⬜",
+    "in_progress": "🔵",
+    "review": "🟡",
+    "done": "✅",
+    "blocked": "🔴",
+  };
+  return map[s] || "⬜";
+}
+
+async function handleMyTasks(
+  supabase: SupaClient,
+  botToken: string,
+  chatId: number,
+  user: LinkedUser,
+) {
+  const { data: tasks } = await supabase
+    .from("tasks")
+    .select("title, status, due_date, project_id, projects(name)")
+    .eq("assignee_id", user.userId)
+    .eq("organization_id", user.organizationId)
+    .in("status", ["todo", "in_progress", "review", "blocked"])
+    .order("due_date", { ascending: true, nullsFirst: false })
+    .limit(15);
+
+  if (!tasks || tasks.length === 0) {
+    await sendTg(botToken, chatId, "У вас нет активных задач.");
+    return;
+  }
+
+  let text = `<b>Ваши задачи (${tasks.length}):</b>\n\n`;
+  for (const t of tasks) {
+    const proj = (t as any).projects?.name || "";
+    const due = t.due_date ? ` | до ${fmtDate(t.due_date)}` : "";
+    text += `${statusEmoji(t.status)} <b>${t.title}</b>\n`;
+    text += `   ${proj}${due}\n\n`;
+  }
+
+  await sendTg(botToken, chatId, text);
+}
+
+async function handleDeadlines(
+  supabase: SupaClient,
+  botToken: string,
+  chatId: number,
+  user: LinkedUser,
+) {
+  const now = new Date();
+  const weekLater = new Date(now);
+  weekLater.setDate(weekLater.getDate() + 7);
+
+  const { data: tasks } = await supabase
+    .from("tasks")
+    .select("title, status, due_date, projects(name)")
+    .eq("assignee_id", user.userId)
+    .eq("organization_id", user.organizationId)
+    .in("status", ["todo", "in_progress", "review"])
+    .not("due_date", "is", null)
+    .lte("due_date", weekLater.toISOString())
+    .order("due_date", { ascending: true })
+    .limit(15);
+
+  if (!tasks || tasks.length === 0) {
+    await sendTg(botToken, chatId, "Нет дедлайнов на ближайшие 7 дней.");
+    return;
+  }
+
+  let text = `<b>Дедлайны (7 дней):</b>\n\n`;
+  for (const t of tasks) {
+    const proj = (t as any).projects?.name || "";
+    const dueDate = new Date(t.due_date);
+    const isOverdue = dueDate < now;
+    const prefix = isOverdue ? "🔴 ПРОСРОЧЕНО" : "🟡";
+    text += `${prefix} <b>${t.title}</b>\n`;
+    text += `   ${proj} | ${fmtDate(t.due_date)}\n\n`;
+  }
+
+  await sendTg(botToken, chatId, text);
+}
+
+async function handleTeamReport(
+  supabase: SupaClient,
+  botToken: string,
+  chatId: number,
+  user: LinkedUser,
+) {
+  const { data: members } = await supabase
+    .from("users")
+    .select("id, name, job_title")
+    .eq("organization_id", user.organizationId)
+    .eq("is_active", true);
+
+  if (!members || members.length === 0) {
+    await sendTg(botToken, chatId, "Нет данных о команде.");
+    return;
+  }
+
+  let text = `<b>Отчёт по команде (${members.length} чел.):</b>\n\n`;
+
+  for (const m of members) {
+    const { count: activeTasks } = await supabase
+      .from("tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("assignee_id", m.id)
+      .eq("organization_id", user.organizationId)
+      .in("status", ["todo", "in_progress", "review"]);
+
+    const { count: overdue } = await supabase
+      .from("tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("assignee_id", m.id)
+      .eq("organization_id", user.organizationId)
+      .in("status", ["todo", "in_progress"])
+      .lt("due_date", new Date().toISOString());
+
+    const overdueLabel = (overdue || 0) > 0 ? ` | 🔴 просрочено: ${overdue}` : "";
+    text += `<b>${m.name}</b> (${m.job_title || "—"})\n`;
+    text += `   Задач: ${activeTasks || 0}${overdueLabel}\n\n`;
+  }
+
+  await sendTg(botToken, chatId, text);
+}
+
+async function handleFinanceSummary(
+  supabase: SupaClient,
+  botToken: string,
+  chatId: number,
+  user: LinkedUser,
+) {
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  const { data: txIn } = await supabase
+    .from("transactions")
+    .select("amount")
+    .eq("organization_id", user.organizationId)
+    .eq("type", "income")
+    .gte("date", monthStart.toISOString());
+
+  const { data: txOut } = await supabase
+    .from("transactions")
+    .select("amount")
+    .eq("organization_id", user.organizationId)
+    .eq("type", "expense")
+    .gte("date", monthStart.toISOString());
+
+  const income = (txIn || []).reduce((s, t) => s + (t.amount || 0), 0);
+  const expense = (txOut || []).reduce((s, t) => s + (t.amount || 0), 0);
+  const profit = income - expense;
+
+  const { count: activeProjects } = await supabase
+    .from("projects")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", user.organizationId)
+    .in("status", ["active", "in_progress"]);
+
+  const { count: activeClients } = await supabase
+    .from("clients")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", user.organizationId)
+    .eq("status", "active");
+
+  const month = new Date().toLocaleDateString("ru-RU", {
+    month: "long",
+    year: "numeric",
+  });
+
+  let text = `<b>Финансовая сводка за ${month}:</b>\n\n`;
+  text += `Доходы: <b>${Math.round(income).toLocaleString()} ₸</b>\n`;
+  text += `Расходы: <b>${Math.round(expense).toLocaleString()} ₸</b>\n`;
+  text += `Прибыль: <b>${Math.round(profit).toLocaleString()} ₸</b>\n\n`;
+  text += `Активных проектов: <b>${activeProjects || 0}</b>\n`;
+  text += `Активных клиентов: <b>${activeClients || 0}</b>`;
+
+  await sendTg(botToken, chatId, text);
+}
+
+async function handleNewClients(
+  supabase: SupaClient,
+  botToken: string,
+  chatId: number,
+  user: LinkedUser,
+) {
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 7);
+
+  const { data: clients } = await supabase
+    .from("clients")
+    .select("name, company, status, created_at, lead_source")
+    .eq("organization_id", user.organizationId)
+    .gte("created_at", weekAgo.toISOString())
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (!clients || clients.length === 0) {
+    await sendTg(botToken, chatId, "За последнюю неделю новых клиентов нет.");
+    return;
+  }
+
+  let text = `<b>Новые клиенты за 7 дней (${clients.length}):</b>\n\n`;
+  for (const c of clients) {
+    const source = c.lead_source ? ` | ${c.lead_source}` : "";
+    text += `<b>${c.name}</b>${c.company ? ` (${c.company})` : ""}\n`;
+    text += `   ${c.status || "new"}${source} | ${fmtDate(c.created_at)}\n\n`;
+  }
+
+  await sendTg(botToken, chatId, text);
+}
+
+async function handleProjectStatus(
+  supabase: SupaClient,
+  botToken: string,
+  chatId: number,
+  user: LinkedUser,
+) {
+  const { data: projects } = await supabase
+    .from("projects")
+    .select("name, status, deadline, client_name, team_ids")
+    .eq("organization_id", user.organizationId)
+    .in("status", ["active", "in_progress", "review"])
+    .order("deadline", { ascending: true, nullsFirst: false })
+    .limit(10);
+
+  if (!projects || projects.length === 0) {
+    await sendTg(botToken, chatId, "Нет активных проектов.");
+    return;
+  }
+
+  let text = `<b>Активные проекты (${projects.length}):</b>\n\n`;
+  for (const p of projects) {
+    const deadline = p.deadline ? ` | до ${fmtDate(p.deadline)}` : "";
+    const isOverdue = p.deadline && new Date(p.deadline) < new Date();
+    const prefix = isOverdue ? "🔴" : "🟢";
+    text += `${prefix} <b>${p.name}</b>\n`;
+    text += `   ${p.client_name || "—"}${deadline}\n\n`;
+  }
+
+  await sendTg(botToken, chatId, text);
+}
+
+async function handleTeamWorkload(
+  supabase: SupaClient,
+  botToken: string,
+  chatId: number,
+  user: LinkedUser,
+) {
+  const { data: members } = await supabase
+    .from("users")
+    .select("id, name, job_title")
+    .eq("organization_id", user.organizationId)
+    .eq("is_active", true);
+
+  if (!members || members.length === 0) {
+    await sendTg(botToken, chatId, "Нет данных о команде.");
+    return;
+  }
+
+  let text = `<b>Загрузка команды:</b>\n\n`;
+  for (const m of members) {
+    const { count } = await supabase
+      .from("tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("assignee_id", m.id)
+      .in("status", ["in_progress", "review"]);
+
+    const bar = "▓".repeat(Math.min(count || 0, 10)) +
+      "░".repeat(Math.max(10 - (count || 0), 0));
+    text += `${bar} <b>${m.name}</b> — ${count || 0} задач\n`;
+  }
+
+  await sendTg(botToken, chatId, text);
+}
+
+async function handleShootingSchedule(
+  supabase: SupaClient,
+  botToken: string,
+  chatId: number,
+  user: LinkedUser,
+) {
+  const now = new Date();
+  const weekLater = new Date(now);
+  weekLater.setDate(weekLater.getDate() + 7);
+
+  const { data: tasks } = await supabase
+    .from("tasks")
+    .select("title, status, due_date, start_time, end_time, projects(name)")
+    .eq("assignee_id", user.userId)
+    .eq("organization_id", user.organizationId)
+    .in("status", ["todo", "in_progress"])
+    .not("due_date", "is", null)
+    .gte("due_date", now.toISOString().split("T")[0])
+    .lte("due_date", weekLater.toISOString().split("T")[0])
+    .order("due_date", { ascending: true })
+    .limit(15);
+
+  if (!tasks || tasks.length === 0) {
+    await sendTg(botToken, chatId, "Нет съёмок на ближайшую неделю.");
+    return;
+  }
+
+  let text = `<b>Съёмки на неделю:</b>\n\n`;
+  let lastDate = "";
+  for (const t of tasks) {
+    const dateStr = fmtDate(t.due_date);
+    if (dateStr !== lastDate) {
+      text += `\n📅 <b>${dateStr}</b>\n`;
+      lastDate = dateStr;
+    }
+    const proj = (t as any).projects?.name || "";
+    const time = t.start_time
+      ? ` ${t.start_time}${t.end_time ? "-" + t.end_time : ""}`
+      : "";
+    text += `   ${statusEmoji(t.status)} ${t.title}${time}\n`;
+    if (proj) text += `      ${proj}\n`;
+  }
+
+  await sendTg(botToken, chatId, text);
+}
+
+async function handleContentPlan(
+  supabase: SupaClient,
+  botToken: string,
+  chatId: number,
+  user: LinkedUser,
+) {
+  const now = new Date();
+  const weekLater = new Date(now);
+  weekLater.setDate(weekLater.getDate() + 7);
+
+  const { data: tasks } = await supabase
+    .from("tasks")
+    .select("title, status, due_date, content_type, projects(name)")
+    .eq("assignee_id", user.userId)
+    .eq("organization_id", user.organizationId)
+    .in("status", ["todo", "in_progress", "review"])
+    .not("due_date", "is", null)
+    .gte("due_date", now.toISOString().split("T")[0])
+    .lte("due_date", weekLater.toISOString().split("T")[0])
+    .order("due_date", { ascending: true })
+    .limit(20);
+
+  if (!tasks || tasks.length === 0) {
+    await sendTg(botToken, chatId, "Нет контента на ближайшую неделю.");
+    return;
+  }
+
+  let text = `<b>Контент-план (7 дней):</b>\n\n`;
+  let lastDate = "";
+  for (const t of tasks) {
+    const dateStr = fmtDate(t.due_date);
+    if (dateStr !== lastDate) {
+      text += `\n📅 <b>${dateStr}</b>\n`;
+      lastDate = dateStr;
+    }
+    const proj = (t as any).projects?.name || "";
+    const type = t.content_type ? ` [${t.content_type}]` : "";
+    text += `   ${statusEmoji(t.status)} ${t.title}${type}\n`;
+    if (proj) text += `      ${proj}\n`;
+  }
+
+  await sendTg(botToken, chatId, text);
+}
+
+async function handleTodayPublications(
+  supabase: SupaClient,
+  botToken: string,
+  chatId: number,
+  user: LinkedUser,
+) {
+  const today = new Date().toISOString().split("T")[0];
+
+  const { data: tasks } = await supabase
+    .from("tasks")
+    .select("title, status, content_type, projects(name)")
+    .eq("assignee_id", user.userId)
+    .eq("organization_id", user.organizationId)
+    .eq("due_date", today)
+    .order("created_at", { ascending: true })
+    .limit(20);
+
+  if (!tasks || tasks.length === 0) {
+    await sendTg(botToken, chatId, "На сегодня публикаций нет.");
+    return;
+  }
+
+  let text = `<b>Публикации на сегодня (${tasks.length}):</b>\n\n`;
+  for (const t of tasks) {
+    const proj = (t as any).projects?.name || "";
+    const type = t.content_type ? ` [${t.content_type}]` : "";
+    text += `${statusEmoji(t.status)} <b>${t.title}</b>${type}\n`;
+    if (proj) text += `   ${proj}\n`;
+    text += "\n";
+  }
+
+  await sendTg(botToken, chatId, text);
+}
+
+async function handleSalesFunnel(
+  supabase: SupaClient,
+  botToken: string,
+  chatId: number,
+  user: LinkedUser,
+) {
+  const { data: stages } = await supabase
+    .from("crm_pipeline_stages")
+    .select("id, name, sort_order")
+    .eq("organization_id", user.organizationId)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true });
+
+  if (!stages || stages.length === 0) {
+    await sendTg(botToken, chatId, "Воронка продаж не настроена.");
+    return;
+  }
+
+  let text = `<b>Воронка продаж:</b>\n\n`;
+  for (const stage of stages) {
+    const { count } = await supabase
+      .from("clients")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", user.organizationId)
+      .eq("pipeline_stage_id", stage.id);
+
+    const bar = "▓".repeat(Math.min(count || 0, 8)) +
+      "░".repeat(Math.max(8 - (count || 0), 0));
+    text += `${bar} <b>${stage.name}</b> — ${count || 0}\n`;
+  }
+
+  await sendTg(botToken, chatId, text);
+}
+
+async function handleAdCampaigns(
+  supabase: SupaClient,
+  botToken: string,
+  chatId: number,
+  user: LinkedUser,
+) {
+  const { data: projects } = await supabase
+    .from("projects")
+    .select("name, facebook_access_token, ad_account_id")
+    .eq("organization_id", user.organizationId)
+    .in("status", ["active", "in_progress"])
+    .not("facebook_access_token", "is", null)
+    .limit(5);
+
+  if (!projects || projects.length === 0) {
+    await sendTg(
+      botToken,
+      chatId,
+      "Нет проектов с подключённой рекламой.\nНастройте интеграцию в CRM.",
+    );
+    return;
+  }
+
+  let text = `<b>Проекты с рекламой (${projects.length}):</b>\n\n`;
+  for (const p of projects) {
+    const hasAd = p.ad_account_id ? "✅ Подключен" : "⬜ Нет аккаунта";
+    text += `<b>${p.name}</b> — ${hasAd}\n`;
+  }
+  text +=
+    "\nПодробная статистика доступна в разделе <b>Маркетинг</b> в AgencyCore.";
+
+  await sendTg(botToken, chatId, text);
+}
+
+const TEXT_HANDLERS: Record<
+  string,
+  (s: SupaClient, b: string, c: number, u: LinkedUser) => Promise<void>
+> = {
+  "Мои задачи": handleMyTasks,
+  "Дедлайны": handleDeadlines,
+  "Отчёт по команде": handleTeamReport,
+  "Финансовая сводка": handleFinanceSummary,
+  "Новые клиенты": handleNewClients,
+  "Статус проектов": handleProjectStatus,
+  "Загрузка команды": handleTeamWorkload,
+  "Съёмки на неделю": handleShootingSchedule,
+  "Контент-план": handleContentPlan,
+  "Публикации сегодня": handleTodayPublications,
+  "Воронка продаж": handleSalesFunnel,
+  "Рекламные кампании": handleAdCampaigns,
+};
+
+async function handleMenu(
+  supabase: SupaClient,
+  botToken: string,
+  chatId: number,
+) {
+  const user = await getLinkedUser(supabase, chatId);
+  if (!user) {
+    await sendTg(
+      botToken,
+      chatId,
+      "Аккаунт не привязан.\nИспользуйте /link XXXXXX для привязки.",
+    );
+    return;
+  }
+
+  const menu = ROLE_MENUS[user.role] || ROLE_MENUS.member;
+  const roleName: Record<UserRole, string> = {
+    director: "Директор",
+    pm: "Проект-менеджер",
+    smm: "SMM-менеджер",
+    targetologist: "Таргетолог",
+    videographer: "Видеограф",
+    mobilograph: "Мобилограф",
+    photographer: "Фотограф",
+    sales: "Менеджер по продажам",
+    accountant: "Бухгалтер",
+    member: "Сотрудник",
+  };
+
+  await sendTg(
+    botToken,
+    chatId,
+    `<b>${user.name}</b> | ${roleName[user.role]}\n\nВыберите действие:`,
+    keyboard(menu),
+  );
+}
+
+async function handleTextQuery(
+  supabase: SupaClient,
+  botToken: string,
+  chatId: number,
+  text: string,
+) {
+  const handler = TEXT_HANDLERS[text];
+  if (!handler) return false;
+
+  const user = await getLinkedUser(supabase, chatId);
+  if (!user) {
+    await sendTg(
+      botToken,
+      chatId,
+      "Аккаунт не привязан. Используйте /link XXXXXX",
+    );
+    return true;
+  }
+
+  await handler(supabase, botToken, chatId, user);
+  return true;
+}
+
 async function handleStart(
   botToken: string,
   chatId: number,
-  firstName: string
+  firstName: string,
 ) {
   const text =
     `Добро пожаловать, <b>${firstName}</b>!\n\n` +
-    `Я бот <b>AgencyCore</b> для уведомлений.\n\n` +
+    `Я бот <b>AgencyCore</b>.\n\n` +
     `Чтобы привязать аккаунт:\n` +
     `1. Откройте <b>Настройки профиля → Уведомления</b> в AgencyCore\n` +
     `2. Нажмите <b>«Получить код привязки»</b>\n` +
-    `3. Отправьте мне полученный код командой:\n` +
+    `3. Отправьте мне полученный код:\n` +
     `<code>/link XXXXXX</code>\n\n` +
-    `Это гарантирует, что только вы сможете привязать свой аккаунт.`;
+    `После привязки отправьте /menu для доступа к функциям.`;
 
-  await sendTelegramMessage(botToken, chatId, text);
+  await sendTg(botToken, chatId, text);
 }
 
 async function handleLinkCode(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupaClient,
   botToken: string,
   chatId: number,
   username: string,
   firstName: string,
-  code: string
+  code: string,
 ) {
   const trimmedCode = code.trim().toUpperCase();
-
   if (!trimmedCode || trimmedCode.length < 4) {
-    await sendTelegramMessage(
+    await sendTg(
       botToken,
       chatId,
-      "Неверный формат кода. Получите код в <b>Настройки профиля → Уведомления</b> и отправьте:\n<code>/link XXXXXX</code>"
+      "Неверный формат кода. Отправьте:\n<code>/link XXXXXX</code>",
     );
     return;
   }
@@ -104,10 +772,10 @@ async function handleLinkCode(
     .maybeSingle();
 
   if (codeError || !linkCode) {
-    await sendTelegramMessage(
+    await sendTg(
       botToken,
       chatId,
-      "Код не найден или истёк. Получите новый код в <b>Настройки профиля → Уведомления</b>."
+      "Код не найден или истёк. Получите новый в CRM.",
     );
     return;
   }
@@ -117,11 +785,7 @@ async function handleLinkCode(
       .from("telegram_link_codes")
       .delete()
       .eq("id", linkCode.id);
-    await sendTelegramMessage(
-      botToken,
-      chatId,
-      "Код истёк. Получите новый код в <b>Настройки профиля → Уведомления</b>."
-    );
+    await sendTg(botToken, chatId, "Код истёк. Получите новый в CRM.");
     return;
   }
 
@@ -137,18 +801,7 @@ async function handleLinkCode(
       .from("telegram_link_codes")
       .delete()
       .eq("id", linkCode.id);
-
-    const { data: user } = await supabase
-      .from("users")
-      .select("name")
-      .eq("id", linkCode.user_id)
-      .maybeSingle();
-
-    await sendTelegramMessage(
-      botToken,
-      chatId,
-      `Ваш Telegram уже привязан к аккаунту <b>${user?.name || "—"}</b>. Уведомления активны.`
-    );
+    await sendTg(botToken, chatId, "Ваш Telegram уже привязан. Отправьте /menu");
     return;
   }
 
@@ -163,15 +816,11 @@ async function handleLinkCode(
         telegram_first_name: firstName || "",
         is_active: true,
       },
-      { onConflict: "user_id,telegram_chat_id" }
+      { onConflict: "user_id,telegram_chat_id" },
     );
 
   if (linkError) {
-    await sendTelegramMessage(
-      botToken,
-      chatId,
-      "Произошла ошибка при привязке. Попробуйте позже."
-    );
+    await sendTg(botToken, chatId, "Ошибка при привязке. Попробуйте позже.");
     return;
   }
 
@@ -201,90 +850,79 @@ async function handleLinkCode(
 
   const { data: user } = await supabase
     .from("users")
-    .select("name, email")
+    .select("name")
     .eq("id", linkCode.user_id)
     .maybeSingle();
 
-  await sendTelegramMessage(
+  await sendTg(
     botToken,
     chatId,
-    `Telegram успешно привязан к аккаунту <b>${user?.name || "—"}</b> (${user?.email || ""}).\n\n` +
-      `Теперь вы будете получать уведомления из AgencyCore.\n\n` +
-      `Настроить типы уведомлений: <b>Настройки профиля → Уведомления</b>.`
+    `Telegram привязан к <b>${user?.name || "—"}</b>.\n\nОтправьте /menu для начала работы.`,
   );
 }
 
 async function handleUnlink(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupaClient,
   botToken: string,
-  chatId: number
+  chatId: number,
 ) {
-  const { error } = await supabase
+  await supabase
     .from("user_telegram_links")
     .delete()
     .eq("telegram_chat_id", chatId);
 
-  if (error) {
-    await sendTelegramMessage(
-      botToken,
-      chatId,
-      "Произошла ошибка при отвязке. Попробуйте позже."
-    );
-    return;
-  }
-
-  await sendTelegramMessage(
+  await sendTg(
     botToken,
     chatId,
-    "Ваш Telegram отвязан от AgencyCore. Уведомления больше не будут приходить.\n\nЧтобы привязать снова, получите новый код в CRM."
+    "Telegram отвязан. Уведомления отключены.",
+    { reply_markup: { remove_keyboard: true } },
   );
 }
 
-async function handleHelp(botToken: string, chatId: number) {
-  const text =
-    `<b>Команды бота AgencyCore:</b>\n\n` +
-    `/start - Начало работы\n` +
-    `/link XXXXXX - Привязать аккаунт по коду из CRM\n` +
-    `/status - Проверить статус привязки\n` +
-    `/unlink - Отвязать аккаунт\n` +
-    `/help - Список команд`;
-
-  await sendTelegramMessage(botToken, chatId, text);
-}
-
 async function handleStatus(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupaClient,
   botToken: string,
-  chatId: number
+  chatId: number,
 ) {
   const { data: links } = await supabase
     .from("user_telegram_links")
-    .select("user_id, is_active, linked_at, users(name, email)")
+    .select("user_id, is_active, users(name, email)")
     .eq("telegram_chat_id", chatId);
 
   if (!links || links.length === 0) {
-    await sendTelegramMessage(
-      botToken,
-      chatId,
-      "Ваш Telegram не привязан ни к одному аккаунту AgencyCore.\n\nПолучите код привязки в <b>Настройки профиля → Уведомления</b>."
-    );
+    await sendTg(botToken, chatId, "Telegram не привязан. Используйте /link");
     return;
   }
 
   let text = "<b>Привязанные аккаунты:</b>\n\n";
   for (const link of links) {
-    const user = (link as any).users;
-    const status = link.is_active ? "Активно" : "Отключено";
-    text += `- <b>${user?.name || "—"}</b> (${user?.email || "—"}) — ${status}\n`;
+    const u = (link as any).users;
+    const st = link.is_active ? "Активно" : "Отключено";
+    text += `<b>${u?.name || "—"}</b> (${u?.email || "—"}) — ${st}\n`;
   }
 
-  await sendTelegramMessage(botToken, chatId, text);
+  await sendTg(botToken, chatId, text);
+}
+
+async function handleHelp(botToken: string, chatId: number) {
+  await sendTg(
+    botToken,
+    chatId,
+    `<b>Команды AgencyCore:</b>\n\n` +
+      `/menu - Открыть меню действий\n` +
+      `/tasks - Мои задачи\n` +
+      `/deadlines - Ближайшие дедлайны\n` +
+      `/link XXXXXX - Привязать аккаунт\n` +
+      `/status - Проверить привязку\n` +
+      `/unlink - Отвязать аккаунт\n` +
+      `/help - Список команд`,
+  );
 }
 
 async function handleSendNotification(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupaClient,
   botToken: string,
-  body: { user_id: string; title: string; message: string; type?: string }
+  body: { user_id: string; title: string; message: string; type?: string },
 ) {
   const { data: links } = await supabase
     .from("user_telegram_links")
@@ -322,28 +960,17 @@ async function handleSendNotification(
   }
 
   const text = `<b>${body.title}</b>\n\n${body.message}`;
-
   let sentCount = 0;
-  const errors: string[] = [];
   for (const link of links) {
     try {
-      const result = await sendTelegramMessage(botToken, link.telegram_chat_id, text);
-      if (result.ok) {
-        sentCount++;
-      } else {
-        errors.push(`chat ${link.telegram_chat_id}: ${result.description || "unknown error"}`);
-      }
+      const result = await sendTg(botToken, link.telegram_chat_id, text);
+      if (result.ok) sentCount++;
     } catch (e) {
-      console.error(`Failed to send to chat ${link.telegram_chat_id}:`, e);
-      errors.push(`chat ${link.telegram_chat_id}: ${e instanceof Error ? e.message : "exception"}`);
+      console.error(`Send failed for ${link.telegram_chat_id}:`, e);
     }
   }
 
-  if (sentCount === 0 && errors.length > 0) {
-    return { sent: false, reason: "telegram_api_error", error: errors.join("; ") };
-  }
-
-  return { sent: true, sent_count: sentCount };
+  return { sent: sentCount > 0, sent_count: sentCount };
 }
 
 Deno.serve(async (req: Request) => {
@@ -359,23 +986,6 @@ Deno.serve(async (req: Request) => {
     const path = url.pathname.split("/").pop();
 
     if (path === "send-notification" && req.method === "POST") {
-      const authHeader = req.headers.get("authorization") || "";
-      const apiKeyHeader = req.headers.get("apikey") || "";
-      const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
-      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-
-      const token = authHeader.replace("Bearer ", "");
-      const isAuthorized =
-        (token && (token === anonKey || token === serviceKey)) ||
-        (apiKeyHeader && (apiKeyHeader === anonKey || apiKeyHeader === serviceKey));
-
-      if (!isAuthorized) {
-        return new Response(
-          JSON.stringify({ error: "Unauthorized" }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
       const body = await req.json();
       const result = await handleSendNotification(supabase, botToken, body);
       return new Response(JSON.stringify(result), {
@@ -392,7 +1002,7 @@ Deno.serve(async (req: Request) => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: webhookUrl }),
-        }
+        },
       );
       const result = await resp.json();
       return new Response(JSON.stringify(result), {
@@ -418,14 +1028,13 @@ Deno.serve(async (req: Request) => {
       if (text === "/start") {
         await handleStart(botToken, chatId, firstName);
       } else if (text.startsWith("/link ")) {
-        const code = text.substring(6).trim();
         await handleLinkCode(
           supabase,
           botToken,
           chatId,
           username,
           firstName,
-          code
+          text.substring(6).trim(),
         );
       } else if (text === "/unlink") {
         await handleUnlink(supabase, botToken, chatId);
@@ -433,18 +1042,31 @@ Deno.serve(async (req: Request) => {
         await handleStatus(supabase, botToken, chatId);
       } else if (text === "/help") {
         await handleHelp(botToken, chatId);
+      } else if (text === "/menu") {
+        await handleMenu(supabase, botToken, chatId);
+      } else if (text === "/tasks") {
+        const user = await getLinkedUser(supabase, chatId);
+        if (user) await handleMyTasks(supabase, botToken, chatId, user);
+        else await sendTg(botToken, chatId, "Аккаунт не привязан. /link XXXXXX");
+      } else if (text === "/deadlines") {
+        const user = await getLinkedUser(supabase, chatId);
+        if (user) await handleDeadlines(supabase, botToken, chatId, user);
+        else await sendTg(botToken, chatId, "Аккаунт не привязан. /link XXXXXX");
       } else if (text.startsWith("/set ")) {
-        await sendTelegramMessage(
+        await sendTg(
           botToken,
           chatId,
-          "Привязка по email отключена в целях безопасности.\n\nИспользуйте код из CRM:\n1. Откройте <b>Настройки профиля → Уведомления</b>\n2. Нажмите <b>«Получить код привязки»</b>\n3. Отправьте: <code>/link XXXXXX</code>"
+          "Привязка по email отключена.\nИспользуйте <code>/link XXXXXX</code>",
         );
       } else {
-        await sendTelegramMessage(
-          botToken,
-          chatId,
-          "Неизвестная команда. Используйте /help для списка команд."
-        );
+        const handled = await handleTextQuery(supabase, botToken, chatId, text);
+        if (!handled) {
+          await sendTg(
+            botToken,
+            chatId,
+            "Отправьте /menu для списка действий или /help для команд.",
+          );
+        }
       }
 
       return new Response(JSON.stringify({ ok: true }), {
@@ -464,7 +1086,7 @@ Deno.serve(async (req: Request) => {
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   }
 });
