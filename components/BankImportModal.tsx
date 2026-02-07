@@ -178,24 +178,50 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [aliases, setAliases] = useState<BankCounterpartyAlias[]>([]);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | undefined>();
+  const [companyInfoLoaded, setCompanyInfoLoaded] = useState(false);
   const [newClientModal, setNewClientModal] = useState<{ rowIndex: number; bankName: string; bankBin: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const companyInfoRef = useRef<CompanyInfo | undefined>();
+
+  useEffect(() => {
+    companyInfoRef.current = companyInfo;
+  }, [companyInfo]);
 
   useEffect(() => {
     if (isOpen) {
+      setCompanyInfoLoaded(false);
       reconciliationService.getAliases().then(setAliases);
-      executorCompanyService.getDefault().then(company => {
-        if (company?.bin || company?.iban) {
-          setCompanyInfo({ bin: company.bin || '', iban: company.iban || '' });
-        }
-      });
+      executorCompanyService.getDefault()
+        .then(company => {
+          if (company?.bin || company?.iban) {
+            const info = { bin: company.bin || '', iban: company.iban || '' };
+            setCompanyInfo(info);
+            companyInfoRef.current = info;
+          }
+          setCompanyInfoLoaded(true);
+        })
+        .catch(async () => {
+          try {
+            const companies = await executorCompanyService.getAll();
+            if (companies.length > 0) {
+              const first = companies[0];
+              if (first.bin || first.iban) {
+                const info = { bin: first.bin || '', iban: first.iban || '' };
+                setCompanyInfo(info);
+                companyInfoRef.current = info;
+              }
+            }
+          } catch (_) { /* ignore */ }
+          setCompanyInfoLoaded(true);
+        });
     }
   }, [isOpen]);
 
   const handleFile = useCallback(async (file: File) => {
     setIsProcessing(true);
     try {
-      const result = await parseStatementFile(file, clients, transactions, aliases, companyInfo);
+      const info = companyInfoRef.current;
+      const result = await parseStatementFile(file, clients, transactions, aliases, info);
       if (result.transactions.length === 0) {
         alert('Не удалось распознать платежи в файле. Убедитесь, что формат файла поддерживается.');
         setIsProcessing(false);
@@ -216,7 +242,7 @@ export default function BankImportModal({ isOpen, onClose, clients, transactions
     } finally {
       setIsProcessing(false);
     }
-  }, [clients, transactions, aliases, companyInfo]);
+  }, [clients, transactions, aliases]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
