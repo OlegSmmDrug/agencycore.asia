@@ -7,6 +7,7 @@ import {
 import { Client, User, Task, Project, Transaction, ProjectStatus, ClientStatus, SystemRole, ProjectFinancials } from '../types';
 import FinancialModel from './FinancialModel';
 import TransactionJournal from './TransactionJournal';
+import FinanceTab from './analytics/FinanceTab';
 import { supabase } from '../lib/supabase';
 import UserAvatar from './UserAvatar';
 
@@ -62,33 +63,11 @@ const Analytics: React.FC<AnalyticsProps> = ({
         else if (externalTab === 'payments') setActiveTab('payments');
     }, [externalTab]);
 
-    // --- 1. FINANCE CALCULATIONS (P&L) ---
+    // --- 1. FINANCE CALCULATIONS (P&L) - Now handled by FinanceTab component ---
     const financeData = useMemo(() => {
         const safeTrans = Array.isArray(transactions) ? transactions : [];
         const income = safeTrans.filter(t => t.amount > 0).reduce((acc, t) => acc + (t.amount || 0), 0);
-        const salaries = Math.abs(safeTrans.filter(t => t.category === 'Salary').reduce((acc, t) => acc + (t.amount || 0), 0));
-        const marketing = Math.abs(safeTrans.filter(t => t.category === 'Marketing').reduce((acc, t) => acc + (t.amount || 0), 0));
-        const office = Math.abs(safeTrans.filter(t => t.category === 'Office').reduce((acc, t) => acc + (t.amount || 0), 0));
-        const other = Math.abs(safeTrans.filter(t => t.category === 'Other').reduce((acc, t) => acc + (t.amount || 0), 0));
-        
-        const totalExpenses = salaries + marketing + office + other;
-        const ebitda = income - totalExpenses;
-        const margin = income > 0 ? (ebitda / income) * 100 : 0;
-        const netProfit = ebitda * 0.85; 
-
-        const expenseStructure = [
-            { name: 'ФОТ (Зарплаты)', value: salaries },
-            { name: 'Маркетинг агентства', value: marketing },
-            { name: 'Офис и ПО', value: office },
-            { name: 'Прочее', value: other },
-        ];
-
-        const planFact = [
-            { name: 'Выручка', план: income * 1.15, факт: income },
-            { name: 'Чистая прибыль', план: income * 0.3, факт: netProfit },
-        ];
-
-        return { income, ebitda, margin, netProfit, expenseStructure, planFact };
+        return { income };
     }, [transactions]);
 
     // --- 2. SALES CALCULATIONS ---
@@ -426,92 +405,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
                         )}
                     </div>
                 ) : activeTab === 'finance' ? (
-                    <div className="space-y-6 animate-fade-in">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                            <div className={UI.CARD}>
-                                <p className={UI.LABEL}>Выручка (Начислено)</p>
-                                <p className={UI.VALUE}>{financeData.income.toLocaleString()} ₸</p>
-                                <div className="mt-2 flex items-center gap-1.5">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                    <span className="text-[10px] text-emerald-600 font-black">↑ 14% к плану</span>
-                                </div>
-                            </div>
-                            <div className={UI.CARD}>
-                                <p className={UI.LABEL}>EBITDA</p>
-                                <p className="text-2xl font-black text-blue-600 tracking-tighter">{financeData.ebitda.toLocaleString()} ₸</p>
-                                <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">Опер. прибыль</p>
-                            </div>
-                            <div className={UI.CARD}>
-                                <p className={UI.LABEL}>Рентабельность %</p>
-                                <p className={`text-2xl font-black tracking-tighter ${financeData.margin > 20 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                    {financeData.margin.toFixed(1)}%
-                                </p>
-                                <div className="w-full bg-slate-100 h-1 rounded-full mt-3">
-                                    <div className="h-full bg-blue-500 rounded-full" style={{width: `${Math.min(100, financeData.margin)}%`}}></div>
-                                </div>
-                            </div>
-                            <div className={UI.CARD}>
-                                <p className={UI.LABEL}>Чистая прибыль (К выводу)</p>
-                                <p className="text-2xl font-black text-emerald-600 tracking-tighter">{Math.round(financeData.netProfit).toLocaleString()} ₸</p>
-                                <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">После налогов</p>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <div className={UI.CARD}>
-                                <h3 className="font-black text-xs uppercase tracking-widest mb-8 text-slate-900 flex items-center gap-2">
-                                    <div className="w-1 h-4 bg-blue-600 rounded-full"></div> Выполнение фин. плана
-                                </h3>
-                                <div className="h-[350px] w-full">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={financeData.planFact} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} dy={10} />
-                                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
-                                            <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}} />
-                                            <Legend iconType="circle" wrapperStyle={{paddingTop: '20px', fontSize: '10px', fontWeight: 'black', textTransform: 'uppercase'}} />
-                                            <Bar dataKey="план" fill="#e2e8f0" radius={[6, 6, 0, 0]} barSize={50} />
-                                            <Bar dataKey="факт" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={50} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </div>
-
-                            <div className={UI.CARD}>
-                                <h3 className="font-black text-xs uppercase tracking-widest mb-8 text-slate-900 flex items-center gap-2">
-                                    <div className="w-1 h-4 bg-emerald-500 rounded-full"></div> Структура расходов
-                                </h3>
-                                <div className="h-[350px] w-full flex flex-col md:flex-row items-center">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <PieChart>
-                                            <Pie data={financeData.expenseStructure} innerRadius={80} outerRadius={110} paddingAngle={8} dataKey="value">
-                                                {financeData.expenseStructure.map((entry, index) => (
-                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                                ))}
-                                            </Pie>
-                                            <Tooltip />
-                                        </PieChart>
-                                    </ResponsiveContainer>
-                                    <div className="w-full md:w-80 space-y-5 px-4">
-                                        {financeData.expenseStructure.map((item, i) => (
-                                            <div key={i}>
-                                                <div className="flex justify-between items-center mb-1.5">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-2.5 h-2.5 rounded-full" style={{backgroundColor: COLORS[i % COLORS.length]}}></div>
-                                                        <span className="text-[11px] text-slate-600 font-bold uppercase">{item.name}</span>
-                                                    </div>
-                                                    <span className="font-black text-slate-900 text-xs">{financeData.income > 0 ? Math.round(item.value / financeData.income * 100) : 0}%</span>
-                                                </div>
-                                                <div className="w-full bg-slate-50 h-1.5 rounded-full overflow-hidden">
-                                                    <div className="h-full transition-all duration-1000" style={{backgroundColor: COLORS[i % COLORS.length], width: `${financeData.income > 0 ? (item.value / financeData.income) * 100 : 0}%`}}></div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <FinanceTab transactions={transactions} projects={projects} />
                 ) : activeTab === 'sales' ? (
                     <div className="space-y-6 animate-fade-in">
                         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">

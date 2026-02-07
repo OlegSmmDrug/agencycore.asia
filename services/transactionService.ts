@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { Transaction, PaymentType, ReconciliationStatus } from '../types';
+import { Transaction, PaymentType, ReconciliationStatus, TransactionCategory } from '../types';
 import { getCurrentOrganizationId } from '../utils/organizationContext';
 
 function mapRow(row: any): Transaction {
@@ -10,6 +10,7 @@ function mapRow(row: any): Transaction {
     amount: Number(row.amount) || 0,
     date: row.date,
     type: row.type as PaymentType,
+    category: row.category as TransactionCategory | undefined,
     description: row.description || '',
     isVerified: row.is_verified ?? true,
     createdBy: row.created_by,
@@ -54,6 +55,7 @@ export const transactionService = {
       amount: transaction.amount,
       date: transaction.date,
       type: transaction.type,
+      category: transaction.category || (transaction.amount >= 0 ? 'Income' : 'Other'),
       description: transaction.description || '',
       is_verified: transaction.isVerified ?? true,
       created_by: transaction.createdBy,
@@ -103,6 +105,7 @@ export const transactionService = {
     if (updates.bankBin !== undefined) updateData.bank_bin = updates.bankBin;
     if (updates.bankImportedAt !== undefined) updateData.bank_imported_at = updates.bankImportedAt;
     if (updates.linkedTransactionId !== undefined) updateData.linked_transaction_id = updates.linkedTransactionId;
+    if (updates.category !== undefined) updateData.category = updates.category;
     if (updates.amountDiscrepancy !== undefined) updateData.amount_discrepancy = updates.amountDiscrepancy;
 
     const { error } = await supabase
