@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { QrCode, RefreshCw, Trash2, Check, X, Wifi, WifiOff, Loader } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { QrCode, RefreshCw, Trash2, Check, X, Wifi, WifiOff, Loader, Server, Key, AlertTriangle, CheckCircle } from 'lucide-react';
 import { evolutionApiService, EvolutionInstance } from '../services/evolutionApiService';
 import { getCurrentOrganizationId } from '../utils/organizationContext';
 
@@ -16,13 +16,34 @@ export function EvolutionApiSettings({ onInstanceCreated, onInstanceDeleted }: E
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedInstanceName, setSelectedInstanceName] = useState<string | null>(null);
   const [qrCode, setQrCode] = useState<string | null>(null);
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [loadingQr, setLoadingQr] = useState(false);
-  const [pollingInterval, setPollingInterval] = useState<ReturnType<typeof setInterval> | null>(null);
+  const [pollingInterval, setPollingIntervalState] = useState<ReturnType<typeof setInterval> | null>(null);
+
+  const [serverUrl, setServerUrl] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsStatus, setSettingsStatus] = useState<'unknown' | 'healthy' | 'unhealthy' | 'saving'>('unknown');
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   useEffect(() => {
+    loadSettings();
     loadInstances();
     return () => { if (pollingInterval) clearInterval(pollingInterval); };
   }, []);
+
+  const loadSettings = async () => {
+    try {
+      const settings = await evolutionApiService.getSettings();
+      if (settings) {
+        setServerUrl(settings.server_url || '');
+        setSettingsStatus(settings.health_status as any || 'unknown');
+        setSettingsLoaded(true);
+      }
+    } catch {
+      setSettingsLoaded(true);
+    }
+  };
 
   const loadInstances = async () => {
     const organizationId = getCurrentOrganizationId();
@@ -38,22 +59,50 @@ export function EvolutionApiSettings({ onInstanceCreated, onInstanceDeleted }: E
     }
   };
 
-  const startPollingStatus = (instanceName: string) => {
+  const handleSaveSettings = async () => {
+    if (!serverUrl.trim() || !apiKey.trim()) return;
+    setSavingSettings(true);
+    setSettingsStatus('saving');
+    try {
+      const connected = await evolutionApiService.saveSettings(serverUrl.trim(), apiKey.trim());
+      setSettingsStatus(connected ? 'healthy' : 'unhealthy');
+      setApiKey('');
+      if (connected) {
+        await loadInstances();
+      }
+    } catch (error: any) {
+      setSettingsStatus('unhealthy');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const startPollingQr = useCallback((instanceName: string) => {
     if (pollingInterval) clearInterval(pollingInterval);
+
     const interval = setInterval(async () => {
       try {
-        const state = await evolutionApiService.getConnectionState(instanceName);
-        if (state === 'open') {
+        const inst = await evolutionApiService.refreshInstanceFromDb(instanceName);
+        if (!inst) return;
+
+        if (inst.connection_status === 'open') {
           clearInterval(interval);
-          setPollingInterval(null);
+          setPollingIntervalState(null);
           setSelectedInstanceName(null);
           setQrCode(null);
+          setPairingCode(null);
           await loadInstances();
+          return;
+        }
+
+        if (inst.qr_code && inst.qr_code !== qrCode) {
+          setQrCode(inst.qr_code);
         }
       } catch { /* ignore */ }
-    }, 5000);
-    setPollingInterval(interval);
-  };
+    }, 3000);
+
+    setPollingIntervalState(interval);
+  }, [pollingInterval, qrCode]);
 
   const handleCreateInstance = async () => {
     if (!newInstanceName.trim()) return;
@@ -68,18 +117,26 @@ export function EvolutionApiSettings({ onInstanceCreated, onInstanceDeleted }: E
       setShowCreateForm(false);
       onInstanceCreated?.(instance);
 
-      setSelectedInstanceName(instance.instance_name);
-      setLoadingQr(true);
-      const qrResult = await evolutionApiService.connectInstance(instance.instance_name);
-      if (qrResult.qrCode) {
-        setQrCode(qrResult.qrCode);
-        startPollingStatus(instance.instance_name);
+      if (instance.qr_code) {
+        setSelectedInstanceName(instance.instance_name);
+        setQrCode(instance.qr_code);
+        startPollingQr(instance.instance_name);
+      } else {
+        setSelectedInstanceName(instance.instance_name);
+        setLoadingQr(true);
+        try {
+          const qrResult = await evolutionApiService.connectInstance(instance.instance_name);
+          setQrCode(qrResult.qrCode);
+          setPairingCode(qrResult.pairingCode);
+          startPollingQr(instance.instance_name);
+        } finally {
+          setLoadingQr(false);
+        }
       }
     } catch (error: any) {
       alert(`Ошибка создания: ${error.message}`);
     } finally {
       setCreating(false);
-      setLoadingQr(false);
     }
   };
 
@@ -89,9 +146,16 @@ export function EvolutionApiSettings({ onInstanceCreated, onInstanceDeleted }: E
     try {
       const result = await evolutionApiService.connectInstance(instanceName);
       setQrCode(result.qrCode);
-      startPollingStatus(instanceName);
+      setPairingCode(result.pairingCode);
+      startPollingQr(instanceName);
     } catch (error: any) {
-      alert(`Ошибка QR: ${error.message}`);
+      const inst = await evolutionApiService.refreshInstanceFromDb(instanceName);
+      if (inst?.qr_code) {
+        setQrCode(inst.qr_code);
+        startPollingQr(instanceName);
+      } else {
+        alert(`Ошибка QR: ${error.message}`);
+      }
     } finally {
       setLoadingQr(false);
     }
@@ -142,124 +206,216 @@ export function EvolutionApiSettings({ onInstanceCreated, onInstanceDeleted }: E
     return map[s] || s;
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-slate-800">Evolution API</h3>
-        {!showCreateForm && (
-          <button onClick={() => setShowCreateForm(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
-            + Создать инстанс
-          </button>
-        )}
-      </div>
+  const displayName = (name: string) => {
+    return name.replace(/^org_[a-f0-9]+_/, '');
+  };
 
-      {showCreateForm && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h4 className="text-sm font-semibold text-slate-800 mb-3">Новый инстанс</h4>
-          <div className="flex gap-2">
+  return (
+    <div className="space-y-5">
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Server className="w-4 h-4 text-slate-600" />
+          <h4 className="text-sm font-bold text-slate-800">Подключение к серверу</h4>
+          {settingsStatus === 'healthy' && (
+            <span className="ml-auto flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+              <CheckCircle className="w-3 h-3" /> Подключен
+            </span>
+          )}
+          {settingsStatus === 'unhealthy' && (
+            <span className="ml-auto flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+              <AlertTriangle className="w-3 h-3" /> Ошибка
+            </span>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">URL сервера Evolution API</label>
             <input
               type="text"
-              value={newInstanceName}
-              onChange={(e) => setNewInstanceName(e.target.value)}
-              placeholder="Название (main, sales, support)"
-              className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={creating}
+              value={serverUrl}
+              onChange={(e) => setServerUrl(e.target.value)}
+              placeholder="https://your-evolution-api.com"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             />
-            <button onClick={handleCreateInstance} disabled={creating || !newInstanceName.trim()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2">
-              {creating ? <><Loader className="w-4 h-4 animate-spin" />Создание...</> : <><Check className="w-4 h-4" />Создать</>}
-            </button>
-            <button onClick={() => { setShowCreateForm(false); setNewInstanceName(''); }} disabled={creating} className="px-3 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300">
-              <X className="w-4 h-4" />
-            </button>
           </div>
-          <p className="text-xs text-slate-500 mt-2">После создания откроется QR-код для подключения WhatsApp</p>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">API ключ</label>
+            <div className="relative">
+              <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={settingsStatus === 'healthy' ? '********' : 'Введите API ключ'}
+                className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+            </div>
+          </div>
+          <button
+            onClick={handleSaveSettings}
+            disabled={savingSettings || !serverUrl.trim() || !apiKey.trim()}
+            className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 text-sm font-medium flex items-center justify-center gap-2"
+          >
+            {savingSettings ? (
+              <><Loader className="w-4 h-4 animate-spin" /> Проверка...</>
+            ) : (
+              <><Check className="w-4 h-4" /> Сохранить и проверить</>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {settingsStatus !== 'healthy' && !loading && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-yellow-800">
+            <p className="font-medium">Сервер не подключен</p>
+            <p className="mt-1 text-yellow-700">Укажите URL и API-ключ вашего Evolution API сервера выше, чтобы начать работу.</p>
+          </div>
         </div>
       )}
 
-      {loading ? (
-        <div className="text-center py-8">
-          <Loader className="w-6 h-6 animate-spin mx-auto text-slate-400" />
-        </div>
-      ) : instances.length === 0 ? (
-        <div className="text-center py-8 bg-slate-50 rounded-lg border border-slate-200">
-          <Wifi className="w-12 h-12 mx-auto text-slate-300 mb-2" />
-          <p className="text-slate-600">Нет инстансов</p>
-          <p className="text-sm text-slate-500 mt-1">Создайте первый инстанс для подключения WhatsApp</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {instances.map((inst) => (
-            <div key={inst.id} className="bg-white border border-slate-200 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-slate-800">{inst.instance_name}</h4>
-                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor(inst.connection_status)}`}>
-                      {statusText(inst.connection_status)}
-                    </span>
-                  </div>
-                  {inst.phone_number && <p className="text-sm text-slate-500 mt-1">+{inst.phone_number}</p>}
-                  {inst.error_message && <p className="text-xs text-red-600 mt-1">{inst.error_message}</p>}
-                </div>
-                {inst.connection_status === 'open' ? <Wifi className="w-5 h-5 text-green-600" /> : <WifiOff className="w-5 h-5 text-slate-400" />}
-              </div>
-              <div className="flex items-center gap-2">
-                {inst.connection_status !== 'open' && (
-                  <button onClick={() => handleGetQrCode(inst.instance_name)} className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center justify-center gap-2">
-                    <QrCode className="w-4 h-4" />QR-код
-                  </button>
-                )}
-                <button onClick={() => handleRefreshStatus(inst.instance_name)} className="px-3 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200" title="Обновить">
-                  <RefreshCw className="w-4 h-4" />
+      {settingsStatus === 'healthy' && (
+        <>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Инстансы WhatsApp</h3>
+            {!showCreateForm && (
+              <button onClick={() => setShowCreateForm(true)} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-medium">
+                + Новый инстанс
+              </button>
+            )}
+          </div>
+
+          {showCreateForm && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <h4 className="text-sm font-semibold text-slate-800 mb-3">Новый инстанс</h4>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newInstanceName}
+                  onChange={(e) => setNewInstanceName(e.target.value)}
+                  placeholder="Название (main, sales, support)"
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  disabled={creating}
+                  onKeyDown={(e) => e.key === 'Enter' && handleCreateInstance()}
+                />
+                <button onClick={handleCreateInstance} disabled={creating || !newInstanceName.trim()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2 text-sm">
+                  {creating ? <><Loader className="w-4 h-4 animate-spin" />...</> : <><Check className="w-4 h-4" />Создать</>}
                 </button>
-                {inst.connection_status === 'open' && (
-                  <button onClick={() => handleLogout(inst.instance_name)} className="px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200" title="Отключить">
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-                <button onClick={() => handleDeleteInstance(inst.instance_name)} className="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200" title="Удалить">
-                  <Trash2 className="w-4 h-4" />
+                <button onClick={() => { setShowCreateForm(false); setNewInstanceName(''); }} disabled={creating} className="px-3 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300">
+                  <X className="w-4 h-4" />
                 </button>
               </div>
+              <p className="text-xs text-slate-500 mt-2">После создания появится QR-код для подключения WhatsApp</p>
             </div>
-          ))}
-        </div>
+          )}
+
+          {loading ? (
+            <div className="text-center py-8">
+              <Loader className="w-6 h-6 animate-spin mx-auto text-slate-400" />
+            </div>
+          ) : instances.length === 0 ? (
+            <div className="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+              <Wifi className="w-12 h-12 mx-auto text-slate-300 mb-2" />
+              <p className="text-slate-600 font-medium">Нет инстансов</p>
+              <p className="text-sm text-slate-500 mt-1">Создайте первый инстанс для подключения WhatsApp</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {instances.map((inst) => (
+                <div key={inst.id} className="bg-white border border-slate-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-semibold text-slate-800">{displayName(inst.instance_name)}</h4>
+                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor(inst.connection_status)}`}>
+                          {statusText(inst.connection_status)}
+                        </span>
+                      </div>
+                      {inst.phone_number && <p className="text-sm text-slate-500 mt-1">+{inst.phone_number}</p>}
+                      {inst.error_message && <p className="text-xs text-red-600 mt-1">{inst.error_message}</p>}
+                    </div>
+                    {inst.connection_status === 'open' ? <Wifi className="w-5 h-5 text-green-600" /> : <WifiOff className="w-5 h-5 text-slate-400" />}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {inst.connection_status !== 'open' && (
+                      <button onClick={() => handleGetQrCode(inst.instance_name)} className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center justify-center gap-2">
+                        <QrCode className="w-4 h-4" />QR-код
+                      </button>
+                    )}
+                    <button onClick={() => handleRefreshStatus(inst.instance_name)} className="px-3 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200" title="Обновить">
+                      <RefreshCw className="w-4 h-4" />
+                    </button>
+                    {inst.connection_status === 'open' && (
+                      <button onClick={() => handleLogout(inst.instance_name)} className="px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200" title="Отключить">
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button onClick={() => handleDeleteInstance(inst.instance_name)} className="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200" title="Удалить">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {selectedInstanceName && (qrCode || loadingQr) && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4" onClick={(e) => { if (e.target === e.currentTarget) { setSelectedInstanceName(null); setQrCode(null); setPairingCode(null); if (pollingInterval) clearInterval(pollingInterval); } }}>
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-800">Сканируйте QR-код</h3>
-              <button onClick={() => { setSelectedInstanceName(null); setQrCode(null); if (pollingInterval) clearInterval(pollingInterval); }} className="text-slate-400 hover:text-slate-600">
+              <h3 className="text-lg font-bold text-slate-800">Сканируйте QR-код</h3>
+              <button onClick={() => { setSelectedInstanceName(null); setQrCode(null); setPairingCode(null); if (pollingInterval) clearInterval(pollingInterval); }} className="text-slate-400 hover:text-slate-600 p-1">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="bg-white p-4 rounded-lg border border-slate-200 mb-4 flex items-center justify-center min-h-[280px]">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 mb-4 flex items-center justify-center min-h-[280px]">
               {loadingQr ? (
-                <Loader className="w-8 h-8 animate-spin text-blue-600" />
+                <div className="text-center">
+                  <Loader className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-2" />
+                  <p className="text-sm text-slate-500">Загрузка QR-кода...</p>
+                </div>
               ) : qrCode ? (
                 <img
                   src={qrCode.startsWith('data:') || qrCode.startsWith('http') ? qrCode : `data:image/png;base64,${qrCode}`}
                   alt="QR Code"
                   className="w-full max-w-[280px]"
                 />
-              ) : null}
+              ) : (
+                <div className="text-center text-slate-400">
+                  <QrCode className="w-16 h-16 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Ожидание QR-кода от сервера...</p>
+                  <p className="text-xs mt-1">QR появится автоматически</p>
+                </div>
+              )}
             </div>
+
+            {pairingCode && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-center">
+                <p className="text-xs text-blue-600 mb-1">Код для ручного ввода:</p>
+                <p className="text-2xl font-mono font-bold text-blue-800 tracking-wider">{pairingCode}</p>
+              </div>
+            )}
 
             <div className="text-sm text-slate-600 space-y-1">
               <p className="font-medium">Инструкция:</p>
-              <ol className="list-decimal list-inside space-y-1">
+              <ol className="list-decimal list-inside space-y-1 text-slate-500">
                 <li>Откройте WhatsApp на телефоне</li>
-                <li>Меню &rarr; Связанные устройства</li>
+                <li>Настройки &rarr; Связанные устройства</li>
                 <li>Привязать устройство</li>
                 <li>Наведите камеру на QR-код</li>
               </ol>
-              <p className="text-xs text-blue-600 mt-3">Статус обновляется автоматически каждые 5 секунд</p>
+              <div className="flex items-center gap-1.5 mt-3 text-xs text-blue-600">
+                <Loader className="w-3 h-3 animate-spin" />
+                <span>Статус обновляется автоматически</span>
+              </div>
             </div>
 
-            <button onClick={() => handleGetQrCode(selectedInstanceName)} className="w-full mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2">
+            <button onClick={() => handleGetQrCode(selectedInstanceName)} className="w-full mt-4 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 flex items-center justify-center gap-2 text-sm font-medium transition-colors">
               <RefreshCw className="w-4 h-4" />Обновить QR-код
             </button>
           </div>

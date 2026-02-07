@@ -16,13 +16,13 @@ async function getEvolutionSettings(supabase: any) {
     .select("*")
     .eq("is_active", true)
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (error || !data) {
-    throw new Error("Evolution API не настроен. Добавьте запись в evolution_settings.");
+    throw new Error("Evolution API не настроен. Укажите server_url и api_key в настройках.");
   }
 
-  return { serverUrl: data.server_url, apiKey: data.api_key };
+  return { serverUrl: data.server_url.replace(/\/+$/, ""), apiKey: data.api_key };
 }
 
 async function proxyToEvolution(
@@ -66,10 +66,75 @@ Deno.serve(async (req: Request) => {
 
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const { serverUrl, apiKey } = await getEvolutionSettings(supabase);
 
     const body = req.method !== "GET" ? await req.json() : null;
     const action: string = body?.action || new URL(req.url).searchParams.get("action") || "";
+
+    if (action === "save_settings") {
+      const { serverUrl, apiKey } = body;
+      if (!serverUrl || !apiKey) {
+        return new Response(
+          JSON.stringify({ error: "serverUrl and apiKey required" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const cleanUrl = serverUrl.replace(/\/+$/, "");
+
+      let healthy = false;
+      try {
+        const testRes = await fetch(`${cleanUrl}/instance/fetchInstances`, {
+          method: "GET",
+          headers: { apikey: apiKey, "Content-Type": "application/json" },
+        });
+        healthy = testRes.ok;
+      } catch { /* server unreachable */ }
+
+      const { data: existing } = await supabase
+        .from("evolution_settings")
+        .select("id")
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (existing) {
+        await supabase
+          .from("evolution_settings")
+          .update({
+            server_url: cleanUrl,
+            api_key: apiKey,
+            health_status: healthy ? "healthy" : "unhealthy",
+            last_health_check: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id);
+      } else {
+        await supabase.from("evolution_settings").insert({
+          server_url: cleanUrl,
+          api_key: apiKey,
+          is_active: true,
+          health_status: healthy ? "healthy" : "unhealthy",
+          last_health_check: new Date().toISOString(),
+        });
+      }
+
+      return new Response(
+        JSON.stringify({ ok: true, status: 200, data: { connected: healthy } }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (action === "get_settings") {
+      const { data } = await supabase
+        .from("evolution_settings")
+        .select("server_url, is_active, health_status, last_health_check")
+        .eq("is_active", true)
+        .maybeSingle();
+
+      return new Response(
+        JSON.stringify({ ok: true, status: 200, data: data || null }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (!action) {
       return new Response(
@@ -77,6 +142,8 @@ Deno.serve(async (req: Request) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const { serverUrl, apiKey } = await getEvolutionSettings(supabase);
 
     let result: any;
 
@@ -100,27 +167,39 @@ Deno.serve(async (req: Request) => {
         const payload = {
           instanceName,
           qrcode: true,
-          webhookUrl,
-          webhookByEvents: false,
-          webhookBase64: true,
-          webhookEvents: [
-            "QRCODE_UPDATED",
-            "CONNECTION_UPDATE",
-            "MESSAGES_UPSERT",
-            "MESSAGES_UPDATE",
-            "SEND_MESSAGE",
-          ],
+          webhook: {
+            enabled: true,
+            url: webhookUrl,
+            byEvents: false,
+            base64: true,
+            events: [
+              "QRCODE_UPDATED",
+              "CONNECTION_UPDATE",
+              "MESSAGES_UPSERT",
+              "MESSAGES_UPDATE",
+              "SEND_MESSAGE",
+            ],
+          },
         };
 
         result = await proxyToEvolution(serverUrl, apiKey, "/instance/create", "POST", payload);
 
         if (result.ok) {
+          const qrBase64 = result.data?.qrcode?.base64 || null;
+
           await supabase.from("evolution_instances").insert({
             organization_id: organizationId,
             instance_name: instanceName,
-            connection_status: "qr",
+            connection_status: qrBase64 ? "qr" : "connecting",
             webhook_configured: true,
+            qr_code: qrBase64,
+            qr_code_updated_at: qrBase64 ? new Date().toISOString() : null,
           });
+
+          result.data = {
+            ...result.data,
+            qrCode: qrBase64,
+          };
         }
         break;
       }
@@ -134,22 +213,34 @@ Deno.serve(async (req: Request) => {
           );
         }
 
-        result = await proxyToEvolution(serverUrl, apiKey, `/instance/${connName}/connect`, "GET");
+        result = await proxyToEvolution(serverUrl, apiKey, `/instance/connect/${connName}`, "GET");
 
         if (result.ok) {
-          const qr = result.data?.qrcode?.base64 || result.data?.qrcode || result.data?.base64;
-          const pairingCode = result.data?.pairingCode;
+          const qrCode = result.data?.code || null;
+          const pairingCode = result.data?.pairingCode || null;
+
+          const { data: inst } = await supabase
+            .from("evolution_instances")
+            .select("qr_code")
+            .eq("instance_name", connName)
+            .maybeSingle();
+
+          const existingQr = inst?.qr_code || null;
 
           await supabase
             .from("evolution_instances")
             .update({
-              qr_code: qr || null,
-              qr_code_updated_at: new Date().toISOString(),
-              connection_status: qr ? "qr" : "connecting",
+              connection_status: "qr",
+              updated_at: new Date().toISOString(),
             })
             .eq("instance_name", connName);
 
-          result.data = { qrCode: qr, pairingCode, state: result.data?.state || "qr" };
+          result.data = {
+            qrCode: existingQr,
+            qrCodeRaw: qrCode,
+            pairingCode,
+            state: "qr",
+          };
         }
         break;
       }
@@ -166,12 +257,12 @@ Deno.serve(async (req: Request) => {
         result = await proxyToEvolution(
           serverUrl,
           apiKey,
-          `/instance/${stateName}/connectionState`,
+          `/instance/connectionState/${stateName}`,
           "GET"
         );
 
         if (result.ok) {
-          const state = result.data?.state || "disconnected";
+          const state = result.data?.instance?.state || result.data?.state || "disconnected";
 
           const updates: any = {
             connection_status: state === "close" ? "disconnected" : state,
@@ -186,6 +277,8 @@ Deno.serve(async (req: Request) => {
             .from("evolution_instances")
             .update(updates)
             .eq("instance_name", stateName);
+
+          result.data = { state: updates.connection_status };
         }
         break;
       }
@@ -195,8 +288,8 @@ Deno.serve(async (req: Request) => {
         result = await proxyToEvolution(
           serverUrl,
           apiKey,
-          `/instance/${restartName}/restart`,
-          "POST"
+          `/instance/restart/${restartName}`,
+          "PUT"
         );
 
         if (result.ok) {
@@ -213,7 +306,7 @@ Deno.serve(async (req: Request) => {
         result = await proxyToEvolution(
           serverUrl,
           apiKey,
-          `/instance/${logoutName}/logout`,
+          `/instance/logout/${logoutName}`,
           "DELETE"
         );
 
@@ -236,7 +329,7 @@ Deno.serve(async (req: Request) => {
         result = await proxyToEvolution(
           serverUrl,
           apiKey,
-          `/instance/${deleteName}/delete`,
+          `/instance/delete/${deleteName}`,
           "DELETE"
         );
 
@@ -286,6 +379,45 @@ Deno.serve(async (req: Request) => {
           "POST",
           { number: audioNumber, audio }
         );
+        break;
+      }
+
+      case "set_webhook": {
+        const { instanceName: whName } = body;
+        if (!whName) {
+          return new Response(
+            JSON.stringify({ error: "instanceName required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const webhookUrl = `${supabaseUrl}/functions/v1/evolution-webhook`;
+        result = await proxyToEvolution(
+          serverUrl,
+          apiKey,
+          `/webhook/set/${whName}`,
+          "POST",
+          {
+            enabled: true,
+            url: webhookUrl,
+            webhookByEvents: false,
+            webhookBase64: true,
+            events: [
+              "QRCODE_UPDATED",
+              "CONNECTION_UPDATE",
+              "MESSAGES_UPSERT",
+              "MESSAGES_UPDATE",
+              "SEND_MESSAGE",
+            ],
+          }
+        );
+
+        if (result.ok) {
+          await supabase
+            .from("evolution_instances")
+            .update({ webhook_configured: true, updated_at: new Date().toISOString() })
+            .eq("instance_name", whName);
+        }
         break;
       }
 

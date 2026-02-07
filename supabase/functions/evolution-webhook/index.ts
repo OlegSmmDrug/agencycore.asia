@@ -42,9 +42,10 @@ Deno.serve(async (req: Request) => {
 
     await supabase.from("webhook_logs").insert({
       source: "evolution_api",
-      webhook_type: event || "unknown",
-      payload,
-      received_at: new Date().toISOString(),
+      method: req.method,
+      body: JSON.stringify(payload),
+      parsed_data: { event, instance: instanceName },
+      result: "received",
     });
 
     if (!instanceName) {
@@ -59,7 +60,7 @@ Deno.serve(async (req: Request) => {
       .select("*")
       .eq("instance_name", instanceName)
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (!evoInst) {
       return new Response(JSON.stringify({ error: "instance not found" }), {
@@ -154,10 +155,12 @@ Deno.serve(async (req: Request) => {
               organization_id: organizationId,
               name: msg.pushName || phone,
               phone,
-              status: "lead",
+              status: "New Lead",
+              source: "WhatsApp",
+              utm_source: "whatsapp",
             })
             .select("id")
-            .single();
+            .maybeSingle();
           if (newClient) clientId = newClient.id;
         }
       }
@@ -196,10 +199,14 @@ Deno.serve(async (req: Request) => {
         ? new Date(msg.messageTimestamp * 1000).toISOString()
         : new Date().toISOString();
 
+      const chatName = isGroup
+        ? (msg.pushName || chatId)
+        : (msg.pushName || phone || chatId);
+
       await supabase.from("whatsapp_chats").upsert(
         {
           chat_id: chatId,
-          chat_name: isGroup ? msg.pushName || chatId : phone || chatId,
+          chat_name: chatName,
           chat_type: isGroup ? "group" : "individual",
           client_id: clientId,
           phone,
@@ -210,6 +217,15 @@ Deno.serve(async (req: Request) => {
         },
         { onConflict: "chat_id" }
       );
+
+      if (!fromMe) {
+        await supabase.rpc("increment_chat_unread", { p_chat_id: chatId }).catch(() => {
+          supabase
+            .from("whatsapp_chats")
+            .update({ unread_count: (evoInst as any).unread_count ? (evoInst as any).unread_count + 1 : 1 })
+            .eq("chat_id", chatId);
+        });
+      }
 
       await supabase.from("whatsapp_messages").insert({
         organization_id: organizationId,

@@ -348,9 +348,19 @@ export const whatsappService = {
       const chatId = `${cleanPhone}@s.whatsapp.net`;
       const ts = new Date().toISOString();
 
+      let chatName = phone;
+      if (clientId) {
+        const { data: cl } = await supabase
+          .from('clients')
+          .select('name')
+          .eq('id', clientId)
+          .maybeSingle();
+        if (cl?.name) chatName = cl.name;
+      }
+
       await supabase.from('whatsapp_chats').upsert({
         chat_id: chatId,
-        chat_name: phone,
+        chat_name: chatName,
         chat_type: 'individual',
         client_id: clientId,
         phone: cleanPhone,
@@ -508,7 +518,39 @@ export const whatsappService = {
   async getMessages(clientId: string): Promise<WhatsAppMessage[]> {
     const provider = this.getProvider();
 
-    if (provider === 'greenapi') {
+    if (provider === 'evolution') {
+      const organizationId = getCurrentOrganizationId();
+      if (!organizationId) return [];
+
+      const { data, error } = await supabase
+        .from('whatsapp_messages')
+        .select('*')
+        .eq('client_id', clientId)
+        .eq('organization_id', organizationId)
+        .order('timestamp', { ascending: true });
+
+      if (error || !data) return [];
+
+      return data.map(msg => ({
+        id: msg.id,
+        clientId: msg.client_id,
+        messageId: msg.message_id,
+        direction: msg.direction as 'incoming' | 'outgoing',
+        content: msg.content,
+        senderName: msg.sender_name,
+        userId: msg.user_id,
+        status: msg.status as WhatsAppMessage['status'],
+        timestamp: msg.timestamp,
+        mediaUrl: msg.media_url,
+        mediaType: msg.media_type as WhatsAppMessage['mediaType'],
+        mediaFilename: msg.media_filename,
+        channelId: msg.channel_id,
+        chatId: msg.chat_id,
+        chatName: msg.chat_name,
+        chatType: msg.chat_type,
+        isRead: msg.is_read
+      }));
+    } else if (provider === 'greenapi') {
       return greenApiService.getMessages(clientId);
     } else {
       return wazzupService.getMessages(clientId);
@@ -518,7 +560,13 @@ export const whatsappService = {
   async markAsRead(messageIds: string[]): Promise<void> {
     const provider = this.getProvider();
 
-    if (provider === 'greenapi') {
+    if (provider === 'evolution') {
+      if (messageIds.length === 0) return;
+      await supabase
+        .from('whatsapp_messages')
+        .update({ is_read: true })
+        .in('id', messageIds);
+    } else if (provider === 'greenapi') {
       return greenApiService.markAsRead(messageIds);
     } else {
       return wazzupService.markAsRead(messageIds);
@@ -528,7 +576,21 @@ export const whatsappService = {
   async getUnreadCount(clientId: string): Promise<number> {
     const provider = this.getProvider();
 
-    if (provider === 'greenapi') {
+    if (provider === 'evolution') {
+      const organizationId = getCurrentOrganizationId();
+      if (!organizationId) return 0;
+
+      const { count, error } = await supabase
+        .from('whatsapp_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('client_id', clientId)
+        .eq('organization_id', organizationId)
+        .eq('direction', 'incoming')
+        .eq('is_read', false);
+
+      if (error) return 0;
+      return count || 0;
+    } else if (provider === 'greenapi') {
       return greenApiService.getUnreadCount(clientId);
     } else {
       return wazzupService.getUnreadCount(clientId);
@@ -538,7 +600,47 @@ export const whatsappService = {
   subscribeToMessages(clientId: string, callback: (message: WhatsAppMessage) => void) {
     const provider = this.getProvider();
 
-    if (provider === 'greenapi') {
+    if (provider === 'evolution') {
+      const channel = supabase
+        .channel(`evolution_messages_${clientId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'whatsapp_messages',
+            filter: `client_id=eq.${clientId}`,
+          },
+          (payload: any) => {
+            const msg = payload.new;
+            if (!msg) return;
+            callback({
+              id: msg.id,
+              clientId: msg.client_id,
+              messageId: msg.message_id,
+              direction: msg.direction as 'incoming' | 'outgoing',
+              content: msg.content,
+              senderName: msg.sender_name,
+              userId: msg.user_id,
+              status: msg.status as WhatsAppMessage['status'],
+              timestamp: msg.timestamp,
+              mediaUrl: msg.media_url,
+              mediaType: msg.media_type as WhatsAppMessage['mediaType'],
+              mediaFilename: msg.media_filename,
+              channelId: msg.channel_id,
+              chatId: msg.chat_id,
+              chatName: msg.chat_name,
+              chatType: msg.chat_type,
+              isRead: msg.is_read,
+            });
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    } else if (provider === 'greenapi') {
       return greenApiService.subscribeToMessages(clientId, callback);
     } else {
       return wazzupService.subscribeToMessages(clientId, callback);

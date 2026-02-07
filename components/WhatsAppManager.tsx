@@ -5,7 +5,7 @@ import { clientService } from '../services/clientService';
 import { greenApiIntegrationService } from '../services/greenApiIntegrationService';
 import { evolutionApiService, EvolutionInstance } from '../services/evolutionApiService';
 import { Integration } from '../services/integrationService';
-import { MessageCircle, Search, Phone, Clock, CheckCheck, X, Settings, Paperclip, Mic, Smile, Send, Image, File, Video, ExternalLink, Wifi } from 'lucide-react';
+import { MessageCircle, Search, Phone, Clock, CheckCheck, X, Settings, Paperclip, Mic, Smile, Send, Image, File, Video, ExternalLink, Wifi, WifiOff, AlertTriangle } from 'lucide-react';
 import AudioRecorder from './AudioRecorder';
 import ClientModal from './ClientModal';
 import { EvolutionApiSettings } from './EvolutionApiSettings';
@@ -45,6 +45,7 @@ const WhatsAppManager: React.FC<WhatsAppManagerProps> = ({ currentUser, users })
   const [evolutionInstances, setEvolutionInstances] = useState<EvolutionInstance[]>([]);
   const [activeEvolutionInstance, setActiveEvolutionInstance] = useState<string | null>(null);
   const [showEvolutionSettings, setShowEvolutionSettings] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -248,6 +249,7 @@ const WhatsAppManager: React.FC<WhatsAppManagerProps> = ({ currentUser, users })
     if ((!newMessage.trim() && !selectedFile) || !selectedClient || isSending) return;
 
     setIsSending(true);
+    setSendError(null);
     try {
       if (selectedFile) {
         await whatsappService.sendMessageWithFile(
@@ -267,11 +269,13 @@ const WhatsAppManager: React.FC<WhatsAppManagerProps> = ({ currentUser, users })
         );
       }
       setNewMessage('');
-      await loadMessages(selectedClient.id);
+      await loadMessages(selectedClient.id, selectedClient.chatId);
       await loadChats();
       scrollToBottom();
-    } catch (error) {
-      console.error('Failed to send message:', error);
+    } catch (error: any) {
+      const msg = error?.message || 'Не удалось отправить сообщение';
+      setSendError(msg);
+      setTimeout(() => setSendError(null), 5000);
     } finally {
       setIsSending(false);
     }
@@ -292,8 +296,10 @@ const WhatsAppManager: React.FC<WhatsAppManagerProps> = ({ currentUser, users })
       await loadMessages(selectedClient.id);
       await loadChats();
       scrollToBottom();
-    } catch (error) {
-      console.error('Failed to send audio:', error);
+    } catch (error: any) {
+      const msg = error?.message || 'Не удалось отправить аудио';
+      setSendError(msg);
+      setTimeout(() => setSendError(null), 5000);
     } finally {
       setIsSending(false);
     }
@@ -445,7 +451,16 @@ const WhatsAppManager: React.FC<WhatsAppManagerProps> = ({ currentUser, users })
       <div className="w-96 bg-white border-r border-slate-200 flex flex-col">
         <div className="p-4 border-b border-slate-200">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-black text-slate-800">WhatsApp Чаты</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-black text-slate-800">WhatsApp</h2>
+              <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                providerStatus === 'authorized' || providerStatus === 'open' || providerStatus === 'active'
+                  ? 'bg-green-500'
+                  : providerStatus === 'checking' || providerStatus === 'connecting' || providerStatus === 'qr'
+                  ? 'bg-yellow-500 animate-pulse'
+                  : 'bg-red-400'
+              }`} title={providerStatus} />
+            </div>
             <button
               onClick={() => setShowSettings(!showSettings)}
               className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
@@ -902,11 +917,41 @@ const WhatsAppManager: React.FC<WhatsAppManagerProps> = ({ currentUser, users })
         )}
       </div>
 
+      {sendError && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white px-5 py-3 rounded-xl shadow-xl flex items-center gap-3 max-w-md animate-fade-in">
+          <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+          <p className="text-sm font-medium">{sendError}</p>
+          <button onClick={() => setSendError(null)} className="ml-auto text-white/70 hover:text-white">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {provider === 'evolution' && (providerStatus === 'no_instance' || providerStatus === 'error' || providerStatus === 'disconnected') && !showSettings && !showEvolutionSettings && (
+        <div className="fixed bottom-6 right-6 z-40 bg-yellow-50 border border-yellow-200 rounded-xl p-4 shadow-lg max-w-sm">
+          <div className="flex items-start gap-3">
+            <WifiOff className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-yellow-800">
+                {providerStatus === 'no_instance' ? 'Нет подключенного WhatsApp' : 'WhatsApp отключен'}
+              </p>
+              <p className="text-xs text-yellow-600 mt-1">Откройте настройки для подключения</p>
+              <button
+                onClick={() => setShowEvolutionSettings(true)}
+                className="mt-2 px-3 py-1.5 bg-yellow-600 text-white rounded-lg text-xs font-medium hover:bg-yellow-700 transition-colors"
+              >
+                Настроить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showEvolutionSettings && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-slate-800">Evolution API</h2>
+              <h2 className="text-xl font-bold text-slate-800">WhatsApp - Evolution API</h2>
               <button
                 onClick={() => setShowEvolutionSettings(false)}
                 className="p-2 hover:bg-slate-100 rounded-lg transition-colors"

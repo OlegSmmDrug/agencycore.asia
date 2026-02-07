@@ -15,6 +15,13 @@ export interface EvolutionInstance {
   updated_at: string;
 }
 
+export interface EvolutionSettings {
+  server_url: string;
+  is_active: boolean;
+  health_status: string;
+  last_health_check?: string;
+}
+
 const PROXY_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/evolution-proxy`;
 
 async function callProxy(action: string, payload: Record<string, any> = {}) {
@@ -38,6 +45,16 @@ async function callProxy(action: string, payload: Record<string, any> = {}) {
 }
 
 export const evolutionApiService = {
+  async saveSettings(serverUrl: string, apiKey: string): Promise<boolean> {
+    const result = await callProxy('save_settings', { serverUrl, apiKey });
+    return result?.connected === true;
+  },
+
+  async getSettings(): Promise<EvolutionSettings | null> {
+    const result = await callProxy('get_settings');
+    return result || null;
+  },
+
   async testConnection(): Promise<boolean> {
     try {
       await callProxy('test_connection');
@@ -50,26 +67,36 @@ export const evolutionApiService = {
   async createInstance(organizationId: string, userGivenName: string): Promise<EvolutionInstance> {
     const instanceName = `org_${organizationId.substring(0, 8)}_${userGivenName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
 
-    await callProxy('create_instance', { instanceName, organizationId });
+    const result = await callProxy('create_instance', { instanceName, organizationId });
 
     const { data } = await supabase
       .from('evolution_instances')
       .select('*')
       .eq('instance_name', instanceName)
-      .single();
+      .maybeSingle();
 
-    return data as EvolutionInstance;
+    if (!data) throw new Error('Instance creation failed');
+
+    return {
+      ...data,
+      qr_code: result?.qrCode || data.qr_code,
+    } as EvolutionInstance;
   },
 
-  async connectInstance(instanceName: string): Promise<{ qrCode: string; state: string }> {
+  async connectInstance(instanceName: string): Promise<{ qrCode: string | null; qrCodeRaw: string | null; pairingCode: string | null; state: string }> {
     const result = await callProxy('connect_instance', { instanceName });
-    return { qrCode: result.qrCode, state: result.state || 'qr' };
+    return {
+      qrCode: result?.qrCode || null,
+      qrCodeRaw: result?.qrCodeRaw || null,
+      pairingCode: result?.pairingCode || null,
+      state: result?.state || 'qr',
+    };
   },
 
   async getConnectionState(instanceName: string): Promise<string> {
     try {
       const result = await callProxy('connection_state', { instanceName });
-      return result.data?.state || result.state || 'disconnected';
+      return result?.state || 'disconnected';
     } catch {
       return 'disconnected';
     }
@@ -85,6 +112,10 @@ export const evolutionApiService = {
 
   async deleteInstance(instanceName: string): Promise<void> {
     await callProxy('delete_instance', { instanceName });
+  },
+
+  async setWebhook(instanceName: string): Promise<void> {
+    await callProxy('set_webhook', { instanceName });
   },
 
   async sendText(instanceName: string, number: string, text: string): Promise<any> {
@@ -135,6 +166,16 @@ export const evolutionApiService = {
       .eq('connection_status', 'open')
       .order('last_connected_at', { ascending: false })
       .limit(1)
+      .maybeSingle();
+
+    return data as EvolutionInstance | null;
+  },
+
+  async refreshInstanceFromDb(instanceName: string): Promise<EvolutionInstance | null> {
+    const { data } = await supabase
+      .from('evolution_instances')
+      .select('*')
+      .eq('instance_name', instanceName)
       .maybeSingle();
 
     return data as EvolutionInstance | null;
