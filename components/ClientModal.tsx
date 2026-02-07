@@ -511,7 +511,10 @@ const ClientModal: React.FC<ClientModalProps> = ({
                       <option value="Referral">Рекомендация</option>
                       <option value="Cold Call">Холодный звонок</option>
                       <option value="Socials">Соцсети</option>
+                      <option value="WhatsApp">WhatsApp</option>
                       <option value="Creatium">Creatium</option>
+                      <option value="Repeat">Повторная сделка</option>
+                      <option value="Bank Import">Банковский импорт</option>
                       <option value="Other">Другое</option>
                     </select>
                   </div>

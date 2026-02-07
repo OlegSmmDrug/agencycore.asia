@@ -795,7 +795,7 @@ const App: React.FC = () => {
       inn: clientData.bin,
       bin: clientData.bin,
       status: ClientStatus.NEW_LEAD,
-      source: 'Other',
+      source: 'Bank Import',
       email: '',
       phone: '',
       budget: 0,
@@ -805,8 +805,45 @@ const App: React.FC = () => {
       service: '',
     } as Omit<Client, 'id' | 'createdAt'>);
     setClients(prev => [newClient, ...prev]);
-    addNotification('Клиент создан из банковской выписки', 'success');
+    addNotification('Контрагент создан из банковской выписки', 'success');
     return newClient;
+  };
+
+  const handleRepeatSale = async (parentClient: Client) => {
+    try {
+      const newClient = await clientService.create({
+        name: parentClient.name,
+        company: parentClient.company,
+        status: ClientStatus.NEW_LEAD,
+        source: 'Repeat',
+        email: parentClient.email || '',
+        phone: parentClient.phone || '',
+        budget: 0,
+        prepayment: 0,
+        managerId: parentClient.managerId || '',
+        description: '',
+        technicalDescription: '',
+        clientBrief: '',
+        filesLink: '',
+        service: '',
+        services: parentClient.services || [],
+        inn: parentClient.inn || '',
+        address: parentClient.address || '',
+        legalName: parentClient.legalName || '',
+        director: parentClient.director || '',
+        bankName: parentClient.bankName || '',
+        bankBik: parentClient.bankBik || '',
+        accountNumber: parentClient.accountNumber || '',
+        signatoryBasis: parentClient.signatoryBasis || 'Устава',
+        parentClientId: parentClient.id,
+      } as Omit<Client, 'id' | 'createdAt'>);
+      setClients(prev => [newClient, ...prev]);
+      addNotification(`Повторная сделка создана для ${parentClient.company || parentClient.name}`, 'success');
+      handleOpenClientModal(newClient);
+    } catch (error) {
+      console.error('Error creating repeat sale:', error);
+      addNotification('Ошибка создания повторной сделки', 'warning');
+    }
   };
 
   const handleReconcileTransaction = async (existingId: string, bankData: {
@@ -1359,6 +1396,7 @@ const App: React.FC = () => {
             onArchiveClient={handleArchiveClient}
             onCreateClient={handleCreateClientFromBank}
             onReconcile={handleReconcileTransaction}
+            onRepeatSale={handleRepeatSale}
           />
         );
       case 'projects':

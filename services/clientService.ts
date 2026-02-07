@@ -61,7 +61,8 @@ const mapRowToClient = (row: any): Client => ({
   gclid: row.gclid || '',
   clientIdGoogle: row.client_id_google || '',
   clientIdYandex: row.client_id_yandex || '',
-  logoUrl: row.logo_url || ''
+  logoUrl: row.logo_url || '',
+  parentClientId: row.parent_client_id || undefined
 });
 
 export const clientService = {
@@ -139,7 +140,8 @@ export const clientService = {
         yclid_direct: client.yclidDirect || '',
         gclid: client.gclid || '',
         client_id_google: client.clientIdGoogle || '',
-        client_id_yandex: client.clientIdYandex || ''
+        client_id_yandex: client.clientIdYandex || '',
+        parent_client_id: (client as any).parentClientId || null
       })
       .select()
       .single();
@@ -201,6 +203,7 @@ export const clientService = {
     if (updates.gclid !== undefined) updateData.gclid = updates.gclid;
     if (updates.clientIdGoogle !== undefined) updateData.client_id_google = updates.clientIdGoogle;
     if (updates.clientIdYandex !== undefined) updateData.client_id_yandex = updates.clientIdYandex;
+    if (updates.parentClientId !== undefined) updateData.parent_client_id = updates.parentClientId;
 
     const organizationId = getCurrentOrganizationId();
     const { data, error } = await supabase

@@ -168,7 +168,7 @@ export interface Client {
   phone: string;
   budget: number;
   prepayment: number;
-  source: 'Website' | 'Referral' | 'Cold Call' | 'Socials' | 'Creatium' | 'Other' | 'Manual';
+  source: 'Website' | 'Referral' | 'Cold Call' | 'Socials' | 'Creatium' | 'Other' | 'Manual' | 'WhatsApp' | 'Bank Import' | 'Repeat';
   managerId: string;
   description?: string;
   technicalDescription?: string;
@@ -213,6 +213,7 @@ export interface Client {
   clientIdGoogle?: string;
   clientIdYandex?: string;
   logoUrl?: string;
+  parentClientId?: string;
 }
 
 export interface ProjectScope {

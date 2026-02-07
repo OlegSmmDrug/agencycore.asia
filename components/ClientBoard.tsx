@@ -22,16 +22,44 @@ interface ClientBoardProps {
   onArchiveClient: (clientId: string, archive: boolean) => void;
   onCreateClient?: (client: { name: string; company: string; bin: string }) => Promise<Client>;
   onReconcile?: (existingId: string, bankData: { amount: number; clientName: string; bin: string; docNumber: string }) => Promise<void>;
+  onRepeatSale?: (parentClient: Client) => void;
 }
 
-const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, transactions = [], projects = [], onClientStatusChange, onClientClick, onAddClient, onAddTransaction, onUpdateTransaction, onDeleteTransaction, onArchiveClient, onCreateClient, onReconcile }) => {
+const SOURCE_LABELS: Record<string, string> = {
+  'Website': 'Сайт',
+  'Referral': 'Рекомендация',
+  'Cold Call': 'Звонок',
+  'Socials': 'Соцсети',
+  'Creatium': 'Creatium',
+  'WhatsApp': 'WhatsApp',
+  'Manual': 'Ручной',
+  'Bank Import': 'Банк',
+  'Repeat': 'Повторная',
+  'Other': 'Другое'
+};
+
+const SOURCE_STYLES: Record<string, string> = {
+  'Creatium': 'bg-emerald-50 text-emerald-600 border-emerald-100 font-bold',
+  'WhatsApp': 'bg-green-50 text-green-600 border-green-100',
+  'Website': 'bg-blue-50 text-blue-600 border-blue-100',
+  'Referral': 'bg-amber-50 text-amber-600 border-amber-100',
+  'Cold Call': 'bg-orange-50 text-orange-600 border-orange-100',
+  'Socials': 'bg-sky-50 text-sky-600 border-sky-100',
+  'Bank Import': 'bg-slate-50 text-slate-500 border-slate-200',
+  'Repeat': 'bg-teal-50 text-teal-600 border-teal-100 font-bold',
+  'Manual': 'bg-gray-50 text-gray-500 border-gray-100',
+  'Other': 'bg-gray-50 text-gray-500 border-gray-100'
+};
+
+const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, transactions = [], projects = [], onClientStatusChange, onClientClick, onAddClient, onAddTransaction, onUpdateTransaction, onDeleteTransaction, onArchiveClient, onCreateClient, onReconcile, onRepeatSale }) => {
   const { organization: currentOrganization } = useOrganization();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSource, setSelectedSource] = useState<string>('all');
   const [selectedManagerId, setSelectedManagerId] = useState<string>('all');
-  const [viewScope, setViewScope] = useState<'active' | 'archive' | 'transactions'>('active');
+  const [viewScope, setViewScope] = useState<'active' | 'clients' | 'archive' | 'transactions'>('active');
   const [pipelineStages, setPipelineStages] = useState<CrmPipelineStage[]>([]);
   const [showStageManager, setShowStageManager] = useState(false);
+  const [hideBankImports, setHideBankImports] = useState(true);
 
   useEffect(() => {
     if (currentOrganization?.id) {
@@ -45,20 +73,32 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
     setPipelineStages(stages);
   };
 
-  const filteredClients = clients.filter(client => {
-      if (viewScope === 'active' && client.isArchived) return false;
-      if (viewScope === 'archive' && !client.isArchived) return false;
-      if (viewScope === 'transactions') return true; // Not used for filtering clients directly
+  const pipelineColumns = pipelineStages.filter(s =>
+    s.statusKey !== ClientStatus.IN_WORK && s.statusKey !== ClientStatus.WON
+  );
 
-      const matchesSearch = client.company.toLowerCase().includes(searchQuery.toLowerCase()) || 
+  const filteredClients = clients.filter(client => {
+      if (viewScope === 'active') {
+        if (client.isArchived) return false;
+        if (hideBankImports && client.source === 'Bank Import') return false;
+        if (client.status === ClientStatus.IN_WORK || client.status === ClientStatus.WON) return false;
+      }
+      if (viewScope === 'clients') {
+        if (client.isArchived) return false;
+        if (client.status !== ClientStatus.IN_WORK && client.status !== ClientStatus.WON) return false;
+      }
+      if (viewScope === 'archive' && !client.isArchived) return false;
+      if (viewScope === 'transactions') return true;
+
+      const matchesSearch = client.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
                             client.name.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesSource = selectedSource === 'all' || client.source === selectedSource;
       const matchesManager = selectedManagerId === 'all' || client.managerId === selectedManagerId;
-      
+
       return matchesSearch && matchesSource && matchesManager;
   });
 
-  const columns = pipelineStages.map(stage => ({
+  const columns = pipelineColumns.map(stage => ({
     id: stage.statusKey,
     label: stage.label,
     color: stage.color
@@ -69,9 +109,20 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
         .filter(t => t.type === PaymentType.PREPAYMENT)
         .reduce((acc, t) => acc + t.amount, 0);
 
-  const activeDeals = clients.filter(c => c.status !== ClientStatus.LOST && !c.isArchived);
-  const totalDealsSum = activeDeals.reduce((acc, c) => acc + c.budget, 0);
+  const pipelineClients = clients.filter(c =>
+    c.status !== ClientStatus.IN_WORK &&
+    c.status !== ClientStatus.WON &&
+    c.status !== ClientStatus.LOST &&
+    !c.isArchived &&
+    c.source !== 'Bank Import'
+  );
+  const totalDealsSum = pipelineClients.reduce((acc, c) => acc + c.budget, 0);
   const potentialRemaining = totalDealsSum - totalIncome;
+
+  const inWorkClients = clients.filter(c =>
+    (c.status === ClientStatus.IN_WORK || c.status === ClientStatus.WON) && !c.isArchived
+  );
+  const totalActiveRevenue = inWorkClients.reduce((acc, c) => acc + c.budget, 0);
 
   const handleDragStart = (e: React.DragEvent, clientId: string) => {
     e.dataTransfer.setData('clientId', clientId);
@@ -88,7 +139,97 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
     }
   };
 
-  const uniqueSources = Array.from(new Set(clients.map(c => c.source)));
+  const uniqueSources = Array.from(new Set(clients.map(c => c.source))).filter(s => s !== 'Bank Import' || !hideBankImports);
+
+  const bankImportCount = clients.filter(c => c.source === 'Bank Import' && !c.isArchived).length;
+
+  const renderSourceBadge = (source: string) => (
+    <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium border ${SOURCE_STYLES[source] || SOURCE_STYLES['Other']}`}>
+      {SOURCE_LABELS[source] || source}
+    </span>
+  );
+
+  const renderClientCard = (client: Client) => (
+    <div
+      key={client.id}
+      draggable
+      onDragStart={(e) => handleDragStart(e, client.id)}
+      onClick={() => onClientClick(client)}
+      className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-200 cursor-pointer lg:cursor-grab active:cursor-grabbing group relative"
+    >
+      <div className="absolute top-3 right-3">
+        {renderSourceBadge(client.source)}
+      </div>
+
+      <div className="pr-10 mb-2">
+        <h4 className="font-bold text-slate-800 text-sm line-clamp-1 mb-0.5" title={client.company}>{client.company}</h4>
+        <p className="text-xs text-slate-500 font-medium">{client.name}</p>
+      </div>
+
+      {(() => {
+        const manager = users.find(u => u.id === client.managerId);
+        if (manager) {
+          return (
+            <div className="mb-3 flex items-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-teal-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                {manager.name.charAt(0)}
+              </div>
+              <span className="text-[10px] text-slate-500 truncate">{manager.name}</span>
+            </div>
+          );
+        }
+        return (
+          <div className="mb-3 flex items-center gap-2">
+            <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-slate-400 text-[10px] font-bold flex-shrink-0">?</div>
+            <span className="text-[10px] text-slate-400">Не назначен</span>
+          </div>
+        );
+      })()}
+
+      {client.service && (
+        <div className="mb-3">
+          <span className="px-2 py-1 bg-slate-50 rounded-md border border-slate-100 text-[10px] uppercase tracking-wide font-medium text-slate-600 inline-block">{client.service}</span>
+        </div>
+      )}
+
+      <div className="mb-3 flex items-center gap-3 text-[10px] text-slate-400">
+        <div className="flex items-center gap-1" title="Дата и время создания лида">
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+          <span>
+            {new Date(client.createdAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+            {' '}
+            {new Date(client.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
+        {client.statusChangedAt && client.statusChangedAt !== client.createdAt && (
+          <div className="flex items-center gap-1" title="На текущем этапе с">
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <span>
+              {new Date(client.statusChangedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+              {' '}
+              {new Date(client.statusChangedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="pt-3 border-t border-slate-50 flex justify-between items-center">
+        <div>
+          <p className="text-[10px] text-slate-400 font-medium uppercase">Сумма сделки</p>
+          <p className="text-sm font-bold text-slate-800">{client.budget.toLocaleString()} ₸</p>
+        </div>
+        <div className="flex items-center gap-1">
+          {client.phone && (
+            <div className="p-2 rounded-lg text-green-500 hover:bg-green-50 transition-colors" title="WhatsApp доступен">
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              </svg>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
   const renderBoard = () => (
     <div className="flex flex-1 overflow-x-auto overflow-y-hidden pb-4 gap-4 snap-x snap-mandatory h-full">
@@ -97,8 +238,8 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
             const columnTotal = columnClients.reduce((acc, c) => acc + c.budget, 0);
 
             return (
-                <div 
-                    key={col.id} 
+                <div
+                    key={col.id}
                     className={`flex-shrink-0 w-[85vw] md:w-80 flex flex-col h-full rounded-2xl bg-slate-100/50 border border-slate-200/60 overflow-hidden snap-center`}
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, col.id)}
@@ -116,99 +257,9 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
                         </div>
                     )}
                 </div>
-                
+
                 <div className="flex-1 p-3 space-y-3 overflow-y-auto custom-scrollbar">
-                    {columnClients.map((client) => (
-                    <div 
-                        key={client.id} 
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, client.id)}
-                        onClick={() => onClientClick(client)}
-                        className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-200 cursor-pointer lg:cursor-grab active:cursor-grabbing group relative"
-                    >
-                        <div className="absolute top-3 right-3">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium border ${
-                            client.source === 'Website' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 
-                            client.source === 'Creatium' ? 'bg-emerald-50 text-emerald-600 border-emerald-100 font-bold' :
-                            client.source === 'Referral' ? 'bg-amber-50 text-amber-600 border-amber-100' :
-                            'bg-gray-50 text-gray-500 border-gray-100'
-                        }`}>
-                            {client.source === 'Website' ? 'Сайт' : client.source}
-                        </span>
-                        </div>
-
-                        <div className="pr-10 mb-2">
-                             <h4 className="font-bold text-slate-800 text-sm line-clamp-1 mb-0.5" title={client.company}>{client.company}</h4>
-                             <p className="text-xs text-slate-500 font-medium">{client.name}</p>
-                        </div>
-
-                        {(() => {
-                            const manager = users.find(u => u.id === client.managerId);
-                            if (manager) {
-                                return (
-                                    <div className="mb-3 flex items-center gap-2">
-                                        <div className="w-5 h-5 rounded-full bg-teal-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
-                                            {manager.name.charAt(0)}
-                                        </div>
-                                        <span className="text-[10px] text-slate-500 truncate">{manager.name}</span>
-                                    </div>
-                                );
-                            }
-                            return (
-                                <div className="mb-3 flex items-center gap-2">
-                                    <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-slate-400 text-[10px] font-bold flex-shrink-0">?</div>
-                                    <span className="text-[10px] text-slate-400">Не назначен</span>
-                                </div>
-                            );
-                        })()}
-                        
-                        {client.service && (
-                            <div className="mb-3">
-                                <span className="px-2 py-1 bg-slate-50 rounded-md border border-slate-100 text-[10px] uppercase tracking-wide font-medium text-slate-600 inline-block">{client.service}</span>
-                            </div>
-                        )}
-
-                        <div className="mb-3 flex items-center gap-3 text-[10px] text-slate-400">
-                            <div className="flex items-center gap-1" title="Дата и время создания лида">
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                                <span>
-                                    {new Date(client.createdAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-                                    {' '}
-                                    {new Date(client.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                            </div>
-                            {client.statusChangedAt && client.statusChangedAt !== client.createdAt && (
-                                <div className="flex items-center gap-1" title="На текущем этапе с">
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                    <span>
-                                        {new Date(client.statusChangedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-                                        {' '}
-                                        {new Date(client.statusChangedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-                                    </span>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="pt-3 border-t border-slate-50 flex justify-between items-center">
-                           <div>
-                               <p className="text-[10px] text-slate-400 font-medium uppercase">Сумма сделки</p>
-                               <p className="text-sm font-bold text-slate-800">{client.budget.toLocaleString()} ₸</p>
-                           </div>
-                           <div className="flex items-center gap-1">
-                               {client.phone && (
-                                   <div
-                                       className="p-2 rounded-lg text-green-500 hover:bg-green-50 transition-colors"
-                                       title="WhatsApp доступен"
-                                   >
-                                       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                                           <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                                       </svg>
-                                   </div>
-                               )}
-                           </div>
-                        </div>
-                    </div>
-                    ))}
+                    {columnClients.map(renderClientCard)}
                     {columnClients.length === 0 && (
                         <div className="h-full flex items-center justify-center min-h-[100px]">
                             <div className="text-center p-4 border-2 border-dashed border-slate-200 rounded-xl w-full mx-2">
@@ -222,6 +273,156 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
         })}
     </div>
   );
+
+  const renderClientBase = () => {
+    const clientBaseClients = filteredClients;
+    const totalMonthlyRevenue = clientBaseClients.reduce((acc, c) => acc + c.budget, 0);
+    const withProject = clientBaseClients.filter(c => c.projectLaunched);
+    const withoutProject = clientBaseClients.filter(c => !c.projectLaunched);
+
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full">
+        <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-wrap gap-4 items-center">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-slate-500">Активных клиентов:</span>
+            <span className="font-bold text-slate-800">{clientBaseClients.length}</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-slate-500">Общий бюджет:</span>
+            <span className="font-bold text-teal-600">{totalMonthlyRevenue.toLocaleString()} ₸</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-slate-500">С проектами:</span>
+            <span className="font-bold text-slate-800">{withProject.length}</span>
+          </div>
+        </div>
+        <div className="overflow-auto custom-scrollbar flex-1">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-slate-50 sticky top-0 z-20 shadow-sm">
+              <tr>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Компания</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Контакт</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Менеджер</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Услуги</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Бюджет</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Статус</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Действия</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {clientBaseClients.map(client => {
+                const manager = users.find(u => u.id === client.managerId);
+                const project = projects.find(p => p.clientId === client.id && !p.isArchived);
+                return (
+                  <tr key={client.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-4 cursor-pointer" onClick={() => onClientClick(client)}>
+                      <div className="flex items-center gap-3">
+                        {client.logoUrl ? (
+                          <img src={client.logoUrl} alt="" className="w-8 h-8 rounded-lg object-cover" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-lg bg-teal-100 text-teal-600 flex items-center justify-center text-xs font-bold">
+                            {(client.company || client.name || '?')[0].toUpperCase()}
+                          </div>
+                        )}
+                        <div>
+                          <div className="font-bold text-slate-700 text-sm">{client.company || client.name}</div>
+                          {client.source === 'Repeat' && client.parentClientId && (
+                            <span className="text-[10px] text-teal-600 font-medium">Повторная продажа</span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-4 cursor-pointer" onClick={() => onClientClick(client)}>
+                      <div className="text-sm font-medium text-slate-700">{client.name}</div>
+                      <div className="text-xs text-slate-400">{client.phone || client.email || '-'}</div>
+                    </td>
+                    <td className="p-4">
+                      {manager ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-teal-500 flex items-center justify-center text-white text-[10px] font-bold">
+                            {manager.name[0]}
+                          </div>
+                          <span className="text-xs text-slate-600">{manager.name}</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400">-</span>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      <div className="flex flex-wrap gap-1">
+                        {(client.services || []).slice(0, 2).map((s, i) => (
+                          <span key={i} className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-medium text-slate-600 border border-slate-200">{s}</span>
+                        ))}
+                        {(client.services || []).length > 2 && (
+                          <span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-medium text-slate-500">+{(client.services || []).length - 2}</span>
+                        )}
+                        {(!client.services || client.services.length === 0) && client.service && (
+                          <span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-medium text-slate-600 border border-slate-200">{client.service}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      <div className="font-bold text-sm text-slate-800">{client.budget.toLocaleString()} ₸</div>
+                    </td>
+                    <td className="p-4">
+                      {project ? (
+                        <span className="px-2 py-1 bg-teal-50 text-teal-700 rounded-md text-xs font-medium border border-teal-200">
+                          Проект активен
+                        </span>
+                      ) : client.status === ClientStatus.WON ? (
+                        <span className="px-2 py-1 bg-green-50 text-green-700 rounded-md text-xs font-medium border border-green-200">
+                          Завершен
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-md text-xs font-medium border border-blue-200">
+                          В работе
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onClientClick(client);
+                          }}
+                          className="px-3 py-1.5 bg-slate-50 text-slate-600 rounded-lg text-xs font-medium hover:bg-slate-100 transition-colors border border-slate-200"
+                          title="Открыть карточку"
+                        >
+                          Открыть
+                        </button>
+                        {onRepeatSale && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onRepeatSale(client);
+                            }}
+                            className="px-3 py-1.5 bg-teal-50 text-teal-700 rounded-lg text-xs font-medium hover:bg-teal-100 transition-colors border border-teal-200"
+                            title="Создать новую сделку на основе этого клиента"
+                          >
+                            Новая сделка
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {clientBaseClients.length === 0 && (
+            <div className="p-12 text-center text-slate-400">
+              <svg className="w-12 h-12 mx-auto mb-3 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              <p className="text-sm font-medium">Нет активных клиентов</p>
+              <p className="text-xs mt-1">Клиенты появятся здесь после запуска проекта</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const renderArchiveList = () => (
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full">
@@ -296,6 +497,16 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
       )
   );
 
+  const renderContent = () => {
+    switch (viewScope) {
+      case 'active': return renderBoard();
+      case 'clients': return renderClientBase();
+      case 'transactions': return renderTransactionList();
+      case 'archive': return renderArchiveList();
+      default: return renderBoard();
+    }
+  };
+
   return (
     <div className="h-full flex flex-col p-4 md:p-6">
         {viewScope === 'active' && (
@@ -305,7 +516,7 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
                     </div>
                     <div>
-                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Общая сумма сделок</p>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">В воронке (без банка)</p>
                         <p className="text-xl font-bold text-slate-800">{totalDealsSum.toLocaleString()} ₸</p>
                     </div>
                 </div>
@@ -317,8 +528,8 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
                         <p className="text-[10px] text-slate-500">Из них предоплат: <span className="font-bold text-teal-600">{totalPrepaymentOnly.toLocaleString()} ₸</span></p>
                     </div>
                 </div>
-                <div className="flex-shrink-0 w-[85vw] md:w-auto bg-white px-5 py-3 rounded-xl shadow-sm border border-indigo-100 flex items-center space-x-4 min-w-[240px] snap-center">
-                    <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold border border-indigo-100">
+                <div className="flex-shrink-0 w-[85vw] md:w-auto bg-white px-5 py-3 rounded-xl shadow-sm border border-green-100 flex items-center space-x-4 min-w-[240px] snap-center">
+                    <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-600 font-bold border border-green-100">
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
                     </div>
                     <div>
@@ -329,10 +540,37 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
             </div>
         )}
 
+        {viewScope === 'clients' && (
+            <div className="mb-6 flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory flex-shrink-0">
+                <div className="flex-shrink-0 w-[85vw] md:w-auto bg-white px-5 py-3 rounded-xl shadow-sm border border-teal-100 flex items-center space-x-4 min-w-[240px] snap-center">
+                    <div className="w-10 h-10 rounded-full bg-teal-50 flex items-center justify-center text-teal-600 font-bold border border-teal-100">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                    </div>
+                    <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Активных клиентов</p>
+                        <p className="text-xl font-bold text-slate-800">{inWorkClients.length}</p>
+                    </div>
+                </div>
+                <div className="flex-shrink-0 w-[85vw] md:w-auto bg-white px-5 py-3 rounded-xl shadow-sm border border-blue-100 flex items-center space-x-4 min-w-[240px] snap-center">
+                    <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-bold border border-blue-100">₸</div>
+                    <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Общий бюджет клиентов</p>
+                        <p className="text-xl font-bold text-slate-800">{totalActiveRevenue.toLocaleString()} ₸</p>
+                    </div>
+                </div>
+            </div>
+        )}
+
         <div className="mb-4 flex flex-col xl:flex-row gap-3 justify-between items-start xl:items-center flex-shrink-0">
              <div className="flex flex-col md:flex-row gap-3 w-full xl:w-auto items-center">
                  <div className="bg-slate-100 p-1 rounded-lg flex shrink-0">
-                     <button onClick={() => setViewScope('active')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewScope === 'active' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Рабочие</button>
+                     <button onClick={() => setViewScope('active')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewScope === 'active' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Воронка</button>
+                     <button onClick={() => setViewScope('clients')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all relative ${viewScope === 'clients' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                       База клиентов
+                       {inWorkClients.length > 0 && (
+                         <span className="ml-1.5 bg-teal-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{inWorkClients.length}</span>
+                       )}
+                     </button>
                      <button onClick={() => setViewScope('transactions')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewScope === 'transactions' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Журнал платежей</button>
                      {currentUser?.systemRole === SystemRole.ADMIN && (
                        <button onClick={() => setViewScope('archive')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewScope === 'archive' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Архив</button>
@@ -351,7 +589,7 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
                      Этапы
                    </button>
                  )}
-                 {viewScope === 'active' && (
+                 {(viewScope === 'active' || viewScope === 'clients') && (
                     <>
                         <div className="relative flex-1 min-w-[200px] w-full md:w-auto">
                             <input type="text" placeholder="Поиск клиента..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" />
@@ -360,12 +598,25 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
                         <div className="flex gap-2 overflow-x-auto pb-1 items-center w-full md:w-auto">
                             <select value={selectedSource} onChange={(e) => setSelectedSource(e.target.value)} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer min-w-[140px]">
                                 <option value="all">Все источники</option>
-                                {uniqueSources.map(s => <option key={s} value={s}>{s}</option>)}
+                                {uniqueSources.map(s => <option key={s} value={s}>{SOURCE_LABELS[s] || s}</option>)}
                             </select>
                             <select value={selectedManagerId} onChange={(e) => setSelectedManagerId(e.target.value)} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer min-w-[160px]">
                                 <option value="all">Все менеджеры</option>
                                 {getAvailableManagers(users).map(u => <option key={u.id} value={u.id}>{u.name} ({u.jobTitle})</option>)}
                             </select>
+                            {viewScope === 'active' && (
+                              <button
+                                onClick={() => setHideBankImports(!hideBankImports)}
+                                className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors border whitespace-nowrap ${
+                                  hideBankImports
+                                    ? 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                                    : 'bg-orange-50 border-orange-200 text-orange-600'
+                                }`}
+                                title={hideBankImports ? 'Показать контрагентов из банковского импорта' : 'Скрыть контрагентов из банковского импорта'}
+                              >
+                                {hideBankImports ? `Банк (${bankImportCount})` : `Банк: показаны`}
+                              </button>
+                            )}
                         </div>
                     </>
                  )}
@@ -379,9 +630,8 @@ const ClientBoard: React.FC<ClientBoardProps> = ({ clients, users, currentUser, 
         </div>
 
         <div className="flex-1 min-h-0">
-            {viewScope === 'active' ? renderBoard() : viewScope === 'transactions' ? renderTransactionList() : renderArchiveList()}
+            {renderContent()}
         </div>
-
 
         {showStageManager && (
             <StageManagerModal
@@ -454,7 +704,6 @@ const StageManagerModal: React.FC<{ organizationId: string; onClose: () => void 
     }
 
     if (editingStage) {
-      // Редактирование существующего этапа
       const success = await crmPipelineStagesService.updateStage(editingStage.id, {
         label: formData.label,
         hint: formData.hint,
@@ -469,7 +718,6 @@ const StageManagerModal: React.FC<{ organizationId: string; onClose: () => void 
         alert('Ошибка при сохранении этапа');
       }
     } else if (isCreating) {
-      // Создание нового этапа
       const newStage = await crmPipelineStagesService.createStage(organizationId, {
         statusKey: formData.statusKey,
         label: formData.label,
