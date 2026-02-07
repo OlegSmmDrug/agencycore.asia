@@ -8,9 +8,6 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       'process.env': env
-    },
-    optimizeDeps: {
-      include: ['xlsx']
     }
   };
 });
