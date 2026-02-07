@@ -4,7 +4,7 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, Legend, ComposedChart
 } from 'recharts';
-import { Client, User, Task, Project, Transaction, ProjectStatus, ClientStatus, SystemRole, ProjectFinancials } from '../types';
+import { Client, User, Task, Project, Transaction, ProjectStatus, ClientStatus, TaskStatus, SystemRole, ProjectFinancials } from '../types';
 import FinancialModel from './FinancialModel';
 import TransactionJournal from './TransactionJournal';
 import FinanceTab from './analytics/FinanceTab';
@@ -48,10 +48,10 @@ const Analytics: React.FC<AnalyticsProps> = ({
         if (externalTab === 'team_performance') return 'team';
         if (externalTab === 'financial_model') return 'finmodel';
         if (externalTab === 'payments') return 'payments';
-        return 'finance';
+        return 'overview';
     }, [externalTab]);
 
-    const [activeTab, setActiveTab] = useState<'finance' | 'sales' | 'unit' | 'team' | 'finmodel' | 'payments'>(initialTab);
+    const [activeTab, setActiveTab] = useState<'overview' | 'finance' | 'sales' | 'unit' | 'team' | 'finmodel' | 'payments'>(initialTab);
 
     useEffect(() => {
         if (!externalTab) return;
@@ -70,26 +70,57 @@ const Analytics: React.FC<AnalyticsProps> = ({
         return { income };
     }, [transactions]);
 
-    // --- 2. SALES CALCULATIONS ---
+    // --- 2. SALES CALCULATIONS (Real CRM Data) ---
     const salesData = useMemo(() => {
+        const newLeads = clients.filter(c => c.status === ClientStatus.NEW_LEAD).length;
+        const contacted = clients.filter(c => c.status === ClientStatus.CONTACTED).length;
+        const presentation = clients.filter(c => c.status === ClientStatus.PRESENTATION).length;
+        const contractSigning = clients.filter(c => c.status === ClientStatus.CONTRACT).length;
+        const inWork = clients.filter(c => c.status === ClientStatus.IN_WORK).length;
+        const won = clients.filter(c => c.status === ClientStatus.WON).length;
+        const lost = clients.filter(c => c.status === ClientStatus.LOST).length;
+
+        const totalLeads = clients.filter(c => c.status !== ClientStatus.ARCHIVED).length;
+        const activeClients = inWork + won;
+        const contractsTotal = contractSigning + inWork + won;
+
         const funnel = [
-            { name: 'Лиды', value: clients.length, fill: '#3b82f6' },
-            { name: 'Встречи', value: Math.floor(clients.length * 0.62), fill: '#60a5fa' },
-            { name: 'Договоры', value: clients.filter(c => [ClientStatus.CONTRACT, ClientStatus.IN_WORK, ClientStatus.WON].includes(c.status)).length, fill: '#10b981' },
+            { name: 'Новые лиды', value: newLeads, fill: '#94a3b8' },
+            { name: 'Контакт установлен', value: contacted, fill: '#60a5fa' },
+            { name: 'Презентация', value: presentation, fill: '#3b82f6' },
+            { name: 'Подписание договора', value: contractSigning, fill: '#f59e0b' },
+            { name: 'В работе', value: inWork, fill: '#10b981' },
+            { name: 'Закрыт (Won)', value: won, fill: '#059669' },
         ];
 
+        const overallConversion = totalLeads > 0 ? ((activeClients) / totalLeads) * 100 : 0;
+        const lostRate = totalLeads > 0 ? (lost / totalLeads) * 100 : 0;
+
         const marketingAgencyCost = Math.abs(transactions.filter(t => t.category === 'Marketing').reduce((acc, t) => acc + (t.amount || 0), 0));
-        const wonCount = clients.filter(c => c.status === ClientStatus.WON).length || 1;
-        const cac = marketingAgencyCost / wonCount;
+        const newContractsCount = contractsTotal || 1;
+        const cac = marketingAgencyCost > 0 ? marketingAgencyCost / newContractsCount : 0;
+
+        const clientRevenue: Record<string, number> = {};
+        transactions.filter(t => t.amount > 0).forEach(t => {
+            if (t.clientId) {
+                clientRevenue[t.clientId] = (clientRevenue[t.clientId] || 0) + t.amount;
+            }
+        });
 
         const managerPerformance = users
             .filter(u => u.jobTitle && (u.jobTitle.toLowerCase().includes('sales') || u.jobTitle === 'CEO'))
-            .map(u => ({
-                name: u.name,
-                revenue: clients.filter(c => c.managerId === u.id && c.status === ClientStatus.WON).reduce((acc, c) => acc + (c.budget || 0), 0),
-                leads: clients.filter(c => c.managerId === u.id).length,
-                won: clients.filter(c => c.managerId === u.id && c.status === ClientStatus.WON).length,
-            }))
+            .map(u => {
+                const managerClients = clients.filter(c => c.managerId === u.id);
+                const managerWon = managerClients.filter(c => [ClientStatus.WON, ClientStatus.IN_WORK, ClientStatus.CONTRACT].includes(c.status));
+                const actualRevenue = managerClients.reduce((acc, c) => acc + (clientRevenue[c.id] || 0), 0);
+                return {
+                    name: u.name,
+                    revenue: actualRevenue,
+                    leads: managerClients.length,
+                    won: managerWon.length,
+                    lost: managerClients.filter(c => c.status === ClientStatus.LOST).length,
+                };
+            })
             .map(m => ({
                 ...m,
                 conversion: m.leads > 0 ? (m.won / m.leads) * 100 : 0,
@@ -97,7 +128,11 @@ const Analytics: React.FC<AnalyticsProps> = ({
             }))
             .sort((a, b) => b.revenue - a.revenue);
 
-        return { funnel, managerPerformance, cac };
+        const avgDealSize = activeClients > 0
+            ? transactions.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0) / activeClients
+            : 0;
+
+        return { funnel, managerPerformance, cac, overallConversion, lostRate, totalLeads, activeClients, lost, avgDealSize };
     }, [clients, users, transactions]);
 
     // --- 3. UNIT ECONOMICS (REAL DATA) ---
@@ -326,22 +361,105 @@ const Analytics: React.FC<AnalyticsProps> = ({
         };
     }, [projects, projectExpensesData, prevMonthExpensesData, selectedMonth]);
 
-    // --- 4. TEAM PERFORMANCE ---
+    // --- 4. TEAM PERFORMANCE (Enhanced) ---
     const teamData = useMemo(() => {
-        const revPerEmployee = financeData.income / (users.length || 1);
-        
-        const workload = users.map(u => {
-            const activeProjects = projects.filter(p => p.teamIds && p.teamIds.includes(u.id) && p.status !== ProjectStatus.COMPLETED);
-            return {
-                name: u.name,
-                count: activeProjects.length,
-                avatar: u.avatar,
-                role: u.jobTitle
-            };
-        }).sort((a, b) => b.count - a.count);
+        const totalRevenue = financeData.income;
+        const revPerEmployee = totalRevenue / (users.length || 1);
+        const completedTasks = tasks.filter(t => t.status === TaskStatus.DONE);
+        const totalTasks = tasks.length;
 
-        return { revPerEmployee, workload };
-    }, [users, projects, financeData.income]);
+        const workload = users.map(u => {
+            const activeProjects = projects.filter(p => p.teamIds && p.teamIds.includes(u.id) && p.status !== ProjectStatus.COMPLETED && p.status !== ProjectStatus.ARCHIVED);
+            const userTasks = tasks.filter(t => t.assigneeId === u.id);
+            const userCompletedTasks = userTasks.filter(t => t.status === TaskStatus.DONE);
+            const projectRevenue = activeProjects.reduce((sum, p) => sum + (p.budget || 0), 0);
+
+            return {
+                id: u.id,
+                name: u.name,
+                projectCount: activeProjects.length,
+                taskCount: userTasks.length,
+                completedTasks: userCompletedTasks.length,
+                taskCompletion: userTasks.length > 0 ? (userCompletedTasks.length / userTasks.length) * 100 : 0,
+                projectRevenue,
+                avatar: u.avatar,
+                role: u.jobTitle || 'Сотрудник',
+            };
+        }).sort((a, b) => b.projectRevenue - a.projectRevenue);
+
+        const roleBreakdown = users.reduce((acc, u) => {
+            const role = u.jobTitle || 'Без должности';
+            if (!acc[role]) acc[role] = { count: 0, projects: 0 };
+            acc[role].count++;
+            acc[role].projects += projects.filter(p => p.teamIds && p.teamIds.includes(u.id) && p.status !== ProjectStatus.COMPLETED).length;
+            return acc;
+        }, {} as Record<string, { count: number; projects: number }>);
+
+        return {
+            revPerEmployee,
+            totalRevenue,
+            totalEmployees: users.length,
+            totalTasks,
+            completedTasksCount: completedTasks.length,
+            taskCompletionRate: totalTasks > 0 ? (completedTasks.length / totalTasks) * 100 : 0,
+            workload,
+            roleBreakdown,
+        };
+    }, [users, projects, tasks, financeData.income]);
+
+    // --- 5. OVERVIEW / SUMMARY DATA ---
+    const overviewData = useMemo(() => {
+        const safeTrans = Array.isArray(transactions) ? transactions : [];
+        const totalIncome = safeTrans.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+        const totalExpenses = Math.abs(safeTrans.filter(t => t.amount < 0).reduce((s, t) => s + t.amount, 0));
+        const profit = totalIncome - totalExpenses;
+        const margin = totalIncome > 0 ? (profit / totalIncome) * 100 : 0;
+
+        const activeProjects = projects.filter(p => p.status !== ProjectStatus.COMPLETED && p.status !== ProjectStatus.ARCHIVED);
+        const activeClients = clients.filter(c => c.status === ClientStatus.IN_WORK || c.status === ClientStatus.WON).length;
+        const newLeads = clients.filter(c => c.status === ClientStatus.NEW_LEAD).length;
+        const lostClients = clients.filter(c => c.status === ClientStatus.LOST).length;
+
+        const now = new Date();
+        const thisMonthStart = now.toISOString().slice(0, 7) + '-01';
+        const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        const thisMonthEnd = nextMonth.toISOString().slice(0, 10);
+
+        const thisMonthIncome = safeTrans
+            .filter(t => t.amount > 0 && t.date?.slice(0, 10) >= thisMonthStart && t.date?.slice(0, 10) < thisMonthEnd)
+            .reduce((s, t) => s + t.amount, 0);
+
+        const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const lastMonthStart = lastMonthDate.toISOString().slice(0, 7) + '-01';
+        const lastMonthEnd = thisMonthStart;
+
+        const lastMonthIncome = safeTrans
+            .filter(t => t.amount > 0 && t.date?.slice(0, 10) >= lastMonthStart && t.date?.slice(0, 10) < lastMonthEnd)
+            .reduce((s, t) => s + t.amount, 0);
+
+        const incomeGrowth = lastMonthIncome > 0 ? ((thisMonthIncome - lastMonthIncome) / lastMonthIncome) * 100 : 0;
+
+        const monthlyExpenses = Math.abs(safeTrans
+            .filter(t => t.amount < 0 && t.date?.slice(0, 10) >= thisMonthStart && t.date?.slice(0, 10) < thisMonthEnd)
+            .reduce((s, t) => s + t.amount, 0));
+
+        const salaryExpenses = Math.abs(safeTrans.filter(t => t.category === 'Salary').reduce((s, t) => s + t.amount, 0));
+        const fotPercent = totalIncome > 0 ? (salaryExpenses / totalIncome) * 100 : 0;
+
+        const topProjects = unitData.projectList.slice(0, 5);
+        const problematicProjects = unitData.projectList.filter(p => p.margin < 15);
+
+        return {
+            totalIncome, totalExpenses, profit, margin,
+            activeProjects: activeProjects.length,
+            activeClients, newLeads, lostClients,
+            thisMonthIncome, lastMonthIncome, incomeGrowth,
+            monthlyExpenses, salaryExpenses, fotPercent,
+            topProjects, problematicProjects,
+            totalEmployees: users.length,
+            revPerEmployee: totalIncome / (users.length || 1),
+        };
+    }, [transactions, projects, clients, users, unitData]);
 
     const UI = {
         CARD: "bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm transition-all hover:shadow-md h-full",
@@ -361,12 +479,13 @@ const Analytics: React.FC<AnalyticsProps> = ({
                     
                     <div className="flex bg-slate-100 p-1.5 rounded-2xl w-full xl:w-auto overflow-x-auto hide-scrollbar border border-slate-200">
                         {[
-                            { id: 'finance', label: '💰 Финансы (P&L)' },
-                            { id: 'finmodel', label: '📊 Фин. модель' },
-                            { id: 'payments', label: '💳 Журнал платежей' },
-                            { id: 'sales', label: '📈 Продажи' },
-                            { id: 'unit', label: '🧬 Юнит-экономика' },
-                            { id: 'team', label: '👥 Команда и HR' }
+                            { id: 'overview', label: 'Сводка' },
+                            { id: 'finance', label: 'Финансы (P&L)' },
+                            { id: 'finmodel', label: 'Фин. модель' },
+                            { id: 'payments', label: 'Журнал платежей' },
+                            { id: 'sales', label: 'Продажи' },
+                            { id: 'unit', label: 'Юнит-экономика' },
+                            { id: 'team', label: 'Команда и HR' }
                         ].map(tab => (
                             <button 
                                 key={tab.id}
@@ -382,7 +501,133 @@ const Analytics: React.FC<AnalyticsProps> = ({
 
             {/* Scrollable Content Area */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:px-8 pb-20">
-                {activeTab === 'finmodel' ? (
+                {activeTab === 'overview' ? (
+                    <div className="space-y-6 animate-fade-in">
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className={UI.CARD}>
+                                <p className={UI.LABEL}>Выручка (этот месяц)</p>
+                                <p className={UI.VALUE}>{Math.round(overviewData.thisMonthIncome).toLocaleString()} ₸</p>
+                                {overviewData.incomeGrowth !== 0 && (
+                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full mt-2 inline-block ${overviewData.incomeGrowth >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                                        {overviewData.incomeGrowth >= 0 ? '+' : ''}{overviewData.incomeGrowth.toFixed(0)}% к пр. месяцу
+                                    </span>
+                                )}
+                            </div>
+                            <div className={UI.CARD}>
+                                <p className={UI.LABEL}>Чистая прибыль (все время)</p>
+                                <p className={`text-2xl font-black tracking-tighter ${overviewData.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    {Math.round(overviewData.profit).toLocaleString()} ₸
+                                </p>
+                                <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">Маржа: {overviewData.margin.toFixed(1)}%</p>
+                            </div>
+                            <div className={UI.CARD}>
+                                <p className={UI.LABEL}>Активных проектов</p>
+                                <p className={UI.VALUE}>{overviewData.activeProjects}</p>
+                                <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">{overviewData.activeClients} клиентов в работе</p>
+                            </div>
+                            <div className={UI.CARD}>
+                                <p className={UI.LABEL}>Команда</p>
+                                <p className={UI.VALUE}>{overviewData.totalEmployees}</p>
+                                <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">
+                                    {Math.round(overviewData.revPerEmployee).toLocaleString()} ₸ / чел
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                            <div className={UI.CARD}>
+                                <p className={UI.LABEL}>Воронка продаж</p>
+                                <div className="flex items-end gap-3 mt-2">
+                                    <div className="text-center">
+                                        <p className="text-lg font-black text-slate-900">{overviewData.newLeads}</p>
+                                        <p className="text-[8px] text-slate-400 font-bold uppercase">Новых лидов</p>
+                                    </div>
+                                    <div className="text-slate-300 text-lg">→</div>
+                                    <div className="text-center">
+                                        <p className="text-lg font-black text-emerald-600">{overviewData.activeClients}</p>
+                                        <p className="text-[8px] text-slate-400 font-bold uppercase">Клиентов</p>
+                                    </div>
+                                    <div className="text-slate-300 text-lg">|</div>
+                                    <div className="text-center">
+                                        <p className="text-lg font-black text-rose-600">{overviewData.lostClients}</p>
+                                        <p className="text-[8px] text-slate-400 font-bold uppercase">Потеряно</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className={UI.CARD}>
+                                <p className={UI.LABEL}>ФОТ / Выручка</p>
+                                <p className={`text-2xl font-black tracking-tighter ${overviewData.fotPercent > 40 ? 'text-rose-600' : overviewData.fotPercent > 25 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                    {overviewData.fotPercent.toFixed(1)}%
+                                </p>
+                                <div className="w-full bg-slate-100 h-1.5 rounded-full mt-3">
+                                    <div
+                                        className={`h-full rounded-full transition-all ${overviewData.fotPercent > 40 ? 'bg-rose-500' : overviewData.fotPercent > 25 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                        style={{ width: `${Math.min(100, overviewData.fotPercent)}%` }}
+                                    />
+                                </div>
+                                <p className="text-[8px] text-slate-400 font-bold uppercase mt-1.5">Норма: 25-35%</p>
+                            </div>
+                            <div className={UI.CARD}>
+                                <p className={UI.LABEL}>Расходы этот месяц</p>
+                                <p className="text-2xl font-black text-rose-600 tracking-tighter">
+                                    {Math.round(overviewData.monthlyExpenses).toLocaleString()} ₸
+                                </p>
+                                <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">
+                                    Всего: {Math.round(overviewData.totalExpenses).toLocaleString()} ₸
+                                </p>
+                            </div>
+                        </div>
+
+                        {overviewData.problematicProjects.length > 0 && (
+                            <div className={`${UI.CARD} border-l-4 border-l-amber-400`}>
+                                <h3 className="font-black text-xs uppercase tracking-widest mb-4 text-slate-900 flex items-center gap-2">
+                                    <div className="w-1 h-4 bg-amber-500 rounded-full"></div> Проекты требующие внимания (маржа ниже 15%)
+                                </h3>
+                                <div className="space-y-3">
+                                    {overviewData.problematicProjects.map((p) => (
+                                        <div key={p.id} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-800">{p.name}</p>
+                                                <p className="text-[9px] text-slate-400">
+                                                    Выручка: {(p.revenue / 1000).toFixed(0)}k ₸ | Расходы: {(p.expenses / 1000).toFixed(0)}k ₸
+                                                </p>
+                                            </div>
+                                            <span className={`px-3 py-1 rounded-xl text-[10px] font-black ${p.margin < 0 ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                {p.margin.toFixed(1)}%
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {overviewData.topProjects.length > 0 && (
+                            <div className={UI.CARD}>
+                                <h3 className="font-black text-xs uppercase tracking-widest mb-4 text-slate-900 flex items-center gap-2">
+                                    <div className="w-1 h-4 bg-emerald-500 rounded-full"></div> Топ-5 проектов по прибыли
+                                </h3>
+                                <div className="space-y-3">
+                                    {overviewData.topProjects.map((p, i) => (
+                                        <div key={p.id} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
+                                            <div className="flex items-center gap-3">
+                                                <span className={`w-6 h-6 flex items-center justify-center rounded-lg text-[10px] font-black ${i === 0 ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}>{i+1}</span>
+                                                <div>
+                                                    <p className="text-sm font-bold text-slate-800">{p.name}</p>
+                                                    <p className="text-[9px] text-slate-400">
+                                                        Прибыль: {(p.profit / 1000).toFixed(0)}k ₸
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <span className={`px-3 py-1 rounded-xl text-[10px] font-black ${p.margin >= 30 ? 'bg-emerald-50 text-emerald-600' : p.margin >= 15 ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>
+                                                {p.margin.toFixed(1)}%
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                ) : activeTab === 'finmodel' ? (
                     <div className="h-full rounded-[2rem] overflow-hidden border border-slate-200 shadow-sm bg-white">
                         <FinancialModel transactions={transactions} clients={clients} projects={projects} />
                     </div>
@@ -408,33 +653,73 @@ const Analytics: React.FC<AnalyticsProps> = ({
                     <FinanceTab transactions={transactions} projects={projects} />
                 ) : activeTab === 'sales' ? (
                     <div className="space-y-6 animate-fade-in">
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className={UI.CARD}>
+                                <p className={UI.LABEL}>Всего лидов</p>
+                                <p className={UI.VALUE}>{salesData.totalLeads}</p>
+                            </div>
+                            <div className={UI.CARD}>
+                                <p className={UI.LABEL}>Активных клиентов</p>
+                                <p className="text-2xl font-black text-emerald-600 tracking-tighter">{salesData.activeClients}</p>
+                            </div>
+                            <div className={UI.CARD}>
+                                <p className={UI.LABEL}>Конверсия в клиента</p>
+                                <p className={`text-2xl font-black tracking-tighter ${salesData.overallConversion > 20 ? 'text-emerald-600' : salesData.overallConversion > 10 ? 'text-blue-600' : 'text-amber-600'}`}>
+                                    {salesData.overallConversion.toFixed(1)}%
+                                </p>
+                            </div>
+                            <div className={UI.CARD}>
+                                <p className={UI.LABEL}>Потеряно (Lost)</p>
+                                <p className="text-2xl font-black text-rose-600 tracking-tighter">{salesData.lost}</p>
+                                <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">{salesData.lostRate.toFixed(0)}% от всех лидов</p>
+                            </div>
+                        </div>
+
                         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-                            <div className={`${UI.CARD} xl:col-span-4`}>
-                                <h3 className="font-black text-xs uppercase tracking-widest mb-10 text-slate-900">Воронка продаж</h3>
-                                <div className="space-y-10">
-                                    {salesData.funnel.map((step, i) => (
-                                        <div key={i} className="relative">
-                                            <div className="flex justify-between text-[11px] font-black text-slate-500 uppercase mb-3">
-                                                <span>{step.name}</span>
-                                                <span className="text-slate-900">{step.value}</span>
-                                            </div>
-                                            <div className="h-6 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
-                                                <div 
-                                                    className="h-full rounded-full transition-all duration-1000 shadow-inner" 
-                                                    style={{ width: `${salesData.funnel[0].value > 0 ? (step.value / salesData.funnel[0].value) * 100 : 0}%`, backgroundColor: step.fill }}
-                                                ></div>
-                                            </div>
-                                            {i < salesData.funnel.length - 1 && step.value > 0 && (
-                                                <div className="absolute left-1/2 -bottom-7 -translate-x-1/2 flex items-center gap-1.5 text-[10px] font-black text-blue-500 bg-blue-50 px-3 py-0.5 rounded-full border border-blue-100">
-                                                    <span>↓</span> {Math.round((salesData.funnel[i+1].value / step.value) * 100)}% к-сия
+                            <div className={`${UI.CARD} xl:col-span-5`}>
+                                <h3 className="font-black text-xs uppercase tracking-widest mb-8 text-slate-900">Воронка продаж (CRM)</h3>
+                                <div className="space-y-6">
+                                    {salesData.funnel.map((step, i) => {
+                                        const maxVal = Math.max(...salesData.funnel.map(f => f.value), 1);
+                                        return (
+                                            <div key={i} className="relative">
+                                                <div className="flex justify-between text-[11px] font-black text-slate-500 uppercase mb-2">
+                                                    <span>{step.name}</span>
+                                                    <span className="text-slate-900">{step.value}</span>
                                                 </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                                <div className="h-5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                                                    <div
+                                                        className="h-full rounded-full transition-all duration-1000"
+                                                        style={{ width: `${(step.value / maxVal) * 100}%`, backgroundColor: step.fill }}
+                                                    />
+                                                </div>
+                                                {i < salesData.funnel.length - 1 && step.value > 0 && salesData.funnel[i+1].value > 0 && (
+                                                    <div className="absolute left-1/2 -bottom-4 -translate-x-1/2 text-[9px] font-black text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
+                                                        ↓ {Math.round((salesData.funnel[i+1].value / step.value) * 100)}%
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="mt-8 pt-4 border-t border-slate-100 grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase">CAC (стоимость клиента)</p>
+                                        <p className="text-lg font-black text-slate-900">
+                                            {salesData.cac > 0 ? `${Math.round(salesData.cac).toLocaleString()} ₸` : 'Нет данных'}
+                                        </p>
+                                        {salesData.cac === 0 && <p className="text-[8px] text-slate-400">Разметьте расходы категорией "Маркетинг"</p>}
+                                    </div>
+                                    <div>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Средний чек</p>
+                                        <p className="text-lg font-black text-slate-900">
+                                            {salesData.avgDealSize > 0 ? `${Math.round(salesData.avgDealSize).toLocaleString()} ₸` : '--'}
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div className={`${UI.CARD} xl:col-span-8`}>
+                            <div className={`${UI.CARD} xl:col-span-7`}>
                                 <h3 className="font-black text-xs uppercase tracking-widest mb-8 text-slate-900">Эффективность менеджеров продаж</h3>
                                 {salesData.managerPerformance.length > 0 ? (
                                     <div className="overflow-x-auto">
@@ -443,7 +728,9 @@ const Analytics: React.FC<AnalyticsProps> = ({
                                                 <tr>
                                                     <th className="pb-5 px-4 text-center">#</th>
                                                     <th className="pb-5">Менеджер</th>
-                                                    <th className="pb-5 text-right">Выручка</th>
+                                                    <th className="pb-5 text-right">Выручка (факт)</th>
+                                                    <th className="pb-5 text-right">Лиды</th>
+                                                    <th className="pb-5 text-right">Клиенты</th>
                                                     <th className="pb-5 text-right">Конверсия</th>
                                                     <th className="pb-5 text-right">Ср. чек</th>
                                                 </tr>
@@ -456,8 +743,10 @@ const Analytics: React.FC<AnalyticsProps> = ({
                                                         </td>
                                                         <td className="py-5 font-black text-slate-800 text-sm">{m.name}</td>
                                                         <td className="py-5 text-right font-black text-slate-900">{m.revenue.toLocaleString()} ₸</td>
+                                                        <td className="py-5 text-right text-slate-600 text-sm">{m.leads}</td>
+                                                        <td className="py-5 text-right text-emerald-600 font-black text-sm">{m.won}</td>
                                                         <td className="py-5 text-right">
-                                                            <span className={`px-3 py-1 rounded-xl text-[10px] font-black ${m.conversion > 20 ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
+                                                            <span className={`px-3 py-1 rounded-xl text-[10px] font-black ${m.conversion > 30 ? 'bg-emerald-50 text-emerald-600' : m.conversion > 15 ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>
                                                                 {m.conversion.toFixed(1)}%
                                                             </span>
                                                         </td>
@@ -470,7 +759,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
                                 ) : (
                                     <div className="text-center py-12">
                                         <p className="text-slate-400 text-sm">Нет данных по менеджерам продаж</p>
-                                        <p className="text-slate-300 text-xs mt-2">Добавьте сотрудников с должностью "Sales" или "CEO"</p>
+                                        <p className="text-slate-300 text-xs mt-2">Добавьте сотрудников с должностью "Sales manager" или "CEO"</p>
                                     </div>
                                 )}
                             </div>
@@ -779,41 +1068,119 @@ const Analytics: React.FC<AnalyticsProps> = ({
                     </div>
                 ) : (
                     <div className="space-y-6 animate-fade-in">
-                        <div className={UI.CARD}>
-                            <h3 className="font-black text-xs uppercase tracking-widest mb-10 text-slate-900 flex items-center gap-2">
-                                <div className="w-1 h-4 bg-rose-500 rounded-full"></div> Загрузка и Риск выгорания (Burnout Monitor)
-                            </h3>
-                            {teamData.workload.length > 0 ? (
-                                <div className="space-y-8">
-                                    {teamData.workload.map((u, i) => (
-                                    <div key={i} className="group">
-                                        <div className="flex justify-between items-center mb-3">
-                                            <div className="flex items-center gap-3">
-                                                <UserAvatar src={u.avatar} name={u.name} size="md" className="rounded-xl" />
-                                                <div>
-                                                    <span className="font-black text-slate-800 text-sm">{u.name}</span>
-                                                    <p className="text-[9px] text-slate-400 font-bold uppercase">{u.role || 'Сотрудник'}</p>
-                                                </div>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className={UI.CARD}>
+                                <p className={UI.LABEL}>Сотрудников</p>
+                                <p className={UI.VALUE}>{teamData.totalEmployees}</p>
+                            </div>
+                            <div className={UI.CARD}>
+                                <p className={UI.LABEL}>Выручка / сотрудник</p>
+                                <p className="text-2xl font-black text-blue-600 tracking-tighter">
+                                    {Math.round(teamData.revPerEmployee).toLocaleString()} ₸
+                                </p>
+                            </div>
+                            <div className={UI.CARD}>
+                                <p className={UI.LABEL}>Задач выполнено</p>
+                                <p className="text-2xl font-black text-emerald-600 tracking-tighter">
+                                    {teamData.completedTasksCount} / {teamData.totalTasks}
+                                </p>
+                                <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">
+                                    {teamData.taskCompletionRate.toFixed(0)}% выполнение
+                                </p>
+                            </div>
+                            <div className={UI.CARD}>
+                                <p className={UI.LABEL}>Активных проектов</p>
+                                <p className={UI.VALUE}>
+                                    {projects.filter(p => p.status !== ProjectStatus.COMPLETED && p.status !== ProjectStatus.ARCHIVED).length}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+                            <div className={`${UI.CARD} xl:col-span-4`}>
+                                <h3 className="font-black text-xs uppercase tracking-widest mb-6 text-slate-900 flex items-center gap-2">
+                                    <div className="w-1 h-4 bg-blue-500 rounded-full"></div> Состав команды
+                                </h3>
+                                <div className="space-y-3">
+                                    {Object.entries(teamData.roleBreakdown).sort((a, b) => b[1].count - a[1].count).map(([role, data]) => (
+                                        <div key={role} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-800">{role}</p>
+                                                <p className="text-[9px] text-slate-400 font-bold">{data.projects} проектов</p>
                                             </div>
-                                            <span className={`px-3 py-1 rounded-lg font-black uppercase text-[9px] ${u.count >= 7 ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                                                {u.count} Проектов {u.count >= 7 ? '🔴 Критично' : '🟢 Оптимально'}
+                                            <span className="px-3 py-1 bg-slate-100 rounded-xl text-xs font-black text-slate-700">
+                                                {data.count}
                                             </span>
                                         </div>
-                                        <div className="h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200 p-0.5">
-                                            <div
-                                                className={`h-full rounded-full transition-all duration-1000 ${u.count >= 7 ? 'bg-gradient-to-r from-rose-500 to-orange-500 shadow-[0_0_10px_rgba(244,63,94,0.4)]' : 'bg-blue-500'}`}
-                                                style={{ width: `${Math.min(100, (u.count / 8) * 100)}%` }}
-                                            ></div>
-                                        </div>
-                                    </div>
                                     ))}
                                 </div>
-                            ) : (
-                                <div className="text-center py-12">
-                                    <p className="text-slate-400 text-sm">Нет данных по сотрудникам</p>
-                                    <p className="text-slate-300 text-xs mt-2">Добавьте сотрудников в систему</p>
-                                </div>
-                            )}
+                            </div>
+
+                            <div className={`${UI.CARD} xl:col-span-8`}>
+                                <h3 className="font-black text-xs uppercase tracking-widest mb-6 text-slate-900 flex items-center gap-2">
+                                    <div className="w-1 h-4 bg-emerald-500 rounded-full"></div> Эффективность сотрудников
+                                </h3>
+                                {teamData.workload.length > 0 ? (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left">
+                                            <thead className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                                                <tr>
+                                                    <th className="pb-4">Сотрудник</th>
+                                                    <th className="pb-4 text-right">Проекты</th>
+                                                    <th className="pb-4 text-right">Задачи</th>
+                                                    <th className="pb-4 text-right">Выполнено</th>
+                                                    <th className="pb-4 text-right">Нагрузка</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-50">
+                                                {teamData.workload.map((u, i) => {
+                                                    const maxProjects = 8;
+                                                    const loadPercent = (u.projectCount / maxProjects) * 100;
+                                                    const isOverloaded = u.projectCount >= 7;
+                                                    const isWarning = u.projectCount >= 5;
+                                                    return (
+                                                        <tr key={i} className="group hover:bg-slate-50/50 transition-all">
+                                                            <td className="py-4">
+                                                                <div className="flex items-center gap-3">
+                                                                    <UserAvatar src={u.avatar} name={u.name} size="sm" className="rounded-lg" />
+                                                                    <div>
+                                                                        <span className="font-black text-slate-800 text-sm">{u.name}</span>
+                                                                        <p className="text-[9px] text-slate-400 font-bold uppercase">{u.role}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-4 text-right font-black text-slate-900 text-sm">{u.projectCount}</td>
+                                                            <td className="py-4 text-right text-slate-600 text-sm">{u.taskCount}</td>
+                                                            <td className="py-4 text-right">
+                                                                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black ${u.taskCompletion > 70 ? 'bg-emerald-50 text-emerald-600' : u.taskCompletion > 40 ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>
+                                                                    {u.taskCompletion.toFixed(0)}%
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-4 text-right w-36">
+                                                                <div className="flex items-center gap-2 justify-end">
+                                                                    <div className="w-20 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                                                        <div
+                                                                            className={`h-full rounded-full transition-all ${isOverloaded ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-blue-500'}`}
+                                                                            style={{ width: `${Math.min(100, loadPercent)}%` }}
+                                                                        />
+                                                                    </div>
+                                                                    <span className={`text-[9px] font-black ${isOverloaded ? 'text-rose-600' : isWarning ? 'text-amber-600' : 'text-slate-500'}`}>
+                                                                        {isOverloaded ? 'MAX' : `${Math.round(loadPercent)}%`}
+                                                                    </span>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-12">
+                                        <p className="text-slate-400 text-sm">Нет данных по сотрудникам</p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 )}

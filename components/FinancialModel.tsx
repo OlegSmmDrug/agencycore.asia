@@ -60,8 +60,18 @@ const formatPct = (v: number) => {
 const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clients = [], projects = [], viewMode }) => {
   const [viewType, setViewType] = useState<'opiu' | 'dds'>(viewMode || 'opiu');
   const [grouping, setGrouping] = useState<'monthly' | 'quarterly'>('monthly');
-  const [startDate, setStartDate] = useState(new Date(2025, 11, 1));
-  const [endDate, setEndDate] = useState(new Date(2026, 11, 1));
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 2);
+    d.setDate(1);
+    return d;
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 9);
+    d.setDate(1);
+    return d;
+  });
   const [isEditingDates, setIsEditingDates] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [plans, setPlans] = useState<FinancialPlan[]>([]);
@@ -186,12 +196,14 @@ const FinancialModel: React.FC<FinancialModelProps> = ({ transactions = [], clie
   const getVal = useCallback((m: MonthData, field: string): number => {
     const edited = editValues[m.month];
     if (edited && (edited as any)[field] !== undefined) return (edited as any)[field];
+    const factVal = (m.fact as any)[field] || 0;
+    if (factVal > 0) return factVal;
     if (m.plan) {
       const planField = 'planned' + field.charAt(0).toUpperCase() + field.slice(1);
       const planVal = (m.plan as any)[planField];
       if (planVal && planVal > 0) return planVal;
     }
-    return (m.fact as any)[field] || 0;
+    return 0;
   }, [editValues]);
 
   const computeRow = useCallback((md: MonthData) => {

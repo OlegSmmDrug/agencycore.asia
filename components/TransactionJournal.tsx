@@ -1,8 +1,16 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Download, Upload, Search, Calendar, DollarSign, User as UserIcon, X, Clock, CheckCircle, AlertTriangle, Building2 } from 'lucide-react';
-import { Transaction, Client, PaymentType, Project, User, ReconciliationStatus } from '../types';
+import { Plus, Download, Upload, Search, Calendar, DollarSign, User as UserIcon, X, Clock, CheckCircle, AlertTriangle, Building2, Tag } from 'lucide-react';
+import { Transaction, Client, PaymentType, Project, User, ReconciliationStatus, TransactionCategory } from '../types';
 import Modal from './Modal';
 import BankImportModal from './BankImportModal';
+
+const EXPENSE_CATEGORIES: { value: TransactionCategory; label: string; color: string }[] = [
+  { value: 'Income', label: 'Доход (от клиента)', color: 'bg-emerald-100 text-emerald-700' },
+  { value: 'Salary', label: 'ФОТ (Зарплаты)', color: 'bg-blue-100 text-blue-700' },
+  { value: 'Marketing', label: 'Маркетинг / Реклама', color: 'bg-orange-100 text-orange-700' },
+  { value: 'Office', label: 'Офис / ПО / Аренда', color: 'bg-cyan-100 text-cyan-700' },
+  { value: 'Other', label: 'Прочие расходы', color: 'bg-slate-100 text-slate-700' },
+];
 
 interface Props {
   transactions: Transaction[];
@@ -45,6 +53,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
   const [filterDateFrom, setFilterDateFrom] = useState<string>('');
   const [filterDateTo, setFilterDateTo] = useState<string>('');
   const [filterReconciliation, setFilterReconciliation] = useState<ReconciliationStatus | 'all'>('all');
+  const [filterCategory, setFilterCategory] = useState<TransactionCategory | 'all'>('all');
 
   const [newTransaction, setNewTransaction] = useState<{
     clientId: string;
@@ -53,6 +62,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
     date: string;
     type: PaymentType;
     description: string;
+    category: TransactionCategory;
   }>({
     clientId: '',
     projectId: undefined,
@@ -60,6 +70,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
     date: new Date().toISOString().split('T')[0],
     type: PaymentType.PREPAYMENT,
     description: '',
+    category: 'Income',
   });
 
   const filteredTransactions = useMemo(() => {
@@ -106,8 +117,12 @@ export default function TransactionJournal({ transactions, clients, projects, us
       filtered = filtered.filter(t => t.reconciliationStatus === filterReconciliation);
     }
 
+    if (filterCategory !== 'all') {
+      filtered = filtered.filter(t => t.category === filterCategory);
+    }
+
     return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, clients, searchQuery, filterType, filterClient, filterManager, filterProject, filterDateFrom, filterDateTo, filterReconciliation]);
+  }, [transactions, clients, searchQuery, filterType, filterClient, filterManager, filterProject, filterDateFrom, filterDateTo, filterReconciliation, filterCategory]);
 
   const totalAmount = useMemo(() => {
     return filteredTransactions.reduce((sum, t) => sum + t.amount, 0);
@@ -121,8 +136,12 @@ export default function TransactionJournal({ transactions, clients, projects, us
       return;
     }
 
+    const isExpense = newTransaction.category !== 'Income';
+    const finalAmount = isExpense ? -Math.abs(newTransaction.amount) : Math.abs(newTransaction.amount);
+
     onAddTransaction({
       ...newTransaction,
+      amount: finalAmount,
       date: newTransaction.date || new Date().toISOString(),
       reconciliationStatus: 'manual',
     });
@@ -134,6 +153,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
       date: new Date().toISOString().split('T')[0],
       type: PaymentType.PREPAYMENT,
       description: '',
+      category: 'Income',
     });
 
     setIsAddModalOpen(false);
@@ -147,6 +167,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
       date: new Date().toISOString().split('T')[0],
       type: PaymentType.PREPAYMENT,
       description: '',
+      category: 'Income',
     });
     setIsAddModalOpen(false);
   };
@@ -178,11 +199,12 @@ export default function TransactionJournal({ transactions, clients, projects, us
   };
 
   const exportToCSV = () => {
-    const headers = ['Дата', 'Клиент', 'Тип платежа', 'Сумма', 'Статус сверки', 'Описание'];
+    const headers = ['Дата', 'Клиент', 'Тип платежа', 'Категория', 'Сумма', 'Статус сверки', 'Описание'];
     const rows = filteredTransactions.map(t => [
       new Date(t.date).toLocaleDateString('ru-RU'),
       getClientName(t.clientId),
       getPaymentTypeLabel(t.type),
+      EXPENSE_CATEGORIES.find(c => c.value === t.category)?.label || t.category || '',
       t.amount.toString(),
       RECONCILIATION_STATUS_CONFIG[t.reconciliationStatus || 'manual']?.label || '',
       t.description || '',
@@ -295,15 +317,14 @@ export default function TransactionJournal({ transactions, clients, projects, us
             </select>
 
             <select
-              value={filterReconciliation}
-              onChange={(e) => setFilterReconciliation(e.target.value as ReconciliationStatus | 'all')}
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value as TransactionCategory | 'all')}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
-              <option value="all">Все статусы сверки</option>
-              <option value="manual">Ручной ввод</option>
-              <option value="verified">Сверено</option>
-              <option value="discrepancy">Расхождение</option>
-              <option value="bank_import">Банковский импорт</option>
+              <option value="all">Все категории</option>
+              {EXPENSE_CATEGORIES.map(cat => (
+                <option key={cat.value} value={cat.value}>{cat.label}</option>
+              ))}
             </select>
           </div>
 
@@ -340,7 +361,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
             </div>
           </div>
 
-          {(searchQuery || filterType !== 'all' || filterClient !== 'all' || filterManager !== 'all' || filterProject !== 'all' || filterDateFrom || filterDateTo || filterReconciliation !== 'all') && (
+          {(searchQuery || filterType !== 'all' || filterClient !== 'all' || filterManager !== 'all' || filterProject !== 'all' || filterDateFrom || filterDateTo || filterReconciliation !== 'all' || filterCategory !== 'all') && (
             <button
               onClick={() => {
                 setSearchQuery('');
@@ -351,6 +372,7 @@ export default function TransactionJournal({ transactions, clients, projects, us
                 setFilterDateFrom('');
                 setFilterDateTo('');
                 setFilterReconciliation('all');
+                setFilterCategory('all');
               }}
               className="flex items-center justify-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg w-full md:w-auto"
             >
@@ -385,7 +407,8 @@ export default function TransactionJournal({ transactions, clients, projects, us
                 <tr>
                   <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Дата</th>
                   <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Клиент</th>
-                  <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Тип платежа</th>
+                  <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Тип</th>
+                  <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Категория</th>
                   <th className="px-3 md:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Сумма</th>
                   <th className="px-3 md:px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Сверка</th>
                   <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Описание</th>
@@ -420,6 +443,19 @@ export default function TransactionJournal({ transactions, clients, projects, us
                       <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700">
                         {getPaymentTypeLabel(transaction.type)}
                       </span>
+                    </td>
+                    <td className="px-3 md:px-6 py-3 md:py-4 whitespace-nowrap">
+                      {(() => {
+                        const cat = EXPENSE_CATEGORIES.find(c => c.value === transaction.category);
+                        return cat ? (
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full ${cat.color}`}>
+                            <Tag className="h-3 w-3" />
+                            {cat.label}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400">--</span>
+                        );
+                      })()}
                     </td>
                     <td className="px-3 md:px-6 py-3 md:py-4 whitespace-nowrap text-right">
                       <span className={`text-sm font-semibold ${transaction.amountDiscrepancy ? 'text-amber-600' : transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
@@ -502,19 +538,56 @@ export default function TransactionJournal({ transactions, clients, projects, us
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Тип платежа *</label>
+              <select
+                value={newTransaction.type}
+                onChange={(e) => setNewTransaction({ ...newTransaction, type: e.target.value as PaymentType })}
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                {PAYMENT_TYPES.map(pt => (
+                  <option key={pt.value} value={pt.value}>{pt.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Категория (для P&L) *</label>
+              <select
+                value={newTransaction.category}
+                onChange={(e) => setNewTransaction({ ...newTransaction, category: e.target.value as TransactionCategory })}
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                {EXPENSE_CATEGORIES.map(cat => (
+                  <option key={cat.value} value={cat.value}>{cat.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Тип платежа *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Проект</label>
             <select
-              value={newTransaction.type}
-              onChange={(e) => setNewTransaction({ ...newTransaction, type: e.target.value as PaymentType })}
-              required
+              value={newTransaction.projectId || ''}
+              onChange={(e) => setNewTransaction({ ...newTransaction, projectId: e.target.value || undefined })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
-              {PAYMENT_TYPES.map(pt => (
-                <option key={pt.value} value={pt.value}>{pt.label}</option>
+              <option value="">Без привязки к проекту</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
           </div>
+
+          {newTransaction.category !== 'Income' && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+              <strong>Расход:</strong> Сумма будет записана как отрицательная (расход компании).
+              Категория "{EXPENSE_CATEGORIES.find(c => c.value === newTransaction.category)?.label}" отразится в P&L отчете.
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Описание</label>

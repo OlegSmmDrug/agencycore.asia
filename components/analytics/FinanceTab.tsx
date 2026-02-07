@@ -52,8 +52,17 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
   const [editingPlan, setEditingPlan] = useState(false);
   const [planForm, setPlanForm] = useState({ revenue: 0, expenses: 0, netProfit: 0 });
   const [loading, setLoading] = useState(false);
+  const [prevPayrollTotal, setPrevPayrollTotal] = useState(0);
+  const [prevProjectExpensesTotal, setPrevProjectExpensesTotal] = useState(0);
+  const [taxRate, setTaxRate] = useState(0.15);
+  const [showTaxSettings, setShowTaxSettings] = useState(false);
 
-  const TAX_RATE = 0.15;
+  const TAX_RATE_OPTIONS = [
+    { label: '3% (ИП упрощ.)', value: 0.03 },
+    { label: '10% (КПН)', value: 0.10 },
+    { label: '15% (стандарт)', value: 0.15 },
+    { label: '20%', value: 0.20 },
+  ];
 
   const navigateMonth = (direction: 'prev' | 'next') => {
     const date = new Date(selectedMonth + '-01');
@@ -91,15 +100,17 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
 
       const { data: payrollData } = await supabase
         .from('payroll_records')
-        .select('fix_salary, calculated_kpi, manual_bonus, manual_penalty')
+        .select('month, fix_salary, calculated_kpi, manual_bonus, manual_penalty')
         .eq('organization_id', orgId)
-        .eq('month', selectedMonth);
+        .in('month', [selectedMonth, prevMonth]);
 
-      const payroll = (payrollData || []).reduce((sum, r) => {
-        return sum + (Number(r.fix_salary) || 0) + (Number(r.calculated_kpi) || 0) +
-          (Number(r.manual_bonus) || 0) - (Number(r.manual_penalty) || 0);
-      }, 0);
-      setPayrollTotal(payroll);
+      const calcPayroll = (records: typeof payrollData, m: string) =>
+        (records || []).filter(r => r.month === m).reduce((sum, r) =>
+          sum + (Number(r.fix_salary) || 0) + (Number(r.calculated_kpi) || 0) +
+          (Number(r.manual_bonus) || 0) - (Number(r.manual_penalty) || 0), 0);
+
+      setPayrollTotal(calcPayroll(payrollData, selectedMonth));
+      setPrevPayrollTotal(calcPayroll(payrollData, prevMonth));
 
       const activeProjectIds = projects
         .filter(p => p.status !== ProjectStatus.COMPLETED && p.status !== ProjectStatus.ARCHIVED)
@@ -108,14 +119,18 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
       if (activeProjectIds.length > 0) {
         const { data: expData } = await supabase
           .from('project_expenses')
-          .select('total_expenses')
+          .select('month, total_expenses')
           .in('project_id', activeProjectIds)
-          .eq('month', selectedMonth);
+          .in('month', [selectedMonth, prevMonth]);
 
-        const totalExp = (expData || []).reduce((sum, r) => sum + (Number(r.total_expenses) || 0), 0);
-        setProjectExpensesTotal(totalExp);
+        const calcExp = (records: typeof expData, m: string) =>
+          (records || []).filter(r => r.month === m).reduce((sum, r) => sum + (Number(r.total_expenses) || 0), 0);
+
+        setProjectExpensesTotal(calcExp(expData, selectedMonth));
+        setPrevProjectExpensesTotal(calcExp(expData, prevMonth));
       } else {
         setProjectExpensesTotal(0);
+        setPrevProjectExpensesTotal(0);
       }
 
       setLoading(false);
@@ -148,58 +163,60 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
     });
   }, [transactions, prevMonth]);
 
-  const pnl: PnlData = useMemo(() => {
-    const revenue = monthTransactions.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+  const calcPnlFromTransactions = (txns: Transaction[], payroll: number, projExpenses: number) => {
+    const revenue = txns.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
 
-    const salariesFromTx = Math.abs(monthTransactions.filter(t => t.category === 'Salary').reduce((s, t) => s + t.amount, 0));
-    const marketingFromTx = Math.abs(monthTransactions.filter(t => t.category === 'Marketing').reduce((s, t) => s + t.amount, 0));
-    const officeFromTx = Math.abs(monthTransactions.filter(t => t.category === 'Office').reduce((s, t) => s + t.amount, 0));
-    const otherFromTx = Math.abs(monthTransactions.filter(t => t.category === 'Other').reduce((s, t) => s + t.amount, 0));
+    const salariesFromTx = Math.abs(txns.filter(t => t.category === 'Salary').reduce((s, t) => s + t.amount, 0));
+    const marketingFromTx = Math.abs(txns.filter(t => t.category === 'Marketing').reduce((s, t) => s + t.amount, 0));
+    const officeFromTx = Math.abs(txns.filter(t => t.category === 'Office').reduce((s, t) => s + t.amount, 0));
+    const otherFromTx = Math.abs(txns.filter(t => t.category === 'Other').reduce((s, t) => s + t.amount, 0));
 
-    const salaries = Math.max(salariesFromTx, payrollTotal);
+    const salaries = Math.max(salariesFromTx, payroll);
     const marketing = marketingFromTx;
     const office = officeFromTx;
     const otherExpenses = otherFromTx;
 
-    const cogs = projectExpensesTotal;
+    const cogs = projExpenses;
     const grossProfit = revenue - cogs;
     const grossMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
 
     const totalOpex = salaries + marketing + office + otherExpenses;
     const ebitda = grossProfit - totalOpex;
-    const taxes = Math.max(0, ebitda * TAX_RATE);
+    const taxes = Math.max(0, ebitda * taxRate);
     const netProfit = ebitda - taxes;
     const netMargin = revenue > 0 ? (netProfit / revenue) * 100 : 0;
 
+    return { revenue, cogs, grossProfit, grossMargin, salaries, marketing, office, otherExpenses, totalOpex, ebitda, taxes, netProfit, netMargin };
+  };
+
+  const pnl: PnlData = useMemo(() => {
+    const current = calcPnlFromTransactions(monthTransactions, payrollTotal, projectExpensesTotal);
+    const prev = calcPnlFromTransactions(prevMonthTransactions, prevPayrollTotal, prevProjectExpensesTotal);
+
     const expenseStructure = [
-      { name: 'Себестоимость (COGS)', value: cogs },
-      { name: 'ФОТ (Зарплаты)', value: salaries },
-      { name: 'Маркетинг', value: marketing },
-      { name: 'Офис и ПО', value: office },
-      { name: 'Прочее', value: otherExpenses },
+      { name: 'Себестоимость (COGS)', value: current.cogs },
+      { name: 'ФОТ (Зарплаты)', value: current.salaries },
+      { name: 'Маркетинг', value: current.marketing },
+      { name: 'Офис и ПО', value: current.office },
+      { name: 'Прочее', value: current.otherExpenses },
     ].filter(e => e.value > 0);
 
     const planRevenue = plan?.plannedRevenue || 0;
     const planNetProfit = plan?.plannedNetProfit || 0;
 
     const planFact = [
-      { name: 'Выручка', plan: planRevenue, fact: revenue },
-      { name: 'Чистая прибыль', plan: planNetProfit, fact: netProfit },
+      { name: 'Выручка', plan: planRevenue, fact: current.revenue },
+      { name: 'Чистая прибыль', plan: planNetProfit, fact: current.netProfit },
     ];
 
-    const prevRevenue = prevMonthTransactions.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
-    const prevAllExpenses = Math.abs(prevMonthTransactions.filter(t => t.amount < 0).reduce((s, t) => s + t.amount, 0));
-    const prevEbitda = prevRevenue - prevAllExpenses;
-    const prevNetProfit = prevEbitda - Math.max(0, prevEbitda * TAX_RATE);
-
     return {
-      revenue, cogs, grossProfit, grossMargin,
-      salaries, marketing, office, otherExpenses, totalOpex,
-      ebitda, taxes, netProfit, netMargin,
+      ...current,
       expenseStructure, planFact,
-      prevRevenue, prevNetProfit, prevEbitda
+      prevRevenue: prev.revenue,
+      prevNetProfit: prev.netProfit,
+      prevEbitda: prev.ebitda,
     };
-  }, [monthTransactions, prevMonthTransactions, payrollTotal, projectExpensesTotal, plan]);
+  }, [monthTransactions, prevMonthTransactions, payrollTotal, projectExpensesTotal, prevPayrollTotal, prevProjectExpensesTotal, plan, taxRate]);
 
   const getChangePercent = (current: number, prev: number) => {
     if (prev === 0) return null;
@@ -296,17 +313,27 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
         </div>
 
         <div className={UI.CARD}>
-          <p className={UI.LABEL}>EBITDA</p>
+          <div className="group relative">
+            <p className={UI.LABEL}>EBITDA <span className="inline-block w-3 h-3 text-center leading-3 rounded-full bg-slate-200 text-[7px] font-black text-slate-500 cursor-help">?</span></p>
+            <div className="hidden group-hover:block absolute left-0 top-full mt-1 bg-slate-800 text-white text-[10px] p-3 rounded-lg z-10 w-64 shadow-xl">
+              Прибыль до вычета налогов и амортизации. Показывает, сколько зарабатывает бизнес от операционной деятельности.
+            </div>
+          </div>
           <p className={`text-2xl font-black tracking-tighter ${pnl.ebitda >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>
             {formatCurrency(pnl.ebitda)}
           </p>
           <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">
-            Выручка - COGS - OpEx
+            Выручка - Себестоимость - Расходы
           </p>
         </div>
 
         <div className={UI.CARD}>
-          <p className={UI.LABEL}>Рентабельность</p>
+          <div className="group relative">
+            <p className={UI.LABEL}>Рентабельность <span className="inline-block w-3 h-3 text-center leading-3 rounded-full bg-slate-200 text-[7px] font-black text-slate-500 cursor-help">?</span></p>
+            <div className="hidden group-hover:block absolute left-0 top-full mt-1 bg-slate-800 text-white text-[10px] p-3 rounded-lg z-10 w-64 shadow-xl">
+              Какой % от выручки остается в прибыли. Выше 20% -- отлично, 10-20% -- хорошо, ниже 10% -- требует внимания.
+            </div>
+          </div>
           <p className={`text-2xl font-black tracking-tighter ${pnl.netMargin > 20 ? 'text-emerald-500' : pnl.netMargin > 0 ? 'text-blue-500' : 'text-rose-500'}`}>
             {pnl.netMargin.toFixed(1)}%
           </p>
@@ -316,16 +343,41 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
               style={{ width: `${Math.min(100, Math.max(0, pnl.netMargin))}%` }}
             />
           </div>
-          <p className="text-[9px] text-slate-400 font-bold uppercase mt-1.5">Чистая маржа (Net Profit / Revenue)</p>
+          <p className="text-[9px] text-slate-400 font-bold uppercase mt-1.5">Чистая маржа = Прибыль / Выручка</p>
         </div>
 
         <div className={UI.CARD}>
-          <p className={UI.LABEL}>Чистая прибыль</p>
-          <p className={`text-2xl font-black tracking-tighter ${pnl.netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-            {formatCurrency(pnl.netProfit)}
-          </p>
+          <div className="flex items-start justify-between">
+            <div>
+              <p className={UI.LABEL}>Чистая прибыль</p>
+              <p className={`text-2xl font-black tracking-tighter ${pnl.netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {formatCurrency(pnl.netProfit)}
+              </p>
+            </div>
+            <div className="relative">
+              <button
+                onClick={() => setShowTaxSettings(!showTaxSettings)}
+                className="text-[9px] font-bold text-blue-600 hover:text-blue-800 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors"
+              >
+                Налог: {(taxRate * 100).toFixed(0)}%
+              </button>
+              {showTaxSettings && (
+                <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-10 p-2 min-w-[160px]">
+                  {TAX_RATE_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => { setTaxRate(opt.value); setShowTaxSettings(false); }}
+                      className={`w-full text-left px-3 py-2 text-xs rounded-lg transition-colors ${taxRate === opt.value ? 'bg-blue-50 text-blue-700 font-bold' : 'hover:bg-slate-50 text-slate-600'}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
           <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">
-            После налогов ({(TAX_RATE * 100).toFixed(0)}%)
+            EBITDA - налог ({(taxRate * 100).toFixed(0)}%)
           </p>
         </div>
       </div>
@@ -352,7 +404,7 @@ const FinanceTab: React.FC<FinanceTabProps> = ({ transactions, projects }) => {
               <PnlRow label="Офис и ПО" value={-pnl.office} revenue={pnl.revenue} sub />
               <PnlRow label="Прочие расходы" value={-pnl.otherExpenses} revenue={pnl.revenue} sub />
               <PnlRow label="EBITDA" value={pnl.ebitda} revenue={pnl.revenue} bold accent="emerald" />
-              <PnlRow label={`Налоги (${(TAX_RATE * 100).toFixed(0)}%)`} value={-pnl.taxes} revenue={pnl.revenue} sub />
+              <PnlRow label={`Налоги (${(taxRate * 100).toFixed(0)}%)`} value={-pnl.taxes} revenue={pnl.revenue} sub />
               <PnlRow label="Чистая прибыль" value={pnl.netProfit} revenue={pnl.revenue} bold accent="emerald" />
             </tbody>
           </table>
