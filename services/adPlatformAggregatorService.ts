@@ -7,6 +7,8 @@ export interface AdPlatformMetrics {
   platform: 'facebook' | 'google' | 'tiktok';
   spend: number;
   leads: number;
+  messagingConversations?: number;
+  costPerMessage?: number;
   clicks: number;
   impressions: number;
   cpl: number;
@@ -184,6 +186,8 @@ class AdPlatformAggregatorService {
       platform: 'facebook',
       spend: stats.totalSpend,
       leads: stats.totalLeads,
+      messagingConversations: stats.totalMessagingConversations || 0,
+      costPerMessage: stats.costPerMessagingConversation || 0,
       clicks: stats.dailyStats?.reduce((s: number, d: any) => s + (d.clicks || 0), 0) || 0,
       impressions: stats.dailyStats?.reduce((s: number, d: any) => s + (d.impressions || 0), 0) || 0,
       cpl: stats.averageCpl,
@@ -366,6 +370,8 @@ class AdPlatformAggregatorService {
       platform: 'facebook',
       spend: stats.totalSpend,
       leads: stats.totalLeads,
+      messagingConversations: stats.totalMessagingConversations || 0,
+      costPerMessage: stats.costPerMessagingConversation || 0,
       clicks: stats.dailyStats?.reduce((s: number, d: any) => s + (d.clicks || 0), 0) || 0,
       impressions: stats.dailyStats?.reduce((s: number, d: any) => s + (d.impressions || 0), 0) || 0,
       cpl: stats.averageCpl,

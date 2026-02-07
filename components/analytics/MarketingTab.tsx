@@ -318,13 +318,25 @@ const MarketingTab: React.FC<MarketingTabProps> = ({ clients, transactions, onNa
                       <span className="text-sm font-black text-slate-900">{fmt(p.spend)}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] text-slate-500 font-bold">Лиды / Конверсии</span>
-                      <span className="text-sm font-black text-blue-600">{p.leads}</span>
+                      <span className="text-[10px] text-slate-500 font-bold">Лиды</span>
+                      <span className="text-sm font-black text-blue-600">{p.leads > 0 ? p.leads : '--'}</span>
                     </div>
+                    {(p.messagingConversations || 0) > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-slate-500 font-bold">Сообщения WhatsApp</span>
+                        <span className="text-sm font-black text-emerald-600">{p.messagingConversations}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between items-center">
                       <span className="text-[10px] text-slate-500 font-bold">CPL</span>
                       <span className="text-sm font-black text-slate-700">{p.cpl > 0 ? fmt(p.cpl) : '--'}</span>
                     </div>
+                    {(p.messagingConversations || 0) > 0 && (p.costPerMessage || 0) > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-slate-500 font-bold">Цена за сообщение</span>
+                        <span className="text-sm font-black text-slate-700">{fmt(p.costPerMessage!)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between items-center">
                       <span className="text-[10px] text-slate-500 font-bold">Клики</span>
                       <span className="text-sm font-black text-slate-700">{p.clicks > 0 ? p.clicks.toLocaleString() : '--'}</span>

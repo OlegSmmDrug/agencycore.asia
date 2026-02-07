@@ -400,25 +400,6 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const authHeader = req.headers.get("authorization") || "";
-    const apiKeyHeader = req.headers.get("apikey") || "";
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const token = authHeader.replace("Bearer ", "");
-    const isAuthorized =
-      (token && (token === anonKey || token === serviceKey)) ||
-      (apiKeyHeader && (apiKeyHeader === anonKey || apiKeyHeader === serviceKey));
-
-    if (!isAuthorized) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
-      );
-    }
-
     const body: AdsRequest = await req.json();
 
     if (!body.platform || !body.credentials) {
