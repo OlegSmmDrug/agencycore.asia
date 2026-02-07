@@ -28,7 +28,12 @@ const PLATFORM_CONFIG: Record<string, { label: string; color: string; bg: string
   tiktok: { label: 'TikTok Ads', color: 'text-rose-600', bg: 'bg-rose-50', border: 'border-rose-200' },
 };
 
-const fmt = (v: number) => `${Math.round(v).toLocaleString()} ₸`;
+const USD_TO_KZT = 490;
+const fmtKzt = (usd: number) => {
+  const kzt = Math.round(usd * USD_TO_KZT);
+  return `${kzt.toLocaleString()} ₸ ($${Math.round(usd).toLocaleString()})`;
+};
+const fmt = fmtKzt;
 
 type AdPeriod = '7d' | '14d' | '30d';
 

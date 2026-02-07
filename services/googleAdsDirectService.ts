@@ -39,7 +39,7 @@ export interface GoogleAdsAccountStats {
   }>;
 }
 
-const GOOGLE_ADS_API_URL = 'https://googleads.googleapis.com/v16';
+const GOOGLE_ADS_API_URL = 'https://googleads.googleapis.com/v18';
 
 export async function validateGoogleAdsToken(accessToken: string): Promise<boolean> {
   if (!accessToken) return false;

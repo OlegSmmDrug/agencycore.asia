@@ -157,7 +157,7 @@ async function fetchGoogleAdsMetrics(
     `;
 
     const campaignResponse = await fetch(
-      `https://googleads.googleapis.com/v16/customers/${cleanCustomerId}/googleAds:searchStream`,
+      `https://googleads.googleapis.com/v18/customers/${cleanCustomerId}/googleAds:searchStream`,
       {
         method: "POST",
         headers: {
@@ -210,7 +210,7 @@ async function fetchGoogleAdsMetrics(
     let dailyStats: StandardMetrics["dailyStats"] = [];
     try {
       const dailyResponse = await fetch(
-        `https://googleads.googleapis.com/v16/customers/${cleanCustomerId}/googleAds:searchStream`,
+        `https://googleads.googleapis.com/v18/customers/${cleanCustomerId}/googleAds:searchStream`,
         {
           method: "POST",
           headers: {
