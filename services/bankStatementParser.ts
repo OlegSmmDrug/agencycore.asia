@@ -1,3 +1,4 @@
+import * as XLSX from 'xlsx';
 import { Client, PaymentType } from '../types';
 
 export interface ParsedTransaction {
@@ -18,16 +19,19 @@ export interface ParsedTransaction {
 
 export interface ImportResult {
   transactions: ParsedTransaction[];
-  format: '1c' | 'csv' | 'unknown';
+  format: '1c' | 'csv' | 'xls' | 'unknown';
   fileName: string;
 }
 
-function detectFormat(content: string, fileName: string): '1c' | 'csv' | 'unknown' {
+function detectFormat(content: string, fileName: string): '1c' | 'csv' | 'xls' | 'unknown' {
   if (content.includes('1CClientBankExchange') || content.includes('СекцияДокумент')) {
     return '1c';
   }
   const ext = fileName.toLowerCase().split('.').pop();
-  if (ext === 'csv' || ext === 'xls' || ext === 'xlsx') {
+  if (ext === 'xls' || ext === 'xlsx') {
+    return 'xls';
+  }
+  if (ext === 'csv') {
     return 'csv';
   }
   if (content.includes(';') && content.includes('\n')) {
@@ -37,6 +41,11 @@ function detectFormat(content: string, fileName: string): '1c' | 'csv' | 'unknow
     }
   }
   return 'unknown';
+}
+
+function isXlsFile(fileName: string): boolean {
+  const ext = fileName.toLowerCase().split('.').pop();
+  return ext === 'xls' || ext === 'xlsx';
 }
 
 function parseDate(dateStr: string): string {
@@ -244,6 +253,119 @@ function parseCSVFormat(content: string): Omit<ParsedTransaction, 'matchedClient
   return results;
 }
 
+function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as ArrayBuffer);
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function parseXLSFormat(buffer: ArrayBuffer): Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus'>[] {
+  const results: Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus'>[] = [];
+
+  const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) return results;
+
+  const sheet = workbook.Sheets[sheetName];
+  const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  if (rows.length < 2) return results;
+
+  let headerRowIdx = -1;
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const row = rows[i];
+    if (!Array.isArray(row)) continue;
+    const rowStr = row.map(c => String(c).toLowerCase()).join(' ');
+    if (rowStr.includes('дата') || rowStr.includes('date') || rowStr.includes('сумма')) {
+      headerRowIdx = i;
+      break;
+    }
+  }
+  if (headerRowIdx < 0) headerRowIdx = 0;
+
+  const headers = (rows[headerRowIdx] as unknown[]).map(c => String(c).toLowerCase().trim());
+
+  const findCol = (...candidates: string[]): number => {
+    for (const candidate of candidates) {
+      const idx = headers.findIndex(h => h.includes(candidate.toLowerCase()));
+      if (idx >= 0) return idx;
+    }
+    return -1;
+  };
+
+  const dateCol = findCol('дата', 'date');
+  const nameCol = findCol('наименование', 'фио', 'контрагент', 'плательщик', 'name');
+  const creditCol = findCol('зачислен', 'приход', 'credit', 'кредит');
+  const debitCol = findCol('списан', 'расход', 'debit', 'дебет');
+  const amountCol = findCol('сумма', 'amount');
+  const descCol = findCol('назначение', 'описание', 'description', 'purpose');
+  const knpCol = findCol('кнп', 'knp', 'код');
+  const binCol = findCol('бин', 'иин', 'bin', 'iin', 'инн', 'inn');
+  const currencyCol = findCol('валюта', 'currency');
+  const docNumCol = findCol('номер', 'документ', 'doc', 'number');
+
+  for (let i = headerRowIdx + 1; i < rows.length; i++) {
+    const cells = rows[i] as unknown[];
+    if (!Array.isArray(cells) || cells.length < 3) continue;
+
+    const cell = (idx: number): string => {
+      if (idx < 0 || idx >= cells.length) return '';
+      const val = cells[idx];
+      if (val instanceof Date) {
+        const d = val;
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        return `${dd}.${mm}.${yyyy}`;
+      }
+      return String(val ?? '').trim();
+    };
+
+    const dateStr = dateCol >= 0 ? cell(dateCol) : '';
+    if (!dateStr || dateStr === '0' || dateStr === '') continue;
+
+    let amount = 0;
+    if (creditCol >= 0 && cell(creditCol)) {
+      amount = parseFloat(String(cell(creditCol)).replace(/\s/g, '').replace(',', '.')) || 0;
+    } else if (amountCol >= 0 && cell(amountCol)) {
+      amount = parseFloat(String(cell(amountCol)).replace(/\s/g, '').replace(',', '.')) || 0;
+    }
+
+    if (amount <= 0 && debitCol >= 0 && cell(debitCol)) {
+      continue;
+    }
+    if (amount <= 0) continue;
+
+    const clientName = nameCol >= 0 ? cell(nameCol) : '';
+    const description = descCol >= 0 ? cell(descCol) : '';
+    const knpCode = knpCol >= 0 ? cell(knpCol) : '';
+    const clientBin = binCol >= 0 ? cell(binCol) : '';
+    const currency = currencyCol >= 0 ? cell(currencyCol).toUpperCase() : 'KZT';
+    const documentNumber = docNumCol >= 0 ? cell(docNumCol) : '';
+
+    const exchangeRate = currency === 'USD' ? parseExchangeRate(description) : null;
+    const amountKZT = exchangeRate ? amount * exchangeRate : amount;
+
+    results.push({
+      date: parseDate(dateStr),
+      amount: Math.round(amountKZT * 100) / 100,
+      amountOriginal: amount,
+      currency: currency || 'KZT',
+      exchangeRate,
+      clientName,
+      clientBin,
+      description,
+      documentNumber,
+      knpCode,
+      paymentType: detectPaymentType(description),
+    });
+  }
+
+  return results;
+}
+
 export function readFileAsText(file: File, encoding: string = 'windows-1251'): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -258,20 +380,25 @@ export async function parseStatementFile(
   clients: Client[],
   existingDocNumbers: string[]
 ): Promise<ImportResult> {
-  let content = await readFileAsText(file, 'windows-1251');
+  type RawTx = Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus'>;
+  let rawTransactions: RawTx[] = [];
+  let format: '1c' | 'csv' | 'xls' | 'unknown';
 
-  if (content.includes('�') || (!content.includes('СекцияДокумент') && !content.includes('Дата'))) {
-    content = await readFileAsText(file, 'utf-8');
-  }
-
-  const format = detectFormat(content, file.name);
-
-  let rawTransactions: Omit<ParsedTransaction, 'matchedClientId' | 'matchStatus'>[] = [];
-
-  if (format === '1c') {
-    rawTransactions = parse1CFormat(content);
-  } else if (format === 'csv') {
-    rawTransactions = parseCSVFormat(content);
+  if (isXlsFile(file.name)) {
+    format = 'xls';
+    const buffer = await readFileAsArrayBuffer(file);
+    rawTransactions = parseXLSFormat(buffer);
+  } else {
+    let content = await readFileAsText(file, 'windows-1251');
+    if (content.includes('�') || (!content.includes('СекцияДокумент') && !content.includes('Дата'))) {
+      content = await readFileAsText(file, 'utf-8');
+    }
+    format = detectFormat(content, file.name);
+    if (format === '1c') {
+      rawTransactions = parse1CFormat(content);
+    } else if (format === 'csv') {
+      rawTransactions = parseCSVFormat(content);
+    }
   }
 
   const transactions: ParsedTransaction[] = rawTransactions.map(t => {
